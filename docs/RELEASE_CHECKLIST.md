@@ -2,12 +2,13 @@
 
 No launch may be called complete until every mandatory row is backed by the
 listed evidence. A passing local test is not evidence of a BSC deployment or a
-real-user pilot.
+real-user pilot. The normative binary completion rule is
+[`PRODUCTION_COMPLETION_DEFINITION_ZH.md`](PRODUCTION_COMPLETION_DEFINITION_ZH.md).
 
 ## A. Reproducible local gates
 
 - [x] `pnpm lint`
-- [x] `pnpm test` — 184 tests across 46 files. The displayed 100% coverage applies
+- [x] `pnpm test` — 189 tests across 48 files. The displayed 100% coverage applies
   only to `src/lib/protocol.ts`; it is not evidence of full Worker/API coverage.
 - [x] `pnpm contracts:compile` — eight compiled deployable artifacts, including
   the six production deployment contracts
@@ -52,14 +53,15 @@ real-user pilot.
   absent from the 0600 report, symlink/mount-write paths are rejected, and the
   resulting `local-smoke` evidence cannot satisfy the production gate.
 - [x] One uninterrupted current `pnpm release:qa:run` passed all 22 fixed commands
-  and bound the unactivated candidate `f1TFX2x3hw1vN5FhI4VWe`. Report SHA-256 is
-  `f84d2f3bd9ec7fdcee07e9b4227f9f853752d9212137feba90f7282f6a0f5b07`.
+  and bound the unactivated candidate `IWLRGNOai5QPWfgniDzUs`. Report SHA-256 is
+  `1fe4fcd35c860a2979da8e2beba9040e7cf9c045d80bc923c01eb26924946638`.
   The bound source SHA-256 is
-  `sha256:efaa16bf9e9eab43729c5c505bd07fe41fb7b9a29fd1018975f76b233742f730`.
+  `sha256:93760a0ce42d5d84b9ae0046c53def29240e489178119c349bb8583522b8cd81`.
   Its manifest SHA-256 is
-  `sha256:4eaecfad4c9ab993613ee5e5859b1fa5eead4a29e66e9f56531d7fde5036d989`.
+  `sha256:c3bfafc0df08f6cbc43d76044fd59d06f80da87ff887c9405c894f269e301f3b`.
   It includes exact six-contract readiness, acknowledged monitoring,
-  trusted-proxy and KMS recovery smokes.
+  trusted-proxy and KMS recovery smokes, plus the public Agent discovery/API
+  contract and compile-checked production executor example.
   All earlier QA reports and candidates remain historical evidence only.
 
 ## B. BSC Testnet gates

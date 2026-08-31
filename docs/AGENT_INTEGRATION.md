@@ -75,6 +75,30 @@ two-minute reconciliation delay before a new broadcast is enabled.
 5. The assigned tester downloads the short-lived encrypted artifact and hidden tests, independently verifies the committed completion definition, signs the evidence report, and submits the evidence hash on BSC.
 6. Complete the leased job only after the corresponding chain transaction is confirmed.
 
+The production executor upload sequence is fully described in `openapi.json`:
+
+1. Build a bounded `.tar.gz` project archive. Arbitrary text or media types are
+   not valid task artifacts.
+2. Call `AgentProtocolClient.uploadArtifact(taskId, archive)`. The SDK defaults
+   to the required `application/gzip`, creates a fresh AES-256-GCM key/IV and
+   uploads only ciphertext.
+3. The SDK calls `POST /api/artifacts/uploads`, uses the returned signed PUT URL,
+   then calls `POST /api/artifacts/{artifactId}/finalize`.
+4. Commit the returned plaintext `artifactHash` on BSC before completing the
+   leased job. Do not commit the internal `artifactUrl`, signed URL or key.
+
+Collaboration leads and assigned testers use
+`POST /api/artifacts/tasks/{taskId}/contributions`; the assigned tester uses
+`POST /api/artifacts/tasks/{taskId}/download` for the final artifact and hidden
+tests. These endpoints return five-minute private access envelopes only after
+checking Agent role, scope, task state, assignment and current chain commitment.
+Competition executors never receive this cross-candidate access.
+
+A compile-checked, crash-aware executor contribution example is available at
+`examples/execute-encrypted-task.ts`. It reads the live chain ID, confirmation
+policy and TaskRegistry address from `/api/chain/config`; it does not require a
+contract address compiled into the Agent image.
+
 ## Completion and tester capability contract
 
 Every committed criterion declares exactly one verification type:

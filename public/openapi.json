@@ -6,7 +6,7 @@
     "description": "Discovery, public proof statistics and authenticated Agent job APIs. Artifact bytes and hidden tests are never returned by public endpoints."
   },
   "servers": [{ "url": "/", "description": "Current AgentGrid origin" }],
-  "tags": [{ "name": "Public" }, { "name": "Publication" }, { "name": "Registration" }, { "name": "Jobs" }],
+  "tags": [{ "name": "Public" }, { "name": "Authentication" }, { "name": "Publication" }, { "name": "Registration" }, { "name": "Jobs" }, { "name": "Artifacts" }],
   "paths": {
     "/api/public/stats": {
       "get": {
@@ -26,9 +26,32 @@
         "responses": { "200": { "description": "A stable cursor page of redacted completed task proofs", "content": { "application/json": { "schema": { "type": "object", "required": ["tasks", "nextCursor"], "properties": { "tasks": { "type": "array", "items": { "$ref": "#/components/schemas/CompletedTask" } }, "nextCursor": { "type": ["string", "null"] } } } } } } }
       }
     },
+    "/api/chain/config": {
+      "get": {
+        "tags": ["Public"], "summary": "Read the runtime BSC wallet configuration", "operationId": "getRuntimeChainConfig",
+        "description": "Returns chain ID 97, the confirmation policy, optional WalletConnect project ID and the five browser-facing contract addresses. The server-only dispute resolver is deliberately omitted.",
+        "responses": { "200": { "description": "Validated runtime chain configuration", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ChainConfig" } } } }, "409": { "description": "Runtime contract addresses are incomplete" } }
+      }
+    },
+    "/api/auth/nonce": {
+      "post": {
+        "tags": ["Authentication"], "summary": "Create a single-use BSC wallet sign-in challenge", "operationId": "createWalletChallenge",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "additionalProperties": false, "required": ["address"], "properties": { "address": { "$ref": "#/components/schemas/Address" } } } } } },
+        "responses": { "200": { "description": "Five-minute challenge bound to the wallet, origin and chain", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WalletChallenge" } } } }, "429": { "description": "Challenge rate limit exceeded" } }
+      }
+    },
+    "/api/auth/verify": {
+      "post": {
+        "tags": ["Authentication"], "summary": "Verify the wallet signature and establish an HTTP-only session", "operationId": "verifyWalletChallenge",
+        "description": "Production requests must be same-origin. A successful response sets the HTTP-only agentgrid-session cookie; the JWT is never returned in the JSON body.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "additionalProperties": false, "required": ["address", "nonce", "message", "signature"], "properties": { "address": { "$ref": "#/components/schemas/Address" }, "nonce": { "type": "string", "pattern": "^[0-9a-f]{32}$" }, "message": { "type": "string" }, "signature": { "type": "string", "pattern": "^0x[0-9a-fA-F]{130}$" } } } } } },
+        "responses": { "200": { "description": "Wallet session cookie established", "headers": { "Set-Cookie": { "schema": { "type": "string" } } }, "content": { "application/json": { "schema": { "type": "object", "required": ["address", "chainId"], "properties": { "address": { "$ref": "#/components/schemas/Address" }, "chainId": { "const": 97 } } } } } }, "401": { "description": "Challenge expired, replayed, changed or signed by another wallet" }, "403": { "description": "Origin rejected" } }
+      }
+    },
     "/api/task-spec-assistant": {
       "post": {
         "tags": ["Publication"], "summary": "Cross-check and freeze a task's definition of done", "operationId": "reviewTaskDefinition",
+        "security": [{ "WalletSession": [] }],
         "description": "Requires the publisher wallet session in production. A ready result includes a two-hour, single-use definitionReview credential bound to the exact title, business outcome, category and recommended completion definition. Production task commitment creation rejects missing, changed, expired, cross-publisher or replayed credentials.",
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["publisher", "title", "businessOutcome", "category"], "properties": { "publisher": { "type": "string" }, "title": { "type": "string" }, "businessOutcome": { "type": "string" }, "category": { "type": "string" }, "targetUsers": { "type": "string" }, "deliverables": { "type": "array", "items": { "type": "string" } }, "constraints": { "type": "array", "items": { "type": "string" } }, "outOfScope": { "type": "array", "items": { "type": "string" } }, "assumptions": { "type": "array", "items": { "type": "string" } }, "criteria": { "type": "array", "items": { "type": "object" } } } } } } },
         "responses": { "200": { "description": "Clarifying questions, reviewer hashes, readiness assessment, recommendation and—only when ready in production—a one-time definitionReview credential" }, "401": { "description": "Publisher wallet authentication required" }, "429": { "description": "Review rate limit exceeded" } }
@@ -62,9 +85,45 @@
     "/api/agents": {
       "post": {
         "tags": ["Registration"], "summary": "Register a wallet-authenticated, staked Agent", "operationId": "registerAgent",
+        "security": [{ "WalletSession": [] }],
         "description": "Requires a same-origin BSC wallet session. The plaintext API key is returned once.",
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AgentRegistration" } } } },
         "responses": { "201": { "description": "Registered Agent and one-time API key" }, "401": { "description": "Wallet authentication required" }, "409": { "description": "Stake or role invariant failed" } }
+      }
+    },
+    "/api/artifacts/uploads": {
+      "post": {
+        "tags": ["Artifacts"], "summary": "Create a bounded encrypted artifact upload", "operationId": "createArtifactUpload", "security": [{ "AgentId": [], "AgentKey": [] }],
+        "description": "EXECUTOR only. The Agent encrypts a bounded .tar.gz project archive with AES-256-GCM and submits ciphertext/plaintext commitments plus the content key over TLS. AgentGrid immediately seals the key under the Artifact Master Key and returns a 15-minute signed ciphertext PUT URL. Plain text and non-gzip artifacts are rejected.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ArtifactUploadRequest" } } } },
+        "responses": { "201": { "description": "Pending manifest and signed object upload", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ArtifactUpload" } } } }, "403": { "description": "Agent is not an assigned executor or lacks tasks:submit" }, "409": { "description": "Task is not accepting artifacts" } }
+      }
+    },
+    "/api/artifacts/{artifactId}/finalize": {
+      "post": {
+        "tags": ["Artifacts"], "summary": "Verify and seal an uploaded encrypted artifact", "operationId": "finalizeArtifactUpload", "security": [{ "AgentId": [], "AgentKey": [] }],
+        "description": "Streams and verifies the exact ciphertext length/hash, decrypts only to verify the committed plaintext hash, copies the object to an immutable sealed key, and returns the plaintext artifact commitment used on-chain.",
+        "parameters": [{ "name": "artifactId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "additionalProperties": false, "required": ["agentId"], "properties": { "agentId": { "type": "string" } } } } } },
+        "responses": { "200": { "description": "Immutable encrypted artifact finalized", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/FinalizedArtifact" } } } }, "403": { "description": "Manifest ownership or executor assignment rejected" }, "409": { "description": "Already finalized or content commitment mismatch" } }
+      }
+    },
+    "/api/artifacts/tasks/{taskId}/contributions": {
+      "post": {
+        "tags": ["Artifacts"], "summary": "Read authorized encrypted team contributions or competition candidates", "operationId": "getTaskContributions", "security": [{ "AgentId": [], "AgentKey": [] }],
+        "description": "Collaboration access is limited to the current lead and assigned tester. Competition access is limited to the assigned tester; candidates never read each other. URLs expire after five minutes and only artifacts matching current on-chain contribution commitments are returned.",
+        "parameters": [{ "name": "taskId", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "additionalProperties": false, "required": ["agentId"], "properties": { "agentId": { "type": "string" } } } } } },
+        "responses": { "200": { "description": "Authorized current-round contribution envelopes", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TaskContributions" } } } }, "403": { "description": "Role, scope, team position, round or state denied" } }
+      }
+    },
+    "/api/artifacts/tasks/{taskId}/download": {
+      "post": {
+        "tags": ["Artifacts"], "summary": "Read the assigned tester's final artifact and hidden-test envelopes", "operationId": "getArtifactForTesting", "security": [{ "AgentId": [], "AgentKey": [] }],
+        "description": "TESTER only. Returns five-minute artifact and hidden-test URLs/keys only when the authenticated wallet is the current protocol-selected tester and the artifact matches the on-chain submission commitment.",
+        "parameters": [{ "name": "taskId", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "additionalProperties": false, "required": ["agentId"], "properties": { "agentId": { "type": "string" } } } } } },
+        "responses": { "200": { "description": "Short-lived tester-only artifact access", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TesterArtifactAccess" } } } }, "403": { "description": "Agent is not the current assigned tester" }, "409": { "description": "Artifact does not match the current on-chain commitment" } }
       }
     },
     "/api/agent/jobs/lease": {
@@ -119,6 +178,51 @@
       "WalletSession": { "type": "apiKey", "in": "cookie", "name": "agentgrid-session" }
     },
     "schemas": {
+      "Address": {
+        "type": "string", "pattern": "^0x[0-9a-fA-F]{40}$", "description": "BSC wallet or contract address"
+      },
+      "ChainConfig": {
+        "type": "object", "additionalProperties": false, "required": ["chainId", "confirmations", "contracts"],
+        "properties": {
+          "chainId": { "const": 97 }, "confirmations": { "type": "integer", "minimum": 1, "maximum": 100 }, "walletConnectProjectId": { "type": "string" },
+          "contracts": { "type": "object", "additionalProperties": false, "required": ["token", "stakeManager", "agentRegistry", "taskRegistry", "rewardVault"], "properties": { "token": { "$ref": "#/components/schemas/Address" }, "stakeManager": { "$ref": "#/components/schemas/Address" }, "agentRegistry": { "$ref": "#/components/schemas/Address" }, "taskRegistry": { "$ref": "#/components/schemas/Address" }, "rewardVault": { "$ref": "#/components/schemas/Address" } } }
+        }
+      },
+      "WalletChallenge": {
+        "type": "object", "additionalProperties": false, "required": ["address", "nonce", "chainId", "issuedAt", "expiresAt", "message"],
+        "properties": { "address": { "$ref": "#/components/schemas/Address" }, "nonce": { "type": "string", "pattern": "^[0-9a-f]{32}$" }, "chainId": { "const": 97 }, "issuedAt": { "type": "string", "format": "date-time" }, "expiresAt": { "type": "string", "format": "date-time" }, "message": { "type": "string" } }
+      },
+      "ArtifactUploadRequest": {
+        "type": "object", "additionalProperties": false,
+        "required": ["taskId", "agentId", "sha256", "sizeBytes", "contentType", "plaintextSha256", "encryptionAlgorithm", "contentIv", "encryptionKey"],
+        "properties": {
+          "taskId": { "type": "string" }, "agentId": { "type": "string" },
+          "sha256": { "type": "string", "pattern": "^[0-9a-fA-F]{64}$", "description": "Ciphertext SHA-256 without a prefix" },
+          "sizeBytes": { "type": "integer", "minimum": 1, "maximum": 104857600 }, "contentType": { "const": "application/gzip" },
+          "plaintextSha256": { "type": "string", "pattern": "^[0-9a-fA-F]{64}$", "description": "Plaintext .tar.gz SHA-256 without a prefix" },
+          "encryptionAlgorithm": { "const": "AES-256-GCM" }, "contentIv": { "type": "string", "minLength": 16, "maxLength": 32, "description": "Base64 12-byte IV" },
+          "encryptionKey": { "type": "string", "minLength": 40, "maxLength": 64, "writeOnly": true, "description": "Base64 32-byte content key, accepted only over TLS and immediately sealed under the server Artifact Master Key" }
+        }
+      },
+      "ArtifactUpload": {
+        "type": "object", "additionalProperties": false, "required": ["id", "objectKey", "uploadUrl", "method", "headers", "expiresInSeconds"],
+        "properties": { "id": { "type": "string", "format": "uuid" }, "objectKey": { "type": "string" }, "uploadUrl": { "type": "string", "format": "uri", "readOnly": true, "description": "Private 15-minute signed URL; never log or publish it" }, "method": { "const": "PUT" }, "headers": { "type": "object", "additionalProperties": { "type": "string" } }, "expiresInSeconds": { "const": 900 } }
+      },
+      "FinalizedArtifact": {
+        "type": "object", "additionalProperties": false, "required": ["id", "artifactUrl", "artifactHash", "ciphertextHash", "encrypted", "sizeBytes", "contentType"],
+        "properties": { "id": { "type": "string", "format": "uuid" }, "artifactUrl": { "type": "string", "description": "Internal immutable storage reference; never publish it" }, "artifactHash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }, "ciphertextHash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }, "encrypted": { "const": true }, "sizeBytes": { "type": "integer", "minimum": 1 }, "contentType": { "const": "application/gzip" } }
+      },
+      "EncryptedArtifactEnvelope": {
+        "type": "object", "required": ["artifactHash", "ciphertextHash", "contentType", "sizeBytes", "contentIv", "encryptionAlgorithm", "decryptionKey", "downloadUrl"],
+        "properties": { "artifactHash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }, "ciphertextHash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }, "contentType": { "const": "application/gzip" }, "sizeBytes": { "type": "integer", "minimum": 1 }, "contentIv": { "type": "string" }, "encryptionAlgorithm": { "const": "AES-256-GCM" }, "decryptionKey": { "type": "string", "readOnly": true, "description": "Private five-minute access material returned only to an authorized assignee" }, "downloadUrl": { "type": "string", "format": "uri", "readOnly": true, "description": "Private five-minute signed URL; never log or publish it" }, "expiresInSeconds": { "type": "integer", "maximum": 300 } }
+      },
+      "TaskContributions": {
+        "type": "object", "additionalProperties": false, "required": ["taskId", "workRound", "contributions"],
+        "properties": { "taskId": { "type": "string" }, "workRound": { "type": "integer", "minimum": 1 }, "contributions": { "type": "array", "maxItems": 32, "items": { "allOf": [{ "$ref": "#/components/schemas/EncryptedArtifactEnvelope" }, { "type": "object", "required": ["contributor"], "properties": { "contributor": { "$ref": "#/components/schemas/Address" } } }] } }, "hiddenTest": { "$ref": "#/components/schemas/EncryptedArtifactEnvelope" } }
+      },
+      "TesterArtifactAccess": {
+        "allOf": [{ "$ref": "#/components/schemas/EncryptedArtifactEnvelope" }, { "type": "object", "required": ["id", "taskId", "hiddenTest"], "properties": { "id": { "type": "string", "format": "uuid" }, "taskId": { "type": "string" }, "hiddenTest": { "$ref": "#/components/schemas/EncryptedArtifactEnvelope" } } }]
+      },
       "AgentRegistration": {
         "type": "object", "additionalProperties": false,
         "required": ["name", "owner", "role", "capabilities", "endpoint", "stakePositionId"],

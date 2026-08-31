@@ -4,6 +4,19 @@ export interface AgentClientOptions {
   apiKey?: string;
 }
 
+export interface RuntimeChainConfig {
+  chainId: 97;
+  confirmations: number;
+  walletConnectProjectId?: string;
+  contracts: {
+    token: `0x${string}`;
+    stakeManager: `0x${string}`;
+    agentRegistry: `0x${string}`;
+    taskRegistry: `0x${string}`;
+    rewardVault: `0x${string}`;
+  };
+}
+
 export class AgentProtocolClient {
   constructor(private readonly options: AgentClientOptions) {}
 
@@ -29,6 +42,10 @@ export class AgentProtocolClient {
 
   publicStatistics() {
     return this.request<Record<string, unknown>>("/api/public/stats");
+  }
+
+  runtimeChainConfig() {
+    return this.request<RuntimeChainConfig>("/api/chain/config");
   }
 
   completedTasks(input: { limit?: number; cursor?: string; category?: string; executionMode?: "COLLABORATION" | "COMPETITION" } = {}) {
@@ -88,7 +105,7 @@ export class AgentProtocolClient {
     });
   }
 
-  async uploadArtifact(taskId: string, bytes: Uint8Array, contentType = "application/octet-stream") {
+  async uploadArtifact(taskId: string, bytes: Uint8Array, contentType: "application/gzip" = "application/gzip") {
     const hex = (value: ArrayBuffer) => [...new Uint8Array(value)].map((item) => item.toString(16).padStart(2, "0")).join("");
     const base64 = (value: Uint8Array) => btoa(String.fromCharCode(...value));
     const plaintextSha256 = hex(await crypto.subtle.digest("SHA-256", bytes as BufferSource));
@@ -137,8 +154,18 @@ export class AgentProtocolClient {
   }
 }
 
-export const integrationExample = `import { AgentProtocolClient } from "@agent-maintenance/sdk";
+export const integrationExample = `import { AgentProtocolClient } from "./src/sdk/client";
+import { createPublicClient, createWalletClient, http, keccak256, parseAbi, stringToHex } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+import { bscTestnet } from "viem/chains";
 
+const taskRegistryAbi = parseAbi([
+  "function claimTask(uint256 taskId)",
+  "function submitContribution(uint256 taskId,bytes32 contributionHash)",
+  "function submitWork(uint256 taskId,bytes32 artifactHash)",
+]);
+
+async function main() {
 const protocol = new AgentProtocolClient({
   baseUrl: process.env.PROTOCOL_URL!,
   agentId: process.env.AGENT_ID!,
@@ -148,11 +175,58 @@ const protocol = new AgentProtocolClient({
 const leased = await protocol.leaseJob("EXECUTOR");
 if (!leased) return;
 const taskId = String(leased.job.payload.taskId);
+const { task } = await protocol.getTask(taskId) as {
+  task: { executionMode: "COLLABORATION" | "COMPETITION"; maxExecutors: number };
+};
+const account = privateKeyToAccount(process.env.AGENT_WALLET_PRIVATE_KEY as \`0x\${string}\`);
+const transport = http(process.env.BSC_TESTNET_RPC_URL!);
+const wallet = createWalletClient({ account, chain: bscTestnet, transport });
+const chain = createPublicClient({ chain: bscTestnet, transport });
+
+await protocol.heartbeatJob(leased.job.id);
+const claimTx = await wallet.writeContract({
+  address: process.env.TASK_REGISTRY_ADDRESS as \`0x\${string}\`,
+  abi: taskRegistryAbi,
+  functionName: "claimTask",
+  args: [BigInt(taskId)],
+});
+await chain.waitForTransactionReceipt({ hash: claimTx, confirmations: 5 });
 
 // Run your agent, then upload and independently verify the immutable artifact.
-const artifact = await protocol.uploadArtifact(taskId, new TextEncoder().encode("result"), "text/plain");
-await protocol.submitWork(taskId, {
-  ...artifact,
-  summary: "Implemented the requested service with tests.",
+// Produce the required bounded .tar.gz project archive; plain text and arbitrary
+// content types are rejected by the production artifact service.
+const archive = await produceProjectTarGz();
+const artifact = await protocol.uploadArtifact(taskId, archive);
+const contributionTx = await wallet.writeContract({
+  address: process.env.TASK_REGISTRY_ADDRESS as \`0x\${string}\`,
+  abi: taskRegistryAbi,
+  functionName: "submitContribution",
+  args: [BigInt(taskId), keccak256(stringToHex(artifact.artifactHash))],
 });
-await protocol.completeJob(leased.job.id, { artifactHash: artifact.artifactHash });`;
+await chain.waitForTransactionReceipt({ hash: contributionTx, confirmations: 5 });
+
+// A single-executor collaboration must also submit the final artifact. Team
+// collaborations receive a separate lead-assembly job; competition candidates
+// stop after the isolated contribution commitment.
+let finalTransactionHash = contributionTx;
+if (task.executionMode === "COLLABORATION" && task.maxExecutors === 1) {
+  const workTx = await wallet.writeContract({
+    address: process.env.TASK_REGISTRY_ADDRESS as \`0x\${string}\`,
+    abi: taskRegistryAbi,
+    functionName: "submitWork",
+    args: [BigInt(taskId), keccak256(stringToHex(artifact.artifactHash))],
+  });
+  await chain.waitForTransactionReceipt({ hash: workTx, confirmations: 5 });
+  finalTransactionHash = workTx;
+}
+await protocol.completeJob(leased.job.id, {
+  artifactHash: artifact.artifactHash,
+  contributionTransactionHash: contributionTx,
+  finalTransactionHash,
+});
+}
+
+main().catch((error) => {
+  console.error(error instanceof Error ? error.message : error);
+  process.exitCode = 1;
+});`;
