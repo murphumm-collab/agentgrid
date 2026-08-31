@@ -100,7 +100,8 @@
         "required": ["generatedAt", "totalPublishedTasks", "activeTasks", "acceptedTasks", "completedTasks", "independentlyVerifiedTasks", "totalIssuedRewards"],
         "properties": {
           "generatedAt": { "type": "string", "format": "date-time" }, "totalPublishedTasks": { "type": "integer" }, "activeTasks": { "type": "integer" },
-          "acceptedTasks": { "type": "integer" }, "completedTasks": { "type": "integer" }, "completedTasksCreatedLast30Days": { "type": "integer" },
+          "acceptedTasks": { "type": "integer" }, "completedTasks": { "type": "integer" }, "completedTasksLast30Days": { "type": "integer", "description": "Uses confirmed BSC completion block time, never task creation time." },
+          "completedTasksWithTrustedTimestamp": { "type": "integer" }, "completionTimestampCoverage": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
           "settledCompletionRate": { "type": ["number", "null"], "minimum": 0, "maximum": 1 }, "independentlyVerifiedTasks": { "type": "integer" },
           "businessAdoptionAttestations": { "type": "integer" }, "totalIssuedRewards": { "type": "number" },
           "completedByCategory": { "type": "object", "additionalProperties": { "type": "integer" } }, "completedByExecutionMode": { "type": "object", "additionalProperties": { "type": "integer" } }
@@ -110,7 +111,7 @@
         "type": "object", "description": "Public proof view. It never contains artifact URLs, decryption material, hidden tests, raw logs or private Agent endpoints.",
         "required": ["id", "title", "category", "state", "artifact", "verification", "reward"],
         "properties": {
-          "id": { "type": "string" }, "title": { "type": "string" }, "description": { "type": "string" }, "category": { "type": "string" },
+          "id": { "type": "string" }, "title": { "type": "string" }, "description": { "type": "string" }, "category": { "type": "string" }, "publishedAt": { "type": "string", "format": "date-time" }, "completedAt": { "type": "string", "format": "date-time" },
           "executionMode": { "type": "string", "enum": ["COLLABORATION", "COMPETITION"] }, "state": { "const": "COMPLETED" },
           "requiredTesterCapabilities": { "type": "array", "items": { "$ref": "#/components/schemas/VerificationType" } },
           "artifact": { "type": ["object", "null"] },

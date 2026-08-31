@@ -18,11 +18,11 @@ export function projectChainBusiness(rows: { events: ChainProjectionRow[]; commi
   const rewards = new Map<string, RewardGrant>();
   const commitmentByHash = new Map(rows.commitments.map((item) => [`${item.publisher.toLowerCase()}:${item.specHash.toLowerCase()}`, item]));
 
-  const projectedTask = (taskId: string, publisher: string, positionId: string, specHash: string, state: Task["state"]): Task | undefined => {
+  const projectedTask = (taskId: string, publisher: string, positionId: string, specHash: string, state: Task["state"], chainCreatedAt?: string | null): Task | undefined => {
     const commitment = commitmentByHash.get(`${publisher.toLowerCase()}:${specHash.toLowerCase()}`);
     if (!commitment) return undefined;
     const spec = commitment.spec as { title: string; description: string; category: string; executionMode?: "COLLABORATION" | "COMPETITION"; maxExecutors: number; declaredDurationHours: number; criteria: string[]; completionDefinition?: TaskDefinition };
-    const createdAt = iso(commitment.confirmedAt ?? commitment.createdAt);
+    const createdAt = iso(chainCreatedAt ?? commitment.confirmedAt ?? commitment.createdAt);
     return {
       id: taskId, title: spec.title, description: spec.description, category: spec.category, executionMode: spec.executionMode ?? "COLLABORATION", publisher,
       stakePositionId: positionId, state, maxExecutors: spec.maxExecutors,
@@ -76,7 +76,7 @@ export function projectChainBusiness(rows: { events: ChainProjectionRow[]; commi
       }
       case "TaskEvaluationRequested": {
         const taskId = id(args, "taskId");
-        const task = projectedTask(taskId, id(args, "publisher"), id(args, "positionId"), id(args, "specHash"), "EVALUATING");
+        const task = projectedTask(taskId, id(args, "publisher"), id(args, "positionId"), id(args, "specHash"), "EVALUATING", event.blockTimestamp);
         if (!task) break;
         task.deadlineAt = new Date(Number(args.deadline) * 1_000).toISOString();
         task.evaluation = { status: "ASSIGNING", required: 3, completed: 0, approvals: 0 };
@@ -116,10 +116,10 @@ export function projectChainBusiness(rows: { events: ChainProjectionRow[]; commi
         const commitment = commitmentByHash.get(`${id(args, "publisher").toLowerCase()}:${id(args, "specHash").toLowerCase()}`);
         if (commitment?.status !== "CONFIRMED") break;
         const existing = tasks.get(taskId);
-        if (existing) existing.state = "OPEN";
+        if (existing) { existing.state = "OPEN"; existing.publishedAt = event.blockTimestamp ?? undefined; }
         else {
-          const task = projectedTask(taskId, id(args, "publisher"), id(args, "positionId"), id(args, "specHash"), "OPEN");
-          if (task) tasks.set(taskId, task);
+          const task = projectedTask(taskId, id(args, "publisher"), id(args, "positionId"), id(args, "specHash"), "OPEN", event.blockTimestamp);
+          if (task) { task.publishedAt = event.blockTimestamp ?? undefined; tasks.set(taskId, task); }
         }
         break;
       }
@@ -166,7 +166,7 @@ export function projectChainBusiness(rows: { events: ChainProjectionRow[]; commi
       }
       case "WorkSubmitted": {
         const task = tasks.get(id(args, "taskId"));
-        if (task) { task.state = "SUBMITTED"; task.submission = { artifactUrl: `chain://${event.transactionHash}`, artifactHash: id(args, "artifactHash"), summary: "Artifact commitment confirmed on BSC", submittedAt: task.createdAt }; }
+        if (task) { task.state = "SUBMITTED"; task.submission = { artifactUrl: `chain://${event.transactionHash}`, artifactHash: id(args, "artifactHash"), summary: "Artifact commitment confirmed on BSC", submittedAt: event.blockTimestamp ?? task.createdAt }; }
         break;
       }
       case "CompetitionReady": {
@@ -183,6 +183,7 @@ export function projectChainBusiness(rows: { events: ChainProjectionRow[]; commi
         const task = tasks.get(id(args, "taskId"));
         if (task) {
           task.state = args.passed ? (task.maintenanceRepairCheckpoint ? (task.maintenanceRepairCheckpoint === 3 ? "COMPLETED" : "MAINTENANCE") : "USER_REVIEW") : "CLAIMED";
+          if (task.state === "COMPLETED") task.completedAt = event.blockTimestamp ?? undefined;
           if (args.passed) task.maintenanceRepairCheckpoint = null;
           if (!args.passed) { task.workRound = (task.workRound ?? 1) + 1; task.contributionHashes = {}; }
         }
@@ -192,8 +193,9 @@ export function projectChainBusiness(rows: { events: ChainProjectionRow[]; commi
         const task = tasks.get(id(args, "taskId"));
         if (task) {
           task.state = args.passed ? (task.maintenanceRepairCheckpoint ? (task.maintenanceRepairCheckpoint === 3 ? "COMPLETED" : "MAINTENANCE") : "USER_REVIEW") : "CLAIMED";
+          if (task.state === "COMPLETED") task.completedAt = event.blockTimestamp ?? undefined;
           if (args.passed) task.maintenanceRepairCheckpoint = null;
-          if (args.passed) task.submission = { artifactUrl: `chain://${event.transactionHash}`, artifactHash: id(args, "artifactHash"), summary: `Competition winner ${id(args, "winner")}`, submittedAt: task.createdAt };
+          if (args.passed) task.submission = { artifactUrl: `chain://${event.transactionHash}`, artifactHash: id(args, "artifactHash"), summary: `Competition winner ${id(args, "winner")}`, submittedAt: event.blockTimestamp ?? task.createdAt };
           else { task.workRound = (task.workRound ?? 1) + 1; task.contributionHashes = {}; }
         }
         break;
@@ -211,7 +213,7 @@ export function projectChainBusiness(rows: { events: ChainProjectionRow[]; commi
       case "MaintenanceValidated": {
         const task = tasks.get(id(args, "taskId"));
         const checkpoint = Number(args.checkpoint);
-        if (task && args.passed && checkpoint >= 1 && checkpoint <= 3) { task.maintenanceHealthy[checkpoint - 1] = true; if (checkpoint === 3) task.state = "COMPLETED"; }
+        if (task && args.passed && checkpoint >= 1 && checkpoint <= 3) { task.maintenanceHealthy[checkpoint - 1] = true; if (checkpoint === 3) { task.state = "COMPLETED"; task.completedAt = event.blockTimestamp ?? undefined; } }
         break;
       }
       case "MaintenanceRepairRequested": {
@@ -248,10 +250,11 @@ export function projectChainBusiness(rows: { events: ChainProjectionRow[]; commi
         const grantId = `chain-grant-${taskId}`;
         const shares = [0.4, 0.2, 0.2, 0.2];
         const days = [0, 7, 30, 90];
+        const startedAt = event.blockTimestamp ?? task.createdAt;
         rewards.set(grantId, {
           id: grantId, taskId, epochId: "chain", total, difficulty: 1,
           collaborationMultiplier: Number(args.multiplierBps) / 10_000, issuanceProof: id(args, "issuanceProof"),
-          tranches: shares.map((share, index) => ({ id: String(index), label: index === 0 ? "Delivery" : `Day ${days[index]}`, dueAt: plusDays(task.createdAt, days[index]), amount: total * share, status: index === 0 ? "CLAIMABLE" : "LOCKED" })),
+          tranches: shares.map((share, index) => ({ id: String(index), label: index === 0 ? "Delivery" : `Day ${days[index]}`, dueAt: plusDays(startedAt, days[index]), amount: total * share, status: index === 0 ? "CLAIMABLE" : "LOCKED" })),
         });
         task.rewardGrantId = grantId;
         break;

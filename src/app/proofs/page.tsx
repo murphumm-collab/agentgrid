@@ -13,7 +13,8 @@ export default async function CompletedProofsPage() {
   const locale = await getLocale();
   const statistics = publicTaskStatistics(snapshot.tasks, snapshot.rewards);
   const rewards = new Map(snapshot.rewards.map((reward) => [reward.taskId, reward]));
-  const completed = snapshot.tasks.filter((task) => task.state === "COMPLETED").sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const completed = snapshot.tasks.filter((task) => task.state === "COMPLETED")
+    .sort((a, b) => (b.completedAt ?? b.createdAt).localeCompare(a.completedAt ?? a.createdAt) || b.id.localeCompare(a.id));
   const percent = statistics.settledCompletionRate == null ? "—" : `${(statistics.settledCompletionRate * 100).toFixed(1)}%`;
   const cards = [
     { label: locale === "zh" ? "已完成任务" : "Completed tasks", value: statistics.completedTasks, icon: Trophy },
@@ -29,7 +30,7 @@ export default async function CompletedProofsPage() {
         const reward = rewards.get(task.id);
         const criterionResults = task.testResult?.criterionResults ?? [];
         const passedCriteria = criterionResults.filter((result) => result.passed).length;
-        return <Link className="task-row" href={`/tasks/${task.id}`} key={task.id}><div><div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 8 }}><span className="badge badge-green">COMPLETED</span><span className="badge badge-blue">{taskCategoryLabel(task.category, locale)}</span>{task.businessAdoption && <span className="badge"><BriefcaseBusiness size={11} /> {locale === "zh" ? "已采用" : "adopted"}</span>}</div><h3 className="task-title">{task.title}</h3><div className="task-meta"><span>{formatDate(task.createdAt, locale)}</span><span>{task.executionMode}</span><span>{locale === "zh" ? "验收标准" : "criteria"} {passedCriteria}/{criterionResults.length || task.completionDefinition?.acceptanceCriteria.length || task.criteria.length}</span><span>{locale === "zh" ? "报告" : "report"} {task.testResult?.reportHash ? `${task.testResult.reportHash.slice(0, 10)}…` : "—"}</span></div></div><div className="task-side"><strong className="reward">{formatToken(reward?.total ?? 0)} AGT</strong><ArrowUpRight size={18} /></div></Link>;
+        return <Link className="task-row" href={`/tasks/${task.id}`} key={task.id}><div><div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 8 }}><span className="badge badge-green">COMPLETED</span><span className="badge badge-blue">{taskCategoryLabel(task.category, locale)}</span>{task.businessAdoption && <span className="badge"><BriefcaseBusiness size={11} /> {locale === "zh" ? "已采用" : "adopted"}</span>}</div><h3 className="task-title">{task.title}</h3><div className="task-meta"><span>{locale === "zh" ? "完成" : "completed"} {task.completedAt ? formatDate(task.completedAt, locale) : (locale === "zh" ? "链上时间待回填" : "chain time unavailable")}</span><span>{task.executionMode}</span><span>{locale === "zh" ? "验收标准" : "criteria"} {passedCriteria}/{criterionResults.length || task.completionDefinition?.acceptanceCriteria.length || task.criteria.length}</span><span>{locale === "zh" ? "报告" : "report"} {task.testResult?.reportHash ? `${task.testResult.reportHash.slice(0, 10)}…` : "—"}</span></div></div><div className="task-side"><strong className="reward">{formatToken(reward?.total ?? 0)} AGT</strong><ArrowUpRight size={18} /></div></Link>;
       })}</div> : <div className="category-empty"><FileCheck2 size={24} /><strong>{locale === "zh" ? "还没有完成记录" : "No completed records yet"}</strong><span>{locale === "zh" ? "只有完成 90 天维护检查的任务才会进入此公开索引。" : "Only tasks completing the 90-day maintenance checkpoint enter this public index."}</span></div>}
     </section>
   </>;

@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
     let completed = snapshot.tasks.filter((task) => task.state === "COMPLETED");
     if (query.category) completed = completed.filter((task) => task.category === query.category);
     if (query.executionMode) completed = completed.filter((task) => task.executionMode === query.executionMode);
-    completed.sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id));
+    completed.sort((a, b) => (b.completedAt ?? b.createdAt).localeCompare(a.completedAt ?? a.createdAt) || b.id.localeCompare(a.id));
     const start = query.cursor ? Math.max(0, completed.findIndex((task) => task.id === query.cursor) + 1) : 0;
     const page = completed.slice(start, start + query.limit);
     const rewardByTask = new Map(snapshot.rewards.map((reward) => [reward.taskId, reward]));

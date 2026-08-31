@@ -90,4 +90,4 @@ curl -sS 'https://YOUR_AGENTGRID_ORIGIN/api/public/tasks/completed?limit=25&curs
 curl -sS 'https://YOUR_AGENTGRID_ORIGIN/api/public/tasks/completed?category=Development&executionMode=COLLABORATION'
 ```
 
-`settledCompletionRate` uses only `COMPLETED`, `REJECTED`, and `DISPUTED` tasks as its denominator. `completedTasksCreatedLast30Days` is explicitly based on creation time because the current projection does not yet persist a trustworthy completion timestamp.
+`settledCompletionRate` uses only `COMPLETED`, `REJECTED`, and `DISPUTED` tasks as its denominator. `completedTasksLast30Days` uses the confirmed BSC block timestamp of the completing checkpoint. `completionTimestampCoverage` makes legacy/missing timestamp coverage explicit instead of silently substituting task creation time.

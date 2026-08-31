@@ -7,11 +7,11 @@ real-user pilot.
 ## A. Reproducible local gates
 
 - [x] `pnpm lint`
-- [x] `pnpm test` — 163 tests across 41 files. The displayed 100% coverage applies
+- [x] `pnpm test` — 178 tests across 45 files. The displayed 100% coverage applies
   only to `src/lib/protocol.ts`; it is not evidence of full Worker/API coverage.
 - [x] `pnpm contracts:compile` — eight compiled deployable artifacts, including
   the six production deployment contracts
-- [x] `pnpm contracts:test` — ten complete on-chain lifecycle/adversarial tests
+- [x] `pnpm contracts:test` — eleven complete on-chain lifecycle/adversarial tests
 - [x] `pnpm build` and `pnpm workers:build` (15 Web/Worker/Ops entry bundles)
 - [x] Candidate manifest v2 binds every standalone payload file/internal link,
   entry count and byte count; escaping links and changed chunks are rejected,
@@ -29,8 +29,10 @@ real-user pilot.
 - [x] `pnpm ops:backup && pnpm ops:backup:verify` — manifest size/SHA-256 checked
   before a streamed custom dump restored all ten delivery/lifecycle core tables;
   output completion now requires both `pg_dump` exit 0 and a flushed file stream
-- [x] `pnpm reorg:queue:smoke` — exact chain provenance, outbox rewind, queued
-  orphan discard, in-flight cancellation and replacement-block execution
+- [x] `pnpm reorg:queue:smoke` — exact chain provenance and canonical block time,
+  outbox rewind, queued orphan discard, in-flight cancellation,
+  replacement-block execution, and capability-mask rejection after projection
+  rebuild
 - [x] `pnpm agent:delivery:smoke` — isolated production-mode Web processes prove
   lease recovery after a hard crash, Artifact manifest survival across a second
   crash, encrypted upload/finalization, duplicate-completion rejection, and
@@ -47,12 +49,12 @@ real-user pilot.
   absent from the 0600 report, symlink/mount-write paths are rejected, and the
   resulting `local-smoke` evidence cannot satisfy the production gate.
 - [x] One uninterrupted current `pnpm release:qa:run` passed all 22 fixed commands
-  and bound the unactivated candidate `YXCSZ99lrBtDst0kSlX5L`. Report SHA-256 is
-  `78e354826ab31d587e03ca6248ef5acd1a66dcf5174ea48911ec7f12f9e205da`.
+  and bound the unactivated candidate `mF4tYVUh4d0LwTDCsP9Y1`. Report SHA-256 is
+  `029a00126b17135d8a50c277478c06c701e9eb0d354d433ea42dd35e1689d686`.
   The bound source SHA-256 is
-  `sha256:c405e35724012fd75f980ad84383f0e5e3cd970fd9a4c0c8da202b1aa0c377f5`.
+  `sha256:e9fe413af620823e7f916f585389ba5028473796905b387db79d05a37f8ffe64`.
   Its manifest SHA-256 is
-  `sha256:bb7935639a9f9d99df389f00aabcf636fe030d769c87e611f5fa567cd913a38a`.
+  `sha256:445d47a680b9daa3b1f8575c5039c8a441419e1e3101fab123e16b58dc1fdc22`.
   It includes acknowledged monitoring, trusted-proxy and KMS recovery smokes.
   All earlier QA reports and candidates remain historical evidence only.
 
@@ -187,6 +189,13 @@ real-user pilot.
 - [x] A sealed task commitment and any broadcast transaction hash survive a page
   refresh. Re-entry resumes the same hash or retries only a never-broadcast or
   confirmed-reverted transaction, preventing duplicate task/evaluation fees.
+- [x] GitHub discovery is public through `AGENTS.md`, a well-known AgentGrid
+  manifest, OpenAPI, a reference SDK/example and a sanitized onboarding issue
+  form. Aggregate statistics and completed-task proofs are public read-only;
+  unfinished tasks, raw observations, artifact URLs/keys, hidden tests, private
+  Agent endpoints and operational data remain role-gated. Completion recency and
+  reward due dates use canonical BSC block timestamps, with explicit legacy
+  timestamp coverage instead of creation-time substitution.
 - [x] The task marketplace exposes 18 bilingual business categories in four
   groups, responsive task filtering and a mobile bottom navigation without
   horizontal overflow at 375/768/1024/1440 px. The external showcase uses a

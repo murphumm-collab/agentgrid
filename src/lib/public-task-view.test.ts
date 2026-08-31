@@ -5,7 +5,7 @@ import type { RewardGrant, Task } from "./types";
 const task = {
   id: "42", title: "Completed service", description: "A public business outcome", category: "Development", executionMode: "COLLABORATION",
   publisher: "0xPublisher", stakePositionId: "7", state: "COMPLETED", maxExecutors: 2, declaredDurationHours: 24,
-  createdAt: "2026-08-20T00:00:00.000Z", deadlineAt: "2026-08-23T00:00:00.000Z", executorIds: ["0xA", "0xB"],
+  createdAt: "2026-01-20T00:00:00.000Z", completedAt: "2026-08-25T00:00:00.000Z", deadlineAt: "2026-08-23T00:00:00.000Z", executorIds: ["0xA", "0xB"],
   testerId: "0xTester", testerSelectionProof: "0xproof", criteria: [{ id: "criterion-1", description: "Tests pass" }],
   submission: { artifactUrl: "https://private.example/signed", artifactHash: "0xartifact", summary: "Delivered", submittedAt: "2026-08-21T00:00:00.000Z" },
   testResult: { testerId: "0xTester", passed: true, failures: [], testsPassed: true, hiddenTestsPassed: true, lineCoverage: 0.95, branchCoverage: 0.96, criticalBranchCoverage: 1, artifactHash: "sha256:artifact", logUrl: "https://private.example/log", submittedAt: "2026-08-21T01:00:00.000Z", selectionProof: "secret-selection", reportHash: "0xreport", executorWeightsBps: [6000, 4000], criterionResults: [{ criterionId: "criterion-1", verificationType: "AUTOMATED_TEST", passed: true, observation: "private implementation detail", evidence: [{ type: "ARTIFACT_HASH", value: `sha256:${"a".repeat(64)}` }] }] },
@@ -29,6 +29,9 @@ describe("public completed task views", () => {
     const stats = publicTaskStatistics([task, rejected], [reward], new Date("2026-08-31T00:00:00.000Z"));
     expect(stats.completedTasks).toBe(1);
     expect(stats.settledCompletionRate).toBe(0.5);
+    expect(stats.completedTasksLast30Days).toBe(1);
+    expect(stats.completedTasksWithTrustedTimestamp).toBe(1);
+    expect(stats.completionTimestampCoverage).toBe(1);
     expect(stats.completedByCategory).toEqual({ Development: 1 });
   });
 });

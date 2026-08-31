@@ -11,6 +11,8 @@ export function publicTaskView(task: Task, reward?: RewardGrant | null) {
     state: task.state,
     evaluation: task.evaluation,
     createdAt: task.createdAt,
+    publishedAt: task.publishedAt,
+    completedAt: task.completedAt,
     declaredDurationHours: task.declaredDurationHours,
     executorCount: task.executorIds.length,
     maxExecutors: task.maxExecutors,
@@ -64,6 +66,7 @@ export function publicTaskStatistics(tasks: Task[], rewards: RewardGrant[], now 
   const accepted = visible.filter((task) => task.state === "MAINTENANCE" || task.state === "COMPLETED");
   const settled = tasks.filter((task) => ["COMPLETED", "REJECTED", "DISPUTED"].includes(task.state));
   const cutoff = now.getTime() - 30 * 86_400_000;
+  const completedWithTrustedTimestamp = completed.filter((task) => task.completedAt && Number.isFinite(new Date(task.completedAt).getTime()));
   const count = (items: string[]) => Object.fromEntries([...new Set(items)].sort().map((key) => [key, items.filter((item) => item === key).length]));
   return {
     generatedAt: now.toISOString(),
@@ -71,7 +74,9 @@ export function publicTaskStatistics(tasks: Task[], rewards: RewardGrant[], now 
     activeTasks: visible.filter((task) => !["COMPLETED", "REJECTED"].includes(task.state)).length,
     acceptedTasks: accepted.length,
     completedTasks: completed.length,
-    completedTasksCreatedLast30Days: completed.filter((task) => new Date(task.createdAt).getTime() >= cutoff).length,
+    completedTasksLast30Days: completedWithTrustedTimestamp.filter((task) => new Date(task.completedAt!).getTime() >= cutoff).length,
+    completedTasksWithTrustedTimestamp: completedWithTrustedTimestamp.length,
+    completionTimestampCoverage: completed.length ? completedWithTrustedTimestamp.length / completed.length : null,
     settledCompletionRate: settled.length ? completed.length / settled.length : null,
     independentlyVerifiedTasks: accepted.filter((task) => task.testResult?.passed && task.testResult.reportHash).length,
     businessAdoptionAttestations: completed.filter((task) => task.businessAdoption).length,

@@ -48,18 +48,25 @@ export async function indexConfirmedChainEvents() {
     fromBlock: cursor.nextBlock,
     toBlock,
   });
+  const uniqueBlockNumbers = [...new Set(logs.map((log) => log.blockNumber.toString()))].map(BigInt);
+  const blockTimestamps = new Map<string, string>();
+  for (let offset = 0; offset < uniqueBlockNumbers.length; offset += 25) {
+    const eventBlocks = await Promise.all(uniqueBlockNumbers.slice(offset, offset + 25).map((blockNumber) => client.getBlock({ blockNumber })));
+    for (const block of eventBlocks) blockTimestamps.set(block.number.toString(), new Date(Number(block.timestamp) * 1_000).toISOString());
+  }
+  const lastBlock = await client.getBlock({ blockNumber: toBlock });
   const events: IndexedChainEvent[] = logs.map((log) => ({
     chainId: config.BSC_CHAIN_ID,
     transactionHash: log.transactionHash as Hex,
     logIndex: log.logIndex ?? 0,
     blockNumber: log.blockNumber,
     blockHash: log.blockHash as Hex,
+    blockTimestamp: blockTimestamps.get(log.blockNumber.toString()),
     address: log.address,
     topics: log.topics,
     data: log.data,
     ...decode(log),
   }));
-  const lastBlock = await client.getBlock({ blockNumber: toBlock });
   await persistChainBatch(cursorName, cursor.nextBlock, toBlock + BigInt(1), lastBlock.hash, events);
   dispatchedJobs += await dispatchJobOutbox();
   return { indexed: events.length, dispatchedJobs, fromBlock: cursor.nextBlock.toString(), toBlock: toBlock.toString(), nextBlock: (toBlock + BigInt(1)).toString() };

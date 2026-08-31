@@ -141,6 +141,8 @@ export interface Task {
   maxExecutors: number;
   declaredDurationHours: number;
   createdAt: string;
+  publishedAt?: string;
+  completedAt?: string;
   deadlineAt: string;
   executorIds: string[];
   teamClosed?: boolean;

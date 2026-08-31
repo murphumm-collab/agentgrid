@@ -79,6 +79,7 @@ export async function migratePostgres(initialState?: ProtocolDatabase) {
         log_index INTEGER NOT NULL,
         block_number NUMERIC NOT NULL,
         block_hash TEXT NOT NULL,
+        block_timestamp TIMESTAMPTZ,
         address TEXT NOT NULL,
         topics JSONB NOT NULL,
         data TEXT NOT NULL,
@@ -86,6 +87,7 @@ export async function migratePostgres(initialState?: ProtocolDatabase) {
         event_args JSONB,
         PRIMARY KEY(chain_id, transaction_hash, log_index)
       );
+      ALTER TABLE chain_events ADD COLUMN IF NOT EXISTS block_timestamp TIMESTAMPTZ;
       CREATE TABLE IF NOT EXISTS notifications (
         id UUID PRIMARY KEY,
         recipient TEXT NOT NULL,
@@ -333,6 +335,7 @@ export interface IndexedChainEvent {
   logIndex: number;
   blockNumber: bigint;
   blockHash: string;
+  blockTimestamp?: string;
   address: string;
   topics: readonly string[];
   data: string;
@@ -348,7 +351,13 @@ function chainJobPayload(event: IndexedChainEvent, extra: Record<string, unknown
     transactionHash: event.transactionHash,
     logIndex: event.logIndex,
     blockNumber: event.blockNumber.toString(),
+    ...(event.blockTimestamp ? { blockTimestamp: event.blockTimestamp } : {}),
   };
+}
+
+function committedTesterCapabilityMask(spec: Record<string, unknown>) {
+  const definition = spec.completionDefinition ? taskDefinitionSchema.parse(spec.completionDefinition) : undefined;
+  return definition ? requiredTesterCapabilityMask(definition) : 2;
 }
 
 export async function chainCursor(name: string, startBlock: bigint) {
@@ -370,9 +379,9 @@ export async function persistChainBatch(name: string, fromBlock: bigint, nextBlo
     if (BigInt(cursor.rows[0]?.nextBlock ?? -1) !== fromBlock) throw new Error("CHAIN_CURSOR_MOVED");
     for (const event of events) {
       await client.query(
-        `INSERT INTO chain_events(chain_id,transaction_hash,log_index,block_number,block_hash,address,topics,data,event_name,event_args)
-         VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10::jsonb) ON CONFLICT DO NOTHING`,
-        [event.chainId, event.transactionHash, event.logIndex, event.blockNumber.toString(), event.blockHash, event.address.toLowerCase(), JSON.stringify(event.topics), event.data, event.eventName ?? null, JSON.stringify(event.eventArgs ?? null)],
+        `INSERT INTO chain_events(chain_id,transaction_hash,log_index,block_number,block_hash,block_timestamp,address,topics,data,event_name,event_args)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11::jsonb) ON CONFLICT DO NOTHING`,
+        [event.chainId, event.transactionHash, event.logIndex, event.blockNumber.toString(), event.blockHash, event.blockTimestamp ?? null, event.address.toLowerCase(), JSON.stringify(event.topics), event.data, event.eventName ?? null, JSON.stringify(event.eventArgs ?? null)],
       );
       if (event.eventName === "TaskEvaluationRequested" && event.eventArgs?.specHash && event.eventArgs?.publisher) {
         const evaluating = await client.query(
@@ -397,10 +406,7 @@ export async function persistChainBatch(name: string, fromBlock: bigint, nextBlo
           [String(event.eventArgs.specHash), String(event.eventArgs.publisher).toLowerCase()],
         );
         if (candidate.rowCount !== 1) throw new Error("APPROVED_TASK_COMMITMENT_NOT_FOUND_OR_AMBIGUOUS");
-        const definition = candidate.rows[0].spec.completionDefinition
-          ? taskDefinitionSchema.parse(candidate.rows[0].spec.completionDefinition)
-          : undefined;
-        const expectedTesterCapabilities = definition ? requiredTesterCapabilityMask(definition) : 2;
+        const expectedTesterCapabilities = committedTesterCapabilityMask(candidate.rows[0].spec);
         const recordedCapabilities = await client.query<{ requiredCapabilities: string }>(
           `SELECT event_args->>'requiredCapabilities' AS "requiredCapabilities" FROM chain_events
            WHERE event_name='TaskTesterCapabilitiesSet' AND event_args->>'taskId'=$1
@@ -409,6 +415,7 @@ export async function persistChainBatch(name: string, fromBlock: bigint, nextBlo
         );
         if (Number(recordedCapabilities.rows[0]?.requiredCapabilities ?? 2) !== expectedTesterCapabilities) {
           await client.query(`UPDATE task_commitments SET status='REJECTED',evaluation_approved=FALSE WHERE id=$1`, [candidate.rows[0].id]);
+          await client.query("DELETE FROM job_outbox WHERE payload->>'taskId'=$1", [String(event.eventArgs.taskId)]);
           continue;
         }
         const confirmed = await client.query<{ executorSlots: number }>(
@@ -606,6 +613,20 @@ export async function rewindChain(name: string, rewindTo: bigint) {
        FROM chain_events created WHERE created.event_name='TaskCreated' AND LOWER(created.event_args->>'publisher')=c.publisher
          AND LOWER(created.event_args->>'specHash')=LOWER(c.spec_hash)`,
     );
+    const confirmed = await client.query<{ id: string; spec: Record<string, unknown>; chainTaskId: string; requiredCapabilities: string | null }>(
+      `SELECT c.id,c.spec,c.chain_task_id::text AS "chainTaskId",cap.event_args->>'requiredCapabilities' AS "requiredCapabilities"
+       FROM task_commitments c
+       LEFT JOIN LATERAL (
+         SELECT event_args FROM chain_events WHERE event_name='TaskTesterCapabilitiesSet' AND event_args->>'taskId'=c.chain_task_id::text
+         ORDER BY block_number DESC,log_index DESC LIMIT 1
+       ) cap ON TRUE
+       WHERE c.status='CONFIRMED' FOR UPDATE OF c`,
+    );
+    for (const row of confirmed.rows) {
+      if (Number(row.requiredCapabilities ?? 2) === committedTesterCapabilityMask(row.spec)) continue;
+      await client.query("UPDATE task_commitments SET status='REJECTED',evaluation_approved=FALSE WHERE id=$1", [row.id]);
+      await client.query("DELETE FROM job_outbox WHERE payload->>'taskId'=$1", [row.chainTaskId]);
+    }
     await client.query("UPDATE chain_cursors SET next_block=$2,last_block_hash=NULL,updated_at=NOW() WHERE name=$1", [name, rewindTo.toString()]);
     await client.query("COMMIT");
   } catch (error) { await rollback(client); throw error; } finally { client.release(); }
@@ -635,6 +656,7 @@ export interface ChainProjectionRow {
   eventArgs: Record<string, string | number | boolean | Array<string | number | boolean>> | null;
   transactionHash: string;
   blockNumber: string;
+  blockTimestamp?: string | null;
 }
 
 export interface CommitmentProjectionRow {
@@ -651,7 +673,7 @@ export async function readChainProjectionRows() {
   await migratePostgres();
   const [events, commitments] = await Promise.all([
     databasePool().query<ChainProjectionRow>(
-      `SELECT event_name AS "eventName",event_args AS "eventArgs",transaction_hash AS "transactionHash",block_number::text AS "blockNumber"
+      `SELECT event_name AS "eventName",event_args AS "eventArgs",transaction_hash AS "transactionHash",block_number::text AS "blockNumber",block_timestamp::text AS "blockTimestamp"
        FROM chain_events WHERE event_name IS NOT NULL ORDER BY block_number,log_index`,
     ),
     databasePool().query<CommitmentProjectionRow>(

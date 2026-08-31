@@ -5,6 +5,7 @@ import type { ChainProjectionRow, CommitmentProjectionRow } from "./store-postgr
 
 const event = (eventName: string, eventArgs: Record<string, string | number | boolean | Array<string | number | boolean>>, blockNumber: string): ChainProjectionRow => ({
   eventName, eventArgs, blockNumber, transactionHash: `0x${blockNumber.padStart(64, "0")}`,
+  blockTimestamp: new Date(Date.parse("2026-01-01T00:00:00.000Z") + Number(blockNumber) * 1_000).toISOString(),
 });
 
 describe("confirmed chain business projection", () => {
@@ -35,6 +36,7 @@ describe("confirmed chain business projection", () => {
     expect(result.tasks[0]).toMatchObject({ id: "9", state: "MAINTENANCE", executorIds: ["0xExecutor"], teamClosed: true, contributionHashes: { "0xexecutor": `0x${"a".repeat(64)}` }, testerId: "0xTester", maintenanceHealthy: [true, false, false] });
     expect(result.rewards[0].total).toBe(200);
     expect(result.rewards[0].tranches.map((item) => item.status)).toEqual(["CLAIMED", "CLAIMABLE", "LOCKED", "LOCKED"]);
+    expect(result.rewards[0].tranches[1].dueAt).toBe("2026-01-08T00:00:08.000Z");
   });
 
   it("applies slashing and releases the slot after completion", () => {
@@ -57,6 +59,19 @@ describe("confirmed chain business projection", () => {
       event("TaskCreated", { taskId: "44", publisher: "0xPublisher", positionId: "5", specHash: commitment.specHash }, "1"),
     ] });
     expect(result.tasks).toEqual([]);
+  });
+
+  it("uses the canonical completing block time instead of task creation time", () => {
+    const commitment: CommitmentProjectionRow = {
+      specHash: `0x${"5".repeat(64)}`, publisher: "0xPublisher", status: "CONFIRMED", chainTaskId: "45",
+      createdAt: "2025-12-01T00:00:00.000Z", confirmedAt: "2025-12-01T00:01:00.000Z",
+      spec: { title: "Complete monitored workflow", description: "A task with a canonical completion checkpoint timestamp for public reporting.", category: "Operations", maxExecutors: 1, declaredDurationHours: 24, criteria: ["Maintenance passes"] },
+    };
+    const result = projectChainBusiness({ commitments: [commitment], events: [
+      event("TaskCreated", { taskId: "45", publisher: "0xPublisher", positionId: "6", specHash: commitment.specHash }, "1"),
+      event("MaintenanceValidated", { taskId: "45", checkpoint: "3", passed: true, evidenceHash: `0x${"6".repeat(64)}` }, "9"),
+    ] });
+    expect(result.tasks[0]).toMatchObject({ state: "COMPLETED", createdAt: "2026-01-01T00:00:01.000Z", publishedAt: "2026-01-01T00:00:01.000Z", completedAt: "2026-01-01T00:00:09.000Z" });
   });
 
   it("projects the private evaluation lifecycle before marketplace publication", () => {
