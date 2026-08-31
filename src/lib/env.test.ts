@@ -1,0 +1,77 @@
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
+import { resetRuntimeConfigForTests, runtimeConfig } from "./env";
+
+const previous = { ...process.env };
+const folders: string[] = [];
+
+describe("production environment", () => {
+  afterEach(() => {
+    process.env = { ...previous };
+    resetRuntimeConfigForTests();
+    while (folders.length) rmSync(folders.pop()!, { recursive: true, force: true });
+  });
+
+  it("refuses production mode without durable state and a session secret", () => {
+    process.env.PROTOCOL_MODE = "production";
+    delete process.env.DATABASE_URL;
+    delete process.env.AUTH_SECRET;
+    resetRuntimeConfigForTests();
+    expect(() => runtimeConfig()).toThrow("DATABASE_URL_REQUIRED_IN_PRODUCTION");
+  });
+
+  it("accepts an explicit production configuration", () => {
+    process.env.PROTOCOL_MODE = "production";
+    process.env.DATABASE_URL = "postgresql://agentgrid:secret@127.0.0.1:5432/agentgrid";
+    process.env.AUTH_SECRET = "production-secret-with-more-than-thirty-two-characters";
+    resetRuntimeConfigForTests();
+    expect(runtimeConfig().PROTOCOL_MODE).toBe("production");
+  });
+
+  it("enables public showcase mode only when explicitly requested", () => {
+    process.env.PROTOCOL_MODE = "demo";
+    process.env.PUBLIC_SHOWCASE_MODE = "true";
+    resetRuntimeConfigForTests();
+    expect(runtimeConfig().PUBLIC_SHOWCASE_MODE).toBe(true);
+    process.env.PUBLIC_SHOWCASE_MODE = "false";
+    resetRuntimeConfigForTests();
+    expect(runtimeConfig().PUBLIC_SHOWCASE_MODE).toBe(false);
+  });
+
+  it("rejects malformed artifact rotation keys", () => {
+    process.env.ARTIFACT_PREVIOUS_MASTER_KEYS = "not-a-key";
+    resetRuntimeConfigForTests();
+    expect(() => runtimeConfig()).toThrow();
+  });
+
+  it("loads core production values from read-only files without copying them into process.env", () => {
+    const folder = mkdtempSync(path.join(tmpdir(), "agentgrid-env-test-"));
+    folders.push(folder);
+    const values: Record<string, string> = {
+      DATABASE_URL: "postgresql://agentgrid:secret@database.internal:5432/agentgrid",
+      S3_ACCESS_KEY: "production-storage-access",
+      S3_SECRET_KEY: "production-storage-secret",
+      ARTIFACT_MASTER_KEY: "77".repeat(32),
+      ADMIN_API_KEY: "production-admin-api-key-at-least-32-characters",
+      ALERT_WEBHOOK_SECRET: "production-alert-secret-at-least-32-characters",
+      AUTH_SECRET: "production-session-secret-at-least-32-characters",
+    };
+    process.env.PROTOCOL_MODE = "production";
+    process.env.REQUIRE_FILE_SECRETS = "true";
+    for (const [name, value] of Object.entries(values)) {
+      const filename = path.join(folder, name.toLowerCase());
+      writeFileSync(filename, `${value}\n`, { mode: 0o400 });
+      chmodSync(filename, 0o400);
+      process.env[`${name}_FILE`] = filename;
+      delete process.env[name];
+    }
+    resetRuntimeConfigForTests();
+    const config = runtimeConfig();
+    expect(config.DATABASE_URL).toBe(values.DATABASE_URL);
+    expect(config.ARTIFACT_MASTER_KEY).toBe(values.ARTIFACT_MASTER_KEY);
+    expect(process.env.DATABASE_URL).toBeUndefined();
+    expect(process.env.AUTH_SECRET).toBeUndefined();
+  });
+});

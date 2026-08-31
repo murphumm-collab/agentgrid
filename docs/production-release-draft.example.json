@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "chainId": 97,
+  "releaseId": "agentgrid-bsc-testnet-2026-08-31-001",
+  "createdAt": "2026-08-31T02:00:00.000Z",
+  "candidateBuildId": "replace-with-exact-candidate-build-id",
+  "images": {
+    "web": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "workers": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+    "ops": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+  },
+  "files": {
+    "candidateReleaseManifest": { "file": "candidate/release-manifest.json", "sha256": "sha256:4444444444444444444444444444444444444444444444444444444444444444" },
+    "deploymentManifest": { "file": "chain/bsc-testnet.json", "sha256": "sha256:5555555555555555555555555555555555555555555555555555555555555555" },
+    "pilotSignoffBundle": { "file": "pilot/pilot-signoff-bundle.json", "sha256": "sha256:6666666666666666666666666666666666666666666666666666666666666666" },
+    "contractVerificationReport": { "file": "chain/contract-verification.json", "sha256": "sha256:7777777777777777777777777777777777777777777777777777777777777777" },
+    "applicationQaReport": { "file": "qa/application-qa.json", "sha256": "sha256:8888888888888888888888888888888888888888888888888888888888888888" },
+    "backupRestoreReport": { "file": "operations/backup-restore.json", "sha256": "sha256:9999999999999999999999999999999999999999999999999999999999999999" },
+    "offsiteBackupReport": { "file": "operations/offsite-backup.json", "sha256": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+    "monitoringAlertDrillReport": { "file": "operations/monitoring-alert-drill.json", "sha256": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" },
+    "tlsWafTrustedProxyReport": { "file": "edge/tls-waf-trusted-proxy.json", "sha256": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc" },
+    "kmsCustodyRecoveryReport": { "file": "security/kms-custody-recovery.json", "sha256": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd" },
+    "independentSolidityAuditReport": { "file": "audits/solidity-audit.pdf", "sha256": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee" },
+    "independentWebApiAuditReport": { "file": "audits/web-api-audit.pdf", "sha256": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff" }
+  },
+  "attestations": [
+    { "role": "PROTOCOL_OWNER", "signer": "0x0000000000000000000000000000000000000001", "signedAt": "2026-08-31T02:05:00.000Z" },
+    { "role": "SECURITY_REVIEWER", "signer": "0x0000000000000000000000000000000000000002", "signedAt": "2026-08-31T02:06:00.000Z" },
+    { "role": "OPERATIONS_OWNER", "signer": "0x0000000000000000000000000000000000000003", "signedAt": "2026-08-31T02:07:00.000Z" }
+  ]
+}

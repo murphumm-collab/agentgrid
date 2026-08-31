@@ -1,0 +1,45 @@
+# Copy this file to .github/workflows/ci.yml after the GitHub credential used
+# for pushing has the workflow scope. Keep GITHUB_TOKEN read-only.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  application:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test
+      - run: pnpm exec tsc --noEmit
+      - run: pnpm lint
+      - run: pnpm workers:build
+      - run: PUBLIC_SHOWCASE_MODE=true PROTOCOL_MODE=demo pnpm build
+
+  contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm contracts:compile
+      - run: pnpm contracts:test

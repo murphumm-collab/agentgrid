@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "chainId": 97,
+  "pilotId": "pilot-2026-08-31-example",
+  "deploymentManifestSha256": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "taskIds": ["1", "2", "3", "4", "5"],
+  "attestations": [
+    {
+      "role": "PUBLISHER_INDEPENDENCE_REVIEW",
+      "signer": "0x4000000000000000000000000000000000000001",
+      "subjectAddresses": [
+        "0x1000000000000000000000000000000000000001",
+        "0x1000000000000000000000000000000000000002",
+        "0x1000000000000000000000000000000000000003"
+      ],
+      "evidenceHash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "signedAt": "2026-08-31T00:00:00.000Z"
+    },
+    {
+      "role": "AGENT_INDEPENDENCE_REVIEW",
+      "signer": "0x4000000000000000000000000000000000000002",
+      "subjectAddresses": [
+        "0x2000000000000000000000000000000000000001",
+        "0x2000000000000000000000000000000000000002",
+        "0x2000000000000000000000000000000000000003"
+      ],
+      "evidenceHash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "signedAt": "2026-08-31T00:00:00.000Z"
+    },
+    {
+      "role": "SUPPORT_OWNER",
+      "signer": "0x5000000000000000000000000000000000000001",
+      "subjectAddresses": [],
+      "evidenceHash": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "signedAt": "2026-08-31T00:00:00.000Z"
+    },
+    {
+      "role": "DISPUTE_OWNER",
+      "signer": "0x5000000000000000000000000000000000000002",
+      "subjectAddresses": [],
+      "evidenceHash": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "signedAt": "2026-08-31T00:00:00.000Z"
+    },
+    {
+      "role": "INCIDENT_RESPONSE_OWNER",
+      "signer": "0x5000000000000000000000000000000000000003",
+      "subjectAddresses": [],
+      "evidenceHash": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "signedAt": "2026-08-31T00:00:00.000Z"
+    },
+    {
+      "role": "ROLLBACK_OWNER",
+      "signer": "0x5000000000000000000000000000000000000004",
+      "subjectAddresses": [],
+      "evidenceHash": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "signedAt": "2026-08-31T00:00:00.000Z"
+    }
+  ]
+}

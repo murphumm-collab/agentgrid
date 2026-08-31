@@ -1,0 +1,36 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: agentgrid
+      POSTGRES_USER: agentgrid
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local-agentgrid-password}
+    ports: ["127.0.0.1:5432:5432"]
+    volumes: ["agentgrid_postgres:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agentgrid -d agentgrid"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports: ["127.0.0.1:6379:6379"]
+    volumes: ["agentgrid_redis:/data"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-agentgrid}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-local-agentgrid-storage-password}
+    ports: ["127.0.0.1:9000:9000", "127.0.0.1:9001:9001"]
+    volumes: ["agentgrid_minio:/data"]
+volumes:
+  agentgrid_postgres:
+  agentgrid_redis:
+  agentgrid_minio:

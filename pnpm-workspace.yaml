@@ -1,0 +1,12 @@
+allowBuilds:
+  '@reown/appkit': false
+  bufferutil: false
+  esbuild: true
+  unrs-resolver: true
+  utf-8-validate: false
+onlyBuiltDependencies:
+  - esbuild
+  - unrs-resolver
+overrides:
+  axios: ^1.18.0
+  postcss: ^8.5.18

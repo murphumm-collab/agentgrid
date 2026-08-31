@@ -1,0 +1,11 @@
+.next
+node_modules
+coverage
+.backups
+.data
+.playwright-cli
+contracts/artifacts
+contracts/deployments
+dist-workers
+.env*
+*.log

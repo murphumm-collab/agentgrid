@@ -1,0 +1,20 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "target": "ES2022",
+    "incremental": false,
+    "noEmit": true
+  },
+  "include": [
+    "scripts/compiler.ts",
+    "scripts/bytecode-verification.ts",
+    "scripts/pilot-policy.ts",
+    "scripts/pilot-preflight.ts",
+    "scripts/pilot-run.ts",
+    "scripts/deploy.ts",
+    "scripts/deploy-check.ts",
+    "scripts/verify-deployment.ts",
+    "../src/lib/secrets.ts"
+  ],
+  "exclude": ["../node_modules"]
+}
