@@ -8,11 +8,11 @@ real-user pilot. The normative binary completion rule is
 ## A. Reproducible local gates
 
 - [x] `pnpm lint`
-- [x] `pnpm test` — 189 tests across 48 files. The displayed 100% coverage applies
+- [x] `pnpm test` — 190 tests across 49 files. The displayed 100% coverage applies
   only to `src/lib/protocol.ts`; it is not evidence of full Worker/API coverage.
 - [x] `pnpm contracts:compile` — eight compiled deployable artifacts, including
   the six production deployment contracts
-- [x] `pnpm contracts:test` — twelve complete on-chain lifecycle/adversarial tests
+- [x] `pnpm contracts:test` — thirteen complete on-chain lifecycle/adversarial tests
 - [x] `pnpm build` and `pnpm workers:build` (15 Web/Worker/Ops entry bundles)
 - [x] Candidate manifest v2 binds every standalone payload file/internal link,
   entry count and byte count; escaping links and changed chunks are rejected,
@@ -54,16 +54,17 @@ real-user pilot. The normative binary completion rule is
   absent from the 0600 report, symlink/mount-write paths are rejected, and the
   resulting `local-smoke` evidence cannot satisfy the production gate.
 - [x] One uninterrupted current `pnpm release:qa:run` passed all 22 fixed commands
-  and bound the unactivated candidate `liscLyX1J_PG6fvHGWqoe`. Report SHA-256 is
-  `41d273c7ab8b25fa18bcac983bf55038db64414ca3b5d58ebabfecb45adcf2b1`.
+  and bound the unactivated candidate `kp0orj84s6XV0-lUppKPX`. Report SHA-256 is
+  `166ee256ae7b385a3303e6f60f4147d9ec1b1e34c8777fcc2aff4dd357063c9e`.
   The bound source SHA-256 is
-  `sha256:0a7ddc52c664bd6faa86b79a487c8294fc4a647c42e1d57a1e8cc7da0fc5d4d9`.
+  `sha256:5fd3577cea9bfa677e624570ca2da63769b32b4725207f3526e61469ea25fa97`.
   Its manifest SHA-256 is
-  `sha256:50018eb70c441fc90788c240163dabe9de19c2b086b7714d852938d585d2aa24`.
+  `sha256:4cc3080e430c311165c96de90365df3b1615d578f1143dda2d360cf44addeb4a`.
   It includes exact six-contract readiness, acknowledged monitoring,
   trusted-proxy and KMS recovery smokes, plus the public Agent discovery/API
   contract, compile-checked production executor example, task-bound Agent
-  collateral and atomic heartbeat recovery indexing.
+  collateral, atomic heartbeat recovery indexing, silent-tester replacement and
+  deterministic publisher-review timeout acceptance.
   All earlier QA reports and candidates remain historical evidence only.
 
 ## B. BSC Testnet gates
@@ -181,13 +182,13 @@ real-user pilot. The normative binary completion rule is
   at most ten concurrent task locks; withdrawal/publication is denied while
   locked. Missed evaluation deadlines and inactive-executor eviction slash 1%
   before releasing the task lock; terminal outcomes release remaining locks.
-- [ ] A selected tester who never submits must be timeout-slashed and replaced
-  without restarting the task. This remains an internal launch gate; adding it
-  requires first modularizing the 24,419-byte TaskRegistry, which has only 157
-  bytes of EIP-170 headroom.
-- [ ] Publisher silence in `USER_REVIEW` must have a deterministic timeout and
-  non-hostage outcome. This remains an internal launch gate for the same contract
-  modularization; it is not satisfied by operational reminders alone.
+- [x] A selected tester receives a 24-hour on-chain deadline. Missing it permits
+  anyone to slash 1%, release the old lock, exclude that wallet from this task
+  and schedule a new future-block random tester without restarting the task.
+- [x] Publisher silence in `USER_REVIEW` has a deterministic non-hostage rule:
+  after the 72-hour on-chain deadline anyone may finalize acceptance, create the
+  existing bounded Grant and emit `UserReviewed` with timeout reason code `0x01`.
+  The production scheduler scans and submits both permissionless transitions.
 - [x] Publish-before-evaluation is impossible on-chain and rejected/expired
   evaluations release the stake slot without charging the publication fee.
 - [x] Competition execution mode has candidate isolation, equal hidden-test

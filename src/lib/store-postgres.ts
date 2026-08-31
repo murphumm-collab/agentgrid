@@ -641,6 +641,7 @@ export async function persistChainBatch(name: string, fromBlock: bigint, nextBlo
 }
 
 const notificationEvents = new Set([
+  "ParticipantPositionLocked", "ParticipantPositionUnlocked", "PositionSlashed",
   "TaskEvaluationRequested", "TaskEvaluationFeeCharged", "TaskEvaluatorsAssigned", "TaskEvaluationSubmitted", "TaskEvaluationFinalized", "TaskEvaluationExpired", "EvaluationFeePaid", "EvaluationFeeSettled",
   "TaskCreated", "TaskExecutionModeSet", "TaskTesterCapabilitiesSet", "TaskPublicationFeeCharged", "TaskClaimed", "ExecutorEvicted", "TeamClosed", "ContributionSubmitted", "TeamReady", "CompetitionReady", "WorkSubmitted", "TesterAssigned", "TestSubmitted", "CompetitionResultSubmitted", "UserReviewed",
   "RejectionResponded", "RejectionResolved", "MaintenanceValidated", "MaintenanceRepairRequested", "GrantCreated", "FutureParticipantsUpdated", "RewardClaimed",
@@ -650,7 +651,7 @@ async function persistEventNotifications(client: PoolClient, event: IndexedChain
   if (!event.eventName || !notificationEvents.has(event.eventName) || !event.eventArgs) return;
   const taskId = event.eventArgs.taskId === undefined ? null : String(event.eventArgs.taskId);
   const recipients = new Set<string>();
-  for (const key of ["publisher", "executor", "tester", "evaluator", "evaluator0", "evaluator1", "evaluator2"] as const) {
+  for (const key of ["publisher", "executor", "tester", "evaluator", "evaluator0", "evaluator1", "evaluator2", "participant"] as const) {
     const value = event.eventArgs[key];
     if (typeof value === "string" && /^0x[0-9a-fA-F]{40}$/.test(value)) recipients.add(value.toLowerCase());
   }

@@ -297,6 +297,61 @@ describe("AgentGrid Solidity protocol", () => {
     expect(await read(addresses.token, "TestToken", "balanceOf", [reserveAccount.address])).toBe(parseEther("16"));
   });
 
+  it("slashes and replaces a silent tester, then auto-accepts after publisher silence", async () => {
+    const transport = custom(provider as never);
+    const replacementTester = createWalletClient({
+      account: mnemonicToAccount(mnemonic, { addressIndex: 8 }), chain: localChain, transport,
+    });
+    const evaluators = await registerEvaluationAgents();
+    await write(publisher, addresses.token, "TestToken", "faucet");
+    await write(publisher, addresses.token, "TestToken", "approve", [addresses.stakeManager, parseEther("1000")]);
+    await write(publisher, addresses.stakeManager, "StakeCreditManager", "createPosition", [parseEther("1000")]);
+    await write(publisher, addresses.stakeManager, "StakeCreditManager", "issueCredit", [4n]);
+    await write(publisher, addresses.taskRegistry, "TaskRegistry", "createTaskWithMode", [
+      4n, keccak256(stringToHex("timeout-recovery-task")), parseEther("1000"), 1, 0,
+    ]);
+    await approveEvaluation(1n, evaluators);
+    await registerAgent(executor, 5n);
+    await registerAgent(tester, 6n);
+    await registerAgent(replacementTester, 7n);
+    await write(executor, addresses.taskRegistry, "TaskRegistry", "claimTask", [1n]);
+    const artifact = keccak256(stringToHex("timeout-recovery-artifact"));
+    await write(executor, addresses.taskRegistry, "TaskRegistry", "submitContribution", [1n, artifact]);
+    await write(executor, addresses.taskRegistry, "TaskRegistry", "submitWork", [1n, artifact]);
+    await assignTester(1n);
+
+    const firstTestingTask = (await read(addresses.taskRegistry, "TaskRegistry", "tasks", [1n])) as readonly unknown[];
+    const firstTesterAddress = String(firstTestingTask[2]).toLowerCase();
+    const firstTester = firstTesterAddress === tester.account!.address.toLowerCase() ? tester : replacementTester;
+    const secondTester = firstTester === tester ? replacementTester : tester;
+    const firstPosition = firstTester === tester ? 6n : 7n;
+    const secondPosition = firstTester === tester ? 7n : 6n;
+    await expect(write(owner, addresses.taskRegistry, "TaskRegistry", "replaceInactiveTester", [1n])).rejects.toThrow();
+    await provider.request({ method: "evm_increaseTime", params: [24 * 60 * 60] });
+    await provider.request({ method: "evm_mine", params: [] });
+    await write(owner, addresses.taskRegistry, "TaskRegistry", "replaceInactiveTester", [1n]);
+    expect(await read(addresses.stakeManager, "StakeCreditManager", "stakeOf", [firstPosition])).toBe(parseEther("990"));
+    expect(await read(addresses.stakeManager, "StakeCreditManager", "taskLocks", [firstPosition, 1n])).toBe(false);
+    for (let index = 0; index < 6; index += 1) await provider.request({ method: "evm_mine", params: [] });
+    await write(owner, addresses.taskRegistry, "TaskRegistry", "finalizeTester", [1n]);
+    const replacementTask = (await read(addresses.taskRegistry, "TaskRegistry", "tasks", [1n])) as readonly unknown[];
+    expect(String(replacementTask[2]).toLowerCase()).toBe(secondTester.account!.address.toLowerCase());
+    expect(await read(addresses.stakeManager, "StakeCreditManager", "taskLocks", [secondPosition, 1n])).toBe(true);
+
+    await write(secondTester, addresses.taskRegistry, "TaskRegistry", "submitTest", [
+      1n, true, keccak256(stringToHex("replacement-tester-evidence")), [10_000],
+    ]);
+    await expect(write(owner, addresses.taskRegistry, "TaskRegistry", "finalizeSilentPublisherReview", [1n])).rejects.toThrow();
+    await provider.request({ method: "evm_increaseTime", params: [3 * 24 * 60 * 60] });
+    await provider.request({ method: "evm_mine", params: [] });
+    await write(owner, addresses.taskRegistry, "TaskRegistry", "finalizeSilentPublisherReview", [1n]);
+    const acceptedTask = (await read(addresses.taskRegistry, "TaskRegistry", "tasks", [1n])) as readonly unknown[];
+    expect(acceptedTask[19]).toBe(8);
+    expect(await read(addresses.taskRegistry, "TaskRegistry", "userReviewDeadline", [1n])).toBe(0n);
+    const grant = (await read(addresses.rewardVault, "RewardVault", "getGrant", [1n])) as { total: bigint };
+    expect(grant.total).toBe(parseEther("200"));
+  });
+
   it("selects a tester only when every task verification capability matches", async () => {
     const transport = custom(provider as never);
     const specialist = createWalletClient({ account: mnemonicToAccount(mnemonic, { addressIndex: 8 }), chain: localChain, transport });

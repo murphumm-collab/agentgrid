@@ -7,19 +7,21 @@ import {RewardVault} from "./RewardVault.sol";
 import {AgentRegistry} from "./AgentRegistry.sol";
 
 contract TaskRegistry is Ownable {
-    uint256 public constant ABUSIVE_REJECTION_SLASH_BPS = 500;
-    uint256 public constant BPS = 10_000;
-    uint256 public constant REJECTION_RESPONSE_WINDOW = 3 days;
-    uint256 public constant TEAM_FORMATION_WINDOW = 1 days;
-    uint256 public constant EXECUTOR_INACTIVITY_WINDOW = 6 hours;
-    uint256 public constant INACTIVE_AGENT_SLASH_BPS = 100;
-    uint256 public constant MIN_PUBLICATION_FEE = 10 ether;
-    uint256 public constant PUBLICATION_FEE_BPS = 200;
-    uint256 public constant MAX_STAKE_FEE_BPS = 1_000;
-    uint256 public constant EVALUATION_SELECTION_DELAY = 5;
-    uint256 public constant EVALUATION_WINDOW = 3 days;
-    uint256 public constant EVALUATION_FEE = 3 ether;
-    uint8 public constant EVALUATOR_COUNT = 3;
+    uint256 private constant ABUSIVE_REJECTION_SLASH_BPS = 500;
+    uint256 private constant BPS = 10_000;
+    uint256 private constant REJECTION_RESPONSE_WINDOW = 3 days;
+    uint256 private constant TEAM_FORMATION_WINDOW = 1 days;
+    uint256 private constant EXECUTOR_INACTIVITY_WINDOW = 6 hours;
+    uint256 private constant INACTIVE_AGENT_SLASH_BPS = 100;
+    uint256 private constant MIN_PUBLICATION_FEE = 10 ether;
+    uint256 private constant PUBLICATION_FEE_BPS = 200;
+    uint256 private constant MAX_STAKE_FEE_BPS = 1_000;
+    uint256 private constant EVALUATION_SELECTION_DELAY = 5;
+    uint256 private constant EVALUATION_WINDOW = 3 days;
+    uint256 private constant EVALUATION_FEE = 3 ether;
+    uint8 private constant EVALUATOR_COUNT = 3;
+    uint256 private constant TESTER_RESPONSE_WINDOW = 1 days;
+    uint256 private constant PUBLISHER_REVIEW_WINDOW = 3 days;
     enum State { None, Evaluating, Open, Claimed, Submitted, Testing, Correction, UserReview, Maintenance, Completed, Rejected }
     enum ExecutionMode { Collaboration, Competition }
 
@@ -67,6 +69,9 @@ contract TaskRegistry is Ownable {
     mapping(uint256 => mapping(address => uint256)) public executorClaimedAt;
     mapping(uint256 => uint256) public teamFormationStartedAt;
     mapping(uint256 => uint32) public teamReadyRound;
+    mapping(uint256 => uint256) public testerDeadline;
+    mapping(uint256 => uint256) public userReviewDeadline;
+    mapping(uint256 => mapping(address => bool)) private testerPenalized;
     mapping(uint256 => mapping(uint8 => bytes32)) private maintenanceEvidence;
     mapping(uint256 => uint8) private maintenanceRepairCheckpoint;
     struct EvaluationSelection {
@@ -593,7 +598,10 @@ contract TaskRegistry is Ownable {
     /// @dev Locks the append-only registered-agent set before future entropy exists.
     /// BSC mainnet production should replace blockhash entropy with VRF.
     function requestTester(uint256 taskId) external onlyCoordinator {
-        Task storage task = tasks[taskId];
+        _requestTester(taskId, tasks[taskId]);
+    }
+
+    function _requestTester(uint256 taskId, Task storage task) private {
         if (task.state != State.Submitted) revert InvalidState();
         if (task.testerSelectionBlock != 0 && block.number <= task.testerSelectionBlock + 256) revert InvalidState();
         uint256 count = agentRegistry.agentCount();
@@ -615,6 +623,7 @@ contract TaskRegistry is Ownable {
             address candidate = agentRegistry.agentAt((start + i) % task.testerCandidateCount);
             if (
                 candidate != task.publisher && !isTaskExecutor[taskId][candidate] && !isTaskEvaluator[taskId][candidate] &&
+                !testerPenalized[taskId][candidate] &&
                 agentRegistry.isEligibleFor(candidate, taskRequiredTesterCapabilities[taskId])
             ) {
                 tester = candidate;
@@ -625,14 +634,30 @@ contract TaskRegistry is Ownable {
         _lockParticipant(taskId, tester);
         task.tester = tester;
         task.selectionProof = proof;
+        testerDeadline[taskId] = block.timestamp + TESTER_RESPONSE_WINDOW;
         task.state = State.Testing;
         emit TesterAssigned(taskId, tester, proof);
+    }
+
+    function replaceInactiveTester(uint256 taskId) external {
+        Task storage task = tasks[taskId];
+        uint256 deadline = testerDeadline[taskId];
+        if (task.state != State.Testing || deadline == 0 || block.timestamp < deadline) revert InvalidState();
+        address inactiveTester = task.tester;
+        _slashParticipant(taskId, inactiveTester);
+        _unlockParticipant(taskId, inactiveTester);
+        testerPenalized[taskId][inactiveTester] = true;
+        testerDeadline[taskId] = 0;
+        _resetTesterSelection(task);
+        task.state = State.Submitted;
+        _requestTester(taskId, task);
     }
 
     function submitTest(uint256 taskId, bool passed, bytes32 evidenceHash, uint16[] calldata executorWeightsBps) external {
         Task storage task = tasks[taskId];
         if (msg.sender != task.tester) revert Unauthorized();
         if (task.state != State.Testing || taskExecutionMode[taskId] != ExecutionMode.Collaboration || evidenceHash == bytes32(0)) revert InvalidState();
+        testerDeadline[taskId] = 0;
         task.evidenceHash = evidenceHash;
         if (passed) {
             _storeExecutorWeights(taskId, task.executorCount, executorWeightsBps);
@@ -655,6 +680,7 @@ contract TaskRegistry is Ownable {
         Task storage task = tasks[taskId];
         if (msg.sender != task.tester) revert Unauthorized();
         if (task.state != State.Testing || taskExecutionMode[taskId] != ExecutionMode.Competition || evidenceHash == bytes32(0)) revert InvalidState();
+        testerDeadline[taskId] = 0;
         task.evidenceHash = evidenceHash;
         if (passed) {
             if (
@@ -709,6 +735,7 @@ contract TaskRegistry is Ownable {
         uint8 checkpoint = maintenanceRepairCheckpoint[taskId];
         if (checkpoint == 0) {
             task.state = State.UserReview;
+            userReviewDeadline[taskId] = block.timestamp + PUBLISHER_REVIEW_WINDOW;
             return;
         }
         maintenanceRepairCheckpoint[taskId] = 0;
@@ -741,6 +768,7 @@ contract TaskRegistry is Ownable {
         Task storage task = tasks[taskId];
         if (msg.sender != task.publisher) revert Unauthorized();
         if (task.state != State.UserReview) revert InvalidState();
+        userReviewDeadline[taskId] = 0;
         if (!accepted) {
             if (reasonHash == bytes32(0)) revert InvalidState();
             task.state = State.Rejected;
@@ -750,6 +778,15 @@ contract TaskRegistry is Ownable {
         }
         _acceptTask(taskId, task);
         emit UserReviewed(taskId, true, bytes32(0));
+    }
+
+    function finalizeSilentPublisherReview(uint256 taskId) external {
+        Task storage task = tasks[taskId];
+        uint256 deadline = userReviewDeadline[taskId];
+        if (task.state != State.UserReview || deadline == 0 || block.timestamp < deadline) revert InvalidState();
+        userReviewDeadline[taskId] = 0;
+        _acceptTask(taskId, task);
+        emit UserReviewed(taskId, true, bytes32(uint256(1)));
     }
 
     function respondToRejection(uint256 taskId, bytes32 responseHash) external {

@@ -3,6 +3,7 @@ import { privateKeyToAccount } from "viem/accounts";
 import { bscTestnet } from "viem/chains";
 import { taskRegistryAbi } from "../src/lib/contracts";
 import { chainContractAddresses, runtimeConfig } from "../src/lib/env";
+import { lifecycleTimeoutAction } from "../src/lib/lifecycle-timeouts";
 import { requiredSecret } from "../src/lib/secrets";
 
 const privateKey = requiredSecret("PROTOCOL_OPERATOR_PRIVATE_KEY") as Hex;
@@ -26,10 +27,36 @@ async function scan() {
   let checked = 0;
   let closed = 0;
   let evicted = 0;
+  let testersReplaced = 0;
+  let publisherReviewsFinalized = 0;
   while (cursor < nextTaskId && checked < 100) {
     const taskId = cursor++;
     checked += 1;
     const task = await publicClient.readContract({ address: registry, abi: taskRegistryAbi, functionName: "tasks", args: [taskId] });
+    // Testing=5 and UserReview=7. Both timeout transitions are permissionless;
+    // the operator wallet only supplies gas and cannot choose the replacement.
+    if (Number(task.state) === 5) {
+      const deadline = await publicClient.readContract({ address: registry, abi: taskRegistryAbi, functionName: "testerDeadline", args: [taskId] });
+      if (lifecycleTimeoutAction(Number(task.state), Number(deadline), Number(latest.timestamp)) === "REPLACE_TESTER") {
+        const hash = await wallet.writeContract({ account, address: registry, abi: taskRegistryAbi, functionName: "replaceInactiveTester", args: [taskId] });
+        const receipt = await publicClient.waitForTransactionReceipt({ hash, confirmations: config.CHAIN_CONFIRMATIONS });
+        if (receipt.status !== "success") throw new Error("TESTER_REPLACEMENT_TRANSACTION_REVERTED");
+        testersReplaced += 1;
+        console.log(JSON.stringify({ taskId: taskId.toString(), testerReplaced: true, transactionHash: hash }));
+      }
+      continue;
+    }
+    if (Number(task.state) === 7) {
+      const deadline = await publicClient.readContract({ address: registry, abi: taskRegistryAbi, functionName: "userReviewDeadline", args: [taskId] });
+      if (lifecycleTimeoutAction(Number(task.state), Number(deadline), Number(latest.timestamp)) === "FINALIZE_PUBLISHER_REVIEW") {
+        const hash = await wallet.writeContract({ account, address: registry, abi: taskRegistryAbi, functionName: "finalizeSilentPublisherReview", args: [taskId] });
+        const receipt = await publicClient.waitForTransactionReceipt({ hash, confirmations: config.CHAIN_CONFIRMATIONS });
+        if (receipt.status !== "success") throw new Error("PUBLISHER_REVIEW_TIMEOUT_TRANSACTION_REVERTED");
+        publisherReviewsFinalized += 1;
+        console.log(JSON.stringify({ taskId: taskId.toString(), publisherReviewFinalized: true, transactionHash: hash }));
+      }
+      continue;
+    }
     // TaskRegistry.State: Claimed=3, Correction=6 (Evaluating is inserted before Open).
     if (![3, 6].includes(Number(task.state)) || task.executorCount === 0) continue;
     const executors = await publicClient.readContract({ address: registry, abi: taskRegistryAbi, functionName: "getTaskExecutors", args: [taskId] });
@@ -56,7 +83,7 @@ async function scan() {
     closed += 1;
     console.log(JSON.stringify({ taskId: taskId.toString(), teamClosed: true, executorCount: Number(task.executorCount), transactionHash: hash }));
   }
-  return { checked, closed, evicted };
+  return { checked, closed, evicted, testersReplaced, publisherReviewsFinalized };
 }
 
 async function main() {

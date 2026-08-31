@@ -115,123 +115,123 @@
     },
     "taskRegistry": {
       "name": "TaskRegistry",
-      "normalizedRuntimeBytecodeHash": "0x8543234d422e6b826a5a57a6c23b7e22ab0aafdd1a0944f00154f618373db69e",
+      "normalizedRuntimeBytecodeHash": "0xc04be442d2c1ab8e3d68d5b683e7e461e9d3d5f9ac120fe6f34e51069671b3d2",
       "immutableReferences": [
         {
           "length": 32,
-          "start": 4499
+          "start": 4004
         },
         {
           "length": 32,
-          "start": 7404
+          "start": 6860
         },
         {
           "length": 32,
-          "start": 7842
+          "start": 7302
         },
         {
           "length": 32,
-          "start": 10019
+          "start": 9464
         },
         {
           "length": 32,
-          "start": 15272
+          "start": 14959
         },
         {
           "length": 32,
-          "start": 16241
+          "start": 15734
         },
         {
           "length": 32,
-          "start": 17082
+          "start": 16575
         },
         {
           "length": 32,
-          "start": 18069
+          "start": 17562
         },
         {
           "length": 32,
-          "start": 21381
+          "start": 21822
         },
         {
           "length": 32,
-          "start": 22471
+          "start": 22600
         },
         {
           "length": 32,
-          "start": 7252
+          "start": 6708
         },
         {
           "length": 32,
-          "start": 11149
+          "start": 10684
         },
         {
           "length": 32,
-          "start": 15666
+          "start": 16322
         },
         {
           "length": 32,
-          "start": 16829
+          "start": 18924
         },
         {
           "length": 32,
-          "start": 19431
+          "start": 19913
         },
         {
           "length": 32,
-          "start": 21099
+          "start": 20717
         },
         {
           "length": 32,
-          "start": 22192
+          "start": 21540
         },
         {
           "length": 32,
-          "start": 23697
+          "start": 23826
         },
         {
           "length": 32,
-          "start": 923
+          "start": 1242
         },
         {
           "length": 32,
-          "start": 1853
+          "start": 2262
         },
         {
           "length": 32,
-          "start": 2789
+          "start": 7798
         },
         {
           "length": 32,
-          "start": 8338
+          "start": 11461
         },
         {
           "length": 32,
-          "start": 11715
+          "start": 11591
         },
         {
           "length": 32,
-          "start": 11873
+          "start": 13097
         },
         {
           "length": 32,
-          "start": 13381
+          "start": 17694
         },
         {
           "length": 32,
-          "start": 18201
+          "start": 19965
         },
         {
           "length": 32,
-          "start": 21616
+          "start": 20065
         },
         {
           "length": 32,
-          "start": 22244
+          "start": 20283
         },
         {
           "length": 32,
-          "start": 22344
+          "start": 22082
         }
       ]
     },

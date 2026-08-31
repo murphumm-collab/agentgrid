@@ -448,22 +448,29 @@ wallets. The production Compose file binds the Web service only to
 ### AG-SEC-017 — Agent stake was not task-bound or slashable after assignment
 
 - **Severity:** High
-- **Status:** Fixed for evaluator/executor/tester assignment locks; two timeout policies remain open
+- **Status:** Fixed in candidate
 - **Location:** `contracts/src/StakeCreditManager.sol`,
   `contracts/src/AgentRegistry.sol`, `contracts/src/TaskRegistry.sol`
 - **Evidence:** Every assigned role reserves 100 AGT in an on-chain task lock;
   1,000 AGT can back at most ten concurrent assignments. A locked position cannot
   withdraw or issue a publisher Credit. Evaluation expiry slashes non-reporters
-  by 1%; executor inactivity eviction slashes before unlock. Twelve full-chain
-  tests include expiry, maintenance replacement and terminal release.
+  by 1%; executor inactivity eviction slashes before unlock. A selected tester
+  receives a 24-hour deadline; timeout slashes 1%, releases the lock, excludes
+  the wallet from the task and commits a new future-block random selection.
+  User review has a 72-hour deadline and then becomes permissionless auto-accept,
+  preventing a silent publisher from holding delivery and rewards hostage.
+  Thirteen full-chain tests include expiry, both silence paths, maintenance
+  replacement and terminal release. The production scheduler submits both
+  permissionless timeout transitions and a pure boundary test covers exact-deadline behavior.
 - **Impact before fix:** Stake was checked only at selection/claim. An Agent could
   request withdrawal immediately afterward, and the protocol could not slash the
   position because it was never bound to the task.
 - **Fix:** Bounded collateral accounting, AgentRegistry/StakeCreditManager
   least-privilege wiring, terminal unlocks and deterministic inactivity slashes.
-- **Residual mitigation:** Selected-tester inactivity replacement and publisher
-  silence in `USER_REVIEW` remain explicit launch blockers. TaskRegistry is
-  24,419 bytes, so those paths require modularization before implementation.
+- **Residual mitigation:** TaskRegistry is 24,548 deployed bytes, only 28 bytes
+  below EIP-170. It is deployable and exact runtime hashing prevents unnoticed
+  drift, but any future feature must first extract a lifecycle/evaluation module
+  instead of adding code to this contract.
 
 ### AG-SEC-018 — Heartbeat renewal and crash-recovery indexing were not atomic
 
