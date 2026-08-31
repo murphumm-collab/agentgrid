@@ -17,21 +17,35 @@ contract AgentRegistry {
     uint8 public constant BASE_CAPABILITIES = 7;
     uint8 public constant ALL_CAPABILITIES = type(uint8).max;
     StakeCreditManager public immutable stakeManager;
+    address public taskRegistry;
     mapping(address => uint256) public agentPosition;
     mapping(uint256 => address) public positionAgent;
     mapping(address => uint8) public agentCapabilities;
+    mapping(uint256 => mapping(address => uint256)) public taskPosition;
     address[] private registeredAgents;
     bytes32 public registryHash;
 
     error Unauthorized();
     error PositionAlreadyBound();
     error ExistingRegistrationActive();
+    error RegistryAlreadySet();
 
     event AgentRegistered(address indexed agent, uint256 indexed positionId, uint256 stake);
     event AgentCapabilitiesUpdated(address indexed agent, uint8 capabilities);
 
     constructor(StakeCreditManager stakeManager_) {
         stakeManager = stakeManager_;
+    }
+
+    modifier onlyRegistry() {
+        if (msg.sender != taskRegistry) revert Unauthorized();
+        _;
+    }
+
+    function setTaskRegistry(address registry) external {
+        if (msg.sender != stakeManager.owner() || registry == address(0)) revert Unauthorized();
+        if (taskRegistry != address(0)) revert RegistryAlreadySet();
+        taskRegistry = registry;
     }
 
     function register(uint256 positionId) external {
@@ -76,10 +90,35 @@ contract AgentRegistry {
         uint256 positionId = agentPosition[agent];
         if (positionId == 0) return false;
         (address owner, uint256 amount, , , uint256 withdrawalRequestedAt) = stakeManager.positions(positionId);
-        return owner == agent && amount >= stakeManager.MINIMUM_STAKE() && withdrawalRequestedAt == 0;
+        return owner == agent && amount >= stakeManager.MINIMUM_STAKE() && withdrawalRequestedAt == 0 &&
+            stakeManager.availableTaskCollateral(positionId) >= stakeManager.TASK_COLLATERAL();
     }
 
     function isEligibleFor(address agent, uint8 capability) public view returns (bool) {
         return capability != 0 && (agentCapabilities[agent] & capability) == capability && isEligible(agent);
+    }
+
+    function lockForTask(uint256 taskId, address participant) external onlyRegistry returns (uint256 positionId) {
+        positionId = agentPosition[participant];
+        if (positionId == 0 || taskPosition[taskId][participant] != 0) revert Unauthorized();
+        stakeManager.lockPositionForTask(positionId, taskId, participant);
+        taskPosition[taskId][participant] = positionId;
+    }
+
+    function unlockForTask(uint256 taskId, address participant) external onlyRegistry {
+        if (participant == address(0)) return;
+        uint256 positionId = taskPosition[taskId][participant];
+        if (positionId == 0) return;
+        stakeManager.unlockPositionForTask(positionId, taskId, participant);
+        delete taskPosition[taskId][participant];
+    }
+
+    function slashForTask(uint256 taskId, address participant, uint256 slashBps, address recipient)
+        external onlyRegistry returns (uint256 slashAmount)
+    {
+        uint256 positionId = taskPosition[taskId][participant];
+        if (positionId == 0 || slashBps == 0 || slashBps > 10_000) revert Unauthorized();
+        slashAmount = (stakeManager.stakeOf(positionId) * slashBps) / 10_000;
+        if (slashAmount != 0) stakeManager.slashPosition(positionId, taskId, slashAmount, recipient);
     }
 }

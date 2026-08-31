@@ -361,8 +361,8 @@ waiting for five confirmations. If the process exits or the RPC disconnects,
 rerun with the same configuration and `DEPLOYMENT_RUN_FILE`; a changed role,
 bytecode hash or compiler configuration is rejected, and an already recorded
 hash is awaited instead of rebroadcast. Keep both the pending run file and final
-manifest as launch evidence. The final manifest contains exactly 15 successful
-transactions: six deployments, three wiring calls, reserve funding and five
+manifest as launch evidence. The final manifest contains exactly 17 successful
+transactions: six deployments, five wiring calls, reserve funding and five
 ownership transfers.
 
 `pnpm contracts:deploy:verify` is also fail-closed. It opens the mode-0600

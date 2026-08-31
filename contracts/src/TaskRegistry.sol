@@ -12,6 +12,7 @@ contract TaskRegistry is Ownable {
     uint256 public constant REJECTION_RESPONSE_WINDOW = 3 days;
     uint256 public constant TEAM_FORMATION_WINDOW = 1 days;
     uint256 public constant EXECUTOR_INACTIVITY_WINDOW = 6 hours;
+    uint256 public constant INACTIVE_AGENT_SLASH_BPS = 100;
     uint256 public constant MIN_PUBLICATION_FEE = 10 ether;
     uint256 public constant PUBLICATION_FEE_BPS = 200;
     uint256 public constant MAX_STAKE_FEE_BPS = 1_000;
@@ -313,6 +314,7 @@ contract TaskRegistry is Ownable {
                 }
             }
             if (selected[slot] == address(0)) revert InvalidEvaluation();
+            _lockParticipant(taskId, selected[slot]);
             taskEvaluators[taskId][slot] = selected[slot];
             isTaskEvaluator[taskId][selected[slot]] = true;
         }
@@ -336,7 +338,7 @@ contract TaskRegistry is Ownable {
         if (
             task.state != State.Evaluating || !selection.panelFinalized ||
             block.timestamp > selection.deadline || !isTaskEvaluator[taskId][msg.sender] ||
-            !agentRegistry.isEligibleFor(msg.sender, agentRegistry.CAPABILITY_EVALUATE())
+            agentRegistry.taskPosition(taskId, msg.sender) == 0
         ) revert InvalidEvaluation();
         EvaluationReport storage report = evaluationReports[taskId][msg.sender];
         if (
@@ -394,6 +396,10 @@ contract TaskRegistry is Ownable {
         Task storage task = tasks[taskId];
         EvaluationSelection storage selection = evaluationSelections[taskId];
         if (task.state != State.Evaluating || block.timestamp <= selection.deadline) revert InvalidEvaluation();
+        for (uint256 i; i < EVALUATOR_COUNT; ++i) {
+            address evaluator = taskEvaluators[taskId][i];
+            if (evaluator != address(0) && !evaluationReports[taskId][evaluator].submitted) _slashParticipant(taskId, evaluator);
+        }
         _settleEvaluationFee(taskId);
         stakeManager.releasePosition(task.positionId, taskId);
         task.state = State.Rejected;
@@ -448,6 +454,24 @@ contract TaskRegistry is Ownable {
         return b;
     }
 
+    function _lockParticipant(uint256 taskId, address participant) private {
+        agentRegistry.lockForTask(taskId, participant);
+    }
+
+    function _unlockParticipant(uint256 taskId, address participant) private {
+        agentRegistry.unlockForTask(taskId, participant);
+    }
+
+    function _slashParticipant(uint256 taskId, address participant) private returns (uint256 slashAmount) {
+        return agentRegistry.slashForTask(taskId, participant, INACTIVE_AGENT_SLASH_BPS, address(rewardVault));
+    }
+
+    function _unlockTaskParticipants(uint256 taskId, Task storage task) private {
+        address[] storage executors = taskExecutors[taskId];
+        for (uint256 i; i < executors.length; ++i) _unlockParticipant(taskId, executors[i]);
+        _unlockParticipant(taskId, task.tester);
+    }
+
     function _settleEvaluationFee(uint256 taskId) private {
         EvaluationSelection storage selection = evaluationSelections[taskId];
         address[] memory reporters = new address[](selection.reportCount);
@@ -457,6 +481,7 @@ contract TaskRegistry is Ownable {
             if (evaluator != address(0) && evaluationReports[taskId][evaluator].submitted) reporters[reporterIndex++] = evaluator;
         }
         rewardVault.settleEvaluationFee(taskId, reporters);
+        for (uint256 i; i < EVALUATOR_COUNT; ++i) _unlockParticipant(taskId, taskEvaluators[taskId][i]);
     }
 
     function claimTask(uint256 taskId) external {
@@ -465,6 +490,7 @@ contract TaskRegistry is Ownable {
         if (task.teamClosed || task.executorCount >= task.maxExecutors || isTaskExecutor[taskId][msg.sender]) revert InvalidState();
         if (msg.sender == task.publisher || isTaskEvaluator[taskId][msg.sender]) revert Unauthorized();
         if (!agentRegistry.isEligibleFor(msg.sender, agentRegistry.CAPABILITY_EXECUTE())) revert Unauthorized();
+        _lockParticipant(taskId, msg.sender);
         if (task.executor == address(0)) task.executor = msg.sender;
         taskExecutors[taskId].push(msg.sender);
         executorClaimedAt[taskId][msg.sender] = block.timestamp;
@@ -496,6 +522,8 @@ contract TaskRegistry is Ownable {
         Task storage task = tasks[taskId];
         if ((task.state != State.Claimed && task.state != State.Correction) || !isTaskExecutor[taskId][executor]) revert InvalidState();
         if (contributionRound[taskId][executor] == task.workRound || block.timestamp < executorClaimedAt[taskId][executor] + EXECUTOR_INACTIVITY_WINDOW) revert InvalidState();
+        _slashParticipant(taskId, executor);
+        _unlockParticipant(taskId, executor);
         address[] storage executors = taskExecutors[taskId];
         for (uint256 i; i < executors.length; ++i) {
             if (executors[i] == executor) { executors[i] = executors[executors.length - 1]; executors.pop(); break; }
@@ -594,6 +622,7 @@ contract TaskRegistry is Ownable {
             }
         }
         if (tester == address(0)) revert InvalidTesterSet();
+        _lockParticipant(taskId, tester);
         task.tester = tester;
         task.selectionProof = proof;
         task.state = State.Testing;
@@ -662,6 +691,7 @@ contract TaskRegistry is Ownable {
     }
 
     function _beginCorrection(uint256 taskId, Task storage task) private {
+        _unlockParticipant(taskId, task.tester);
         task.state = State.Correction;
         task.workRound += 1;
         task.contributionCount = 0;
@@ -686,8 +716,25 @@ contract TaskRegistry is Ownable {
         rewardVault.updateFutureParticipants(taskId, checkpoint, taskExecutors[taskId], taskExecutorWeightsBps[taskId], task.tester);
         rewardVault.approveCheckpoint(taskId, checkpoint);
         task.state = checkpoint == 3 ? State.Completed : State.Maintenance;
-        if (checkpoint == 3) stakeManager.releasePosition(task.positionId, taskId);
+        if (checkpoint == 3) {
+            _unlockTaskParticipants(taskId, task);
+            stakeManager.releasePosition(task.positionId, taskId);
+        }
         emit MaintenanceValidated(taskId, checkpoint, true, evidenceHash);
+    }
+
+    function _acceptTask(uint256 taskId, Task storage task) private {
+        task.state = State.Maintenance;
+        bytes32 collaborationKey = _collaborationKey(task);
+        rewardVault.createGrant(
+            taskId,
+            taskExecutors[taskId],
+            taskExecutorWeightsBps[taskId],
+            task.tester,
+            collaborationKey,
+            task.requestedReward,
+            publisherStakeBasis[taskId]
+        );
     }
 
     function review(uint256 taskId, bool accepted, bytes32 reasonHash) external {
@@ -701,17 +748,7 @@ contract TaskRegistry is Ownable {
             emit UserReviewed(taskId, false, reasonHash);
             return;
         }
-        task.state = State.Maintenance;
-        bytes32 collaborationKey = _collaborationKey(task);
-        rewardVault.createGrant(
-            taskId,
-            taskExecutors[taskId],
-            taskExecutorWeightsBps[taskId],
-            task.tester,
-            collaborationKey,
-            task.requestedReward,
-            publisherStakeBasis[taskId]
-        );
+        _acceptTask(taskId, task);
         emit UserReviewed(taskId, true, bytes32(0));
     }
 
@@ -739,6 +776,7 @@ contract TaskRegistry is Ownable {
             if (publisherSlash != 0) stakeManager.slashPosition(task.positionId, taskId, publisherSlash, address(rewardVault));
             task.state = State.Maintenance;
         } else {
+            _unlockTaskParticipants(taskId, task);
             stakeManager.releasePosition(task.positionId, taskId);
         }
         emit RejectionResolved(taskId, executorWins, resolutionHash, publisherSlash);
@@ -762,6 +800,7 @@ contract TaskRegistry is Ownable {
         maintenanceEvidence[taskId][checkpoint] = evidenceHash;
         if (checkpoint == 3) {
             task.state = State.Completed;
+            _unlockTaskParticipants(taskId, task);
             stakeManager.releasePosition(task.positionId, taskId);
         }
         emit MaintenanceValidated(taskId, checkpoint, true, evidenceHash);

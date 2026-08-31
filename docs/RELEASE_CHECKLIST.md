@@ -12,7 +12,7 @@ real-user pilot. The normative binary completion rule is
   only to `src/lib/protocol.ts`; it is not evidence of full Worker/API coverage.
 - [x] `pnpm contracts:compile` — eight compiled deployable artifacts, including
   the six production deployment contracts
-- [x] `pnpm contracts:test` — eleven complete on-chain lifecycle/adversarial tests
+- [x] `pnpm contracts:test` — twelve complete on-chain lifecycle/adversarial tests
 - [x] `pnpm build` and `pnpm workers:build` (15 Web/Worker/Ops entry bundles)
 - [x] Candidate manifest v2 binds every standalone payload file/internal link,
   entry count and byte count; escaping links and changed chunks are rejected,
@@ -20,8 +20,9 @@ real-user pilot. The normative binary completion rule is
   mutable.
 - [x] `pnpm production:smoke` — PostgreSQL transaction, signed nonce and wallet
   session
-- [x] `pnpm queue:smoke` — durable lease ownership, heartbeat, idempotency and
-  completion
+- [x] `pnpm queue:smoke` — durable lease ownership, idempotency and completion;
+  heartbeat TTL plus the recovery index update in one Redis Lua transaction, so
+  a crash cannot renew a lease while losing its future redelivery record
 - [x] `pnpm artifact:smoke` — checksum, immutable sealed copy and substitution
   rejection
 - [x] `pnpm sandbox:smoke` — no network, read-only root, resource caps, real
@@ -53,15 +54,16 @@ real-user pilot. The normative binary completion rule is
   absent from the 0600 report, symlink/mount-write paths are rejected, and the
   resulting `local-smoke` evidence cannot satisfy the production gate.
 - [x] One uninterrupted current `pnpm release:qa:run` passed all 22 fixed commands
-  and bound the unactivated candidate `IWLRGNOai5QPWfgniDzUs`. Report SHA-256 is
-  `1fe4fcd35c860a2979da8e2beba9040e7cf9c045d80bc923c01eb26924946638`.
+  and bound the unactivated candidate `liscLyX1J_PG6fvHGWqoe`. Report SHA-256 is
+  `41d273c7ab8b25fa18bcac983bf55038db64414ca3b5d58ebabfecb45adcf2b1`.
   The bound source SHA-256 is
-  `sha256:93760a0ce42d5d84b9ae0046c53def29240e489178119c349bb8583522b8cd81`.
+  `sha256:0a7ddc52c664bd6faa86b79a487c8294fc4a647c42e1d57a1e8cc7da0fc5d4d9`.
   Its manifest SHA-256 is
-  `sha256:c3bfafc0df08f6cbc43d76044fd59d06f80da87ff887c9405c894f269e301f3b`.
+  `sha256:50018eb70c441fc90788c240163dabe9de19c2b086b7714d852938d585d2aa24`.
   It includes exact six-contract readiness, acknowledged monitoring,
   trusted-proxy and KMS recovery smokes, plus the public Agent discovery/API
-  contract and compile-checked production executor example.
+  contract, compile-checked production executor example, task-bound Agent
+  collateral and atomic heartbeat recovery indexing.
   All earlier QA reports and candidates remain historical evidence only.
 
 ## B. BSC Testnet gates
@@ -174,6 +176,18 @@ real-user pilot. The normative binary completion rule is
 - [x] Inactive executors can be evicted after the protocol timeout, failed tests
   issue targeted revision jobs, and underfilled teams can close without a
   permanent state-machine lock.
+- [x] Every evaluator/executor/tester assignment reserves 100 AGT of slashable
+  collateral from the registered Agent position. A 1,000 AGT position supports
+  at most ten concurrent task locks; withdrawal/publication is denied while
+  locked. Missed evaluation deadlines and inactive-executor eviction slash 1%
+  before releasing the task lock; terminal outcomes release remaining locks.
+- [ ] A selected tester who never submits must be timeout-slashed and replaced
+  without restarting the task. This remains an internal launch gate; adding it
+  requires first modularizing the 24,419-byte TaskRegistry, which has only 157
+  bytes of EIP-170 headroom.
+- [ ] Publisher silence in `USER_REVIEW` must have a deterministic timeout and
+  non-hostage outcome. This remains an internal launch gate for the same contract
+  modularization; it is not satisfied by operational reminders alone.
 - [x] Publish-before-evaluation is impossible on-chain and rejected/expired
   evaluations release the stake slot without charging the publication fee.
 - [x] Competition execution mode has candidate isolation, equal hidden-test

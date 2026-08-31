@@ -9,28 +9,253 @@
     },
     "stakeManager": {
       "name": "StakeCreditManager",
-      "normalizedRuntimeBytecodeHash": "0x32193af34d43042217444e28f520ae3cee6b774cc305a09af670bc1bc5904198",
-      "immutableReferences": [{ "length": 32, "start": 302 }, { "length": 32, "start": 1087 }, { "length": 32, "start": 1748 }, { "length": 32, "start": 2139 }, { "length": 32, "start": 2714 }]
+      "normalizedRuntimeBytecodeHash": "0xb7bd632f0fd79edd3974d69d22b46b73c46193da2b81cbf25c91d2502f262be4",
+      "immutableReferences": [
+        {
+          "length": 32,
+          "start": 401
+        },
+        {
+          "length": 32,
+          "start": 1935
+        },
+        {
+          "length": 32,
+          "start": 2670
+        },
+        {
+          "length": 32,
+          "start": 3096
+        },
+        {
+          "length": 32,
+          "start": 3817
+        }
+      ]
     },
     "agentRegistry": {
       "name": "AgentRegistry",
-      "normalizedRuntimeBytecodeHash": "0x9a00c87b74a21d8144c5e59d60cc9690cdd9e1617f84a15d1947ea6c90b98334",
-      "immutableReferences": [{ "length": 32, "start": 333 }, { "length": 32, "start": 1651 }, { "length": 32, "start": 1857 }, { "length": 32, "start": 2945 }]
+      "normalizedRuntimeBytecodeHash": "0x24704882d95cefcb489a9e45435bd734a094a82be9f5331f7cef444c2cf0b544",
+      "immutableReferences": [
+        {
+          "length": 32,
+          "start": 397
+        },
+        {
+          "length": 32,
+          "start": 1645
+        },
+        {
+          "length": 32,
+          "start": 2226
+        },
+        {
+          "length": 32,
+          "start": 2640
+        },
+        {
+          "length": 32,
+          "start": 2850
+        },
+        {
+          "length": 32,
+          "start": 3834
+        },
+        {
+          "length": 32,
+          "start": 4375
+        },
+        {
+          "length": 32,
+          "start": 4658
+        }
+      ]
     },
     "rewardVault": {
       "name": "RewardVault",
       "normalizedRuntimeBytecodeHash": "0x78320e33fc76202420cc69fcde80124a324fa92edae1893c6cfc92c704c714d4",
-      "immutableReferences": [{ "length": 32, "start": 343 }, { "length": 32, "start": 4442 }, { "length": 32, "start": 5756 }, { "length": 32, "start": 5808 }, { "length": 32, "start": 820 }, { "length": 32, "start": 4615 }, { "length": 32, "start": 5723 }, { "length": 32, "start": 890 }, { "length": 32, "start": 3107 }]
+      "immutableReferences": [
+        {
+          "length": 32,
+          "start": 343
+        },
+        {
+          "length": 32,
+          "start": 4442
+        },
+        {
+          "length": 32,
+          "start": 5756
+        },
+        {
+          "length": 32,
+          "start": 5808
+        },
+        {
+          "length": 32,
+          "start": 820
+        },
+        {
+          "length": 32,
+          "start": 4615
+        },
+        {
+          "length": 32,
+          "start": 5723
+        },
+        {
+          "length": 32,
+          "start": 890
+        },
+        {
+          "length": 32,
+          "start": 3107
+        }
+      ]
     },
     "taskRegistry": {
       "name": "TaskRegistry",
-      "normalizedRuntimeBytecodeHash": "0xb1b32a1bc6ce8891111391f6221e7ca8ef1c981f3088269368f9dd55172e463d",
-      "immutableReferences": [{ "length": 32, "start": 4416 }, { "length": 32, "start": 7148 }, { "length": 32, "start": 7577 }, { "length": 32, "start": 9745 }, { "length": 32, "start": 15010 }, { "length": 32, "start": 15979 }, { "length": 32, "start": 16810 }, { "length": 32, "start": 17797 }, { "length": 32, "start": 21075 }, { "length": 32, "start": 21638 }, { "length": 32, "start": 6996 }, { "length": 32, "start": 10875 }, { "length": 32, "start": 15404 }, { "length": 32, "start": 16567 }, { "length": 32, "start": 19159 }, { "length": 32, "start": 20803 }, { "length": 32, "start": 22863 }, { "length": 32, "start": 912 }, { "length": 32, "start": 1841 }, { "length": 32, "start": 2747 }, { "length": 32, "start": 8074 }, { "length": 32, "start": 11441 }, { "length": 32, "start": 11599 }, { "length": 32, "start": 13087 }, { "length": 32, "start": 17929 }]
+      "normalizedRuntimeBytecodeHash": "0x8543234d422e6b826a5a57a6c23b7e22ab0aafdd1a0944f00154f618373db69e",
+      "immutableReferences": [
+        {
+          "length": 32,
+          "start": 4499
+        },
+        {
+          "length": 32,
+          "start": 7404
+        },
+        {
+          "length": 32,
+          "start": 7842
+        },
+        {
+          "length": 32,
+          "start": 10019
+        },
+        {
+          "length": 32,
+          "start": 15272
+        },
+        {
+          "length": 32,
+          "start": 16241
+        },
+        {
+          "length": 32,
+          "start": 17082
+        },
+        {
+          "length": 32,
+          "start": 18069
+        },
+        {
+          "length": 32,
+          "start": 21381
+        },
+        {
+          "length": 32,
+          "start": 22471
+        },
+        {
+          "length": 32,
+          "start": 7252
+        },
+        {
+          "length": 32,
+          "start": 11149
+        },
+        {
+          "length": 32,
+          "start": 15666
+        },
+        {
+          "length": 32,
+          "start": 16829
+        },
+        {
+          "length": 32,
+          "start": 19431
+        },
+        {
+          "length": 32,
+          "start": 21099
+        },
+        {
+          "length": 32,
+          "start": 22192
+        },
+        {
+          "length": 32,
+          "start": 23697
+        },
+        {
+          "length": 32,
+          "start": 923
+        },
+        {
+          "length": 32,
+          "start": 1853
+        },
+        {
+          "length": 32,
+          "start": 2789
+        },
+        {
+          "length": 32,
+          "start": 8338
+        },
+        {
+          "length": 32,
+          "start": 11715
+        },
+        {
+          "length": 32,
+          "start": 11873
+        },
+        {
+          "length": 32,
+          "start": 13381
+        },
+        {
+          "length": 32,
+          "start": 18201
+        },
+        {
+          "length": 32,
+          "start": 21616
+        },
+        {
+          "length": 32,
+          "start": 22244
+        },
+        {
+          "length": 32,
+          "start": 22344
+        }
+      ]
     },
     "disputeResolver": {
       "name": "DisputeResolver",
       "normalizedRuntimeBytecodeHash": "0x146dcfbf9090f11a11bc7fcb48710b5a5937d5739a7c73f281d7d640ac2abf43",
-      "immutableReferences": [{ "length": 32, "start": 877 }, { "length": 32, "start": 1836 }, { "length": 32, "start": 1504 }, { "length": 32, "start": 1774 }]
+      "immutableReferences": [
+        {
+          "length": 32,
+          "start": 877
+        },
+        {
+          "length": 32,
+          "start": 1836
+        },
+        {
+          "length": 32,
+          "start": 1504
+        },
+        {
+          "length": 32,
+          "start": 1774
+        }
+      ]
     }
   }
 }

@@ -74,6 +74,8 @@ describe("AgentGrid Solidity protocol", () => {
     }
 
     await write(owner, stakeManager, "StakeCreditManager", "setTaskRegistry", [taskRegistry]);
+    await write(owner, stakeManager, "StakeCreditManager", "setAgentRegistry", [agentRegistry]);
+    await write(owner, agentRegistry, "AgentRegistry", "setTaskRegistry", [taskRegistry]);
     await write(owner, rewardVault, "RewardVault", "setTaskRegistry", [taskRegistry]);
     await write(owner, token, "TestToken", "mintRewardReserve", [rewardVault, parseEther("100000")]);
   });
@@ -251,6 +253,29 @@ describe("AgentGrid Solidity protocol", () => {
     expect(await read(addresses.token, "TestToken", "balanceOf", [evaluators[2].account!.address])).toBe(parseEther("9000"));
   });
 
+  it("locks evaluator collateral, slashes missed reports at expiry, and unlocks every panel position", async () => {
+    const { evaluators } = await createEvaluatingTask("expired-evaluation-collateral");
+    for (let index = 0; index < 6; index += 1) await provider.request({ method: "evm_mine", params: [] });
+    await write(owner, addresses.taskRegistry, "TaskRegistry", "finalizeEvaluationPanel", [1n]);
+    for (const positionId of [1n, 2n, 3n]) {
+      expect(await read(addresses.stakeManager, "StakeCreditManager", "taskLocks", [positionId, 1n])).toBe(true);
+    }
+    await write(evaluators[0], addresses.taskRegistry, "TaskRegistry", "submitEvaluation", [
+      1n, keccak256(stringToHex("development")), 5_000, 20, 8_000, parseEther("900"), true,
+      keccak256(stringToHex("only-expiry-report")),
+    ]);
+    await provider.request({ method: "evm_increaseTime", params: [3 * 24 * 60 * 60 + 1] });
+    await provider.request({ method: "evm_mine", params: [] });
+    await write(owner, addresses.taskRegistry, "TaskRegistry", "expireTaskEvaluation", [1n]);
+    expect(await read(addresses.stakeManager, "StakeCreditManager", "stakeOf", [1n])).toBe(parseEther("1000"));
+    expect(await read(addresses.stakeManager, "StakeCreditManager", "stakeOf", [2n])).toBe(parseEther("990"));
+    expect(await read(addresses.stakeManager, "StakeCreditManager", "stakeOf", [3n])).toBe(parseEther("990"));
+    for (const positionId of [1n, 2n, 3n]) {
+      expect(await read(addresses.stakeManager, "StakeCreditManager", "taskLocks", [positionId, 1n])).toBe(false);
+      expect(await read(addresses.stakeManager, "StakeCreditManager", "taskLockCount", [positionId])).toBe(0n);
+    }
+  });
+
   it("executes stake, task, random tester, acceptance, capped grant, and delivery payout", async () => {
     await createAcceptedTask();
 
@@ -386,11 +411,14 @@ describe("AgentGrid Solidity protocol", () => {
     expect(grant.executorWeightsBps).toEqual([3_000, 7_000]);
   });
 
-  it("rejects stake reuse, early maintenance, duplicate grant path, and double claim", async () => {
+  it("keeps participant collateral locked through maintenance and rejects early maintenance, duplicate grant, and double claim", async () => {
     await createAcceptedTask();
 
-    await write(executor, addresses.stakeManager, "StakeCreditManager", "requestWithdrawal", [5n]);
-    expect(await read(addresses.agentRegistry, "AgentRegistry", "isEligible", [executor.account!.address])).toBe(false);
+    await expect(write(executor, addresses.stakeManager, "StakeCreditManager", "requestWithdrawal", [5n])).rejects.toThrow();
+    await expect(write(tester, addresses.stakeManager, "StakeCreditManager", "requestWithdrawal", [6n])).rejects.toThrow();
+    expect(await read(addresses.stakeManager, "StakeCreditManager", "taskLocks", [5n, 1n])).toBe(true);
+    expect(await read(addresses.stakeManager, "StakeCreditManager", "taskLocks", [6n, 1n])).toBe(true);
+    expect(await read(addresses.stakeManager, "StakeCreditManager", "availableTaskCollateral", [5n])).toBe(parseEther("900"));
 
     await expect(
       write(publisher, addresses.stakeManager, "StakeCreditManager", "issueCredit", [4n]),
@@ -487,9 +515,14 @@ describe("AgentGrid Solidity protocol", () => {
     // The evicted executor receives no maintenance reward; all three future
     // 40-token tranches use the replacement's independently tested weight.
     expect(await read(addresses.token, "TestToken", "balanceOf", [executor.account!.address])).toBe(parseEther("9052"));
+    expect(await read(addresses.stakeManager, "StakeCreditManager", "stakeOf", [5n])).toBe(parseEther("990"));
     expect(await read(addresses.token, "TestToken", "balanceOf", [replacement.account!.address])).toBe(parseEther("9078"));
     expect(await read(addresses.token, "TestToken", "balanceOf", [tester.account!.address])).toBe(parseEther("9012"));
     expect(await read(addresses.token, "TestToken", "balanceOf", [repairTester.account!.address])).toBe(parseEther("9018"));
+    expect(await read(addresses.stakeManager, "StakeCreditManager", "taskLocks", [7n, 1n])).toBe(false);
+    expect(await read(addresses.stakeManager, "StakeCreditManager", "taskLocks", [8n, 1n])).toBe(false);
+    await write(replacement, addresses.stakeManager, "StakeCreditManager", "requestWithdrawal", [7n]);
+    await write(repairTester, addresses.stakeManager, "StakeCreditManager", "requestWithdrawal", [8n]);
   });
 
   it("resolves structured rejection without trapping the publishing slot", async () => {

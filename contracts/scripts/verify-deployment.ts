@@ -29,7 +29,7 @@ const deploymentSchema = z.object({
 
 const requiredTransactions = [
   "deploy.token", "deploy.stakeManager", "deploy.agentRegistry", "deploy.rewardVault", "deploy.taskRegistry", "deploy.disputeResolver",
-  "wire.stakeManager", "wire.disputeResolver", "wire.rewardVault", "fund.rewardReserve",
+  "wire.stakeManager", "wire.stakeAgentRegistry", "wire.agentRegistry", "wire.disputeResolver", "wire.rewardVault", "fund.rewardReserve",
   "ownership.TestToken", "ownership.StakeCreditManager", "ownership.RewardVault", "ownership.TaskRegistry", "ownership.DisputeResolver",
 ] as const;
 const deploymentContractByTransaction = {
@@ -99,28 +99,30 @@ export async function runDeploymentVerification() {
     verifyRuntimeBytecode(name, code, artifacts[artifactNames[name as keyof typeof artifactNames]]);
   }
 
-  const stakeAbi = parseAbi(["function taskRegistry() view returns(address)"]);
+  const stakeAbi = parseAbi(["function taskRegistry() view returns(address)", "function agentRegistry() view returns(address)"]);
   const vaultAbi = parseAbi(["function taskRegistry() view returns(address)"]);
   const taskAbi = parseAbi(["function coordinator() view returns(address)", "function disputeResolver() view returns(address)", "function agentRegistry() view returns(address)"]);
-  const agentAbi = parseAbi(["function stakeManager() view returns(address)"]);
+  const agentAbi = parseAbi(["function stakeManager() view returns(address)", "function taskRegistry() view returns(address)"]);
   const resolverAbi = parseAbi(["function registry() view returns(address)", "function quorum() view returns(uint256)", "function isArbitrator(address) view returns(bool)"]);
   const tokenAbi = parseAbi(["function balanceOf(address) view returns(uint256)"]);
   const ownableAbi = parseAbi(["function owner() view returns(address)"]);
-  const [stakeRegistry, vaultRegistry, coordinator, disputeResolver, taskAgentRegistry, agentStakeManager, resolverRegistry, quorum, reserveBalance, arbitratorChecks] = await Promise.all([
+  const [stakeRegistry, stakeAgentRegistry, vaultRegistry, coordinator, disputeResolver, taskAgentRegistry, agentStakeManager, agentTaskRegistry, resolverRegistry, quorum, reserveBalance, arbitratorChecks] = await Promise.all([
     client.readContract({ address: deployment.contracts.stakeManager, abi: stakeAbi, functionName: "taskRegistry" }),
+    client.readContract({ address: deployment.contracts.stakeManager, abi: stakeAbi, functionName: "agentRegistry" }),
     client.readContract({ address: deployment.contracts.rewardVault, abi: vaultAbi, functionName: "taskRegistry" }),
     client.readContract({ address: deployment.contracts.taskRegistry, abi: taskAbi, functionName: "coordinator" }),
     client.readContract({ address: deployment.contracts.taskRegistry, abi: taskAbi, functionName: "disputeResolver" }),
     client.readContract({ address: deployment.contracts.taskRegistry, abi: taskAbi, functionName: "agentRegistry" }),
     client.readContract({ address: deployment.contracts.agentRegistry, abi: agentAbi, functionName: "stakeManager" }),
+    client.readContract({ address: deployment.contracts.agentRegistry, abi: agentAbi, functionName: "taskRegistry" }),
     client.readContract({ address: deployment.contracts.disputeResolver, abi: resolverAbi, functionName: "registry" }),
     client.readContract({ address: deployment.contracts.disputeResolver, abi: resolverAbi, functionName: "quorum" }),
     client.readContract({ address: deployment.contracts.token, abi: tokenAbi, functionName: "balanceOf", args: [deployment.contracts.rewardVault] }),
     Promise.all(deployment.arbitrators.map((address) => client.readContract({ address: deployment.contracts.disputeResolver, abi: resolverAbi, functionName: "isArbitrator", args: [address] }))),
   ]);
-  if (!equal(stakeRegistry, deployment.contracts.taskRegistry) || !equal(vaultRegistry, deployment.contracts.taskRegistry)) throw new Error("REGISTRY_WIRING_INVALID");
+  if (!equal(stakeRegistry, deployment.contracts.taskRegistry) || !equal(stakeAgentRegistry, deployment.contracts.agentRegistry) || !equal(vaultRegistry, deployment.contracts.taskRegistry)) throw new Error("REGISTRY_WIRING_INVALID");
   if (!equal(coordinator, deployment.coordinator) || !equal(disputeResolver, deployment.contracts.disputeResolver) || !equal(resolverRegistry, deployment.contracts.taskRegistry)) throw new Error("ROLE_WIRING_INVALID");
-  if (!equal(taskAgentRegistry, deployment.contracts.agentRegistry) || !equal(agentStakeManager, deployment.contracts.stakeManager)) throw new Error("AGENT_REGISTRY_WIRING_INVALID");
+  if (!equal(taskAgentRegistry, deployment.contracts.agentRegistry) || !equal(agentStakeManager, deployment.contracts.stakeManager) || !equal(agentTaskRegistry, deployment.contracts.taskRegistry)) throw new Error("AGENT_REGISTRY_WIRING_INVALID");
   if (Number(quorum) !== deployment.arbitratorQuorum || arbitratorChecks.some((value) => !value)) throw new Error("ARBITRATION_CONFIGURATION_INVALID");
   if (reserveBalance < parseEther("100000")) throw new Error("REWARD_RESERVE_UNDERFUNDED");
   const ownership = await Promise.all([

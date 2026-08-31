@@ -133,14 +133,14 @@ export async function runPilotPreflight(options: { requirePristine?: boolean; si
     contractEntries.forEach(([name], index) => verifyRuntimeBytecode(name, codes[index], compiled[artifactNames[name]]));
     const runtimeBytecodeVerified = true;
     const taskAbi = parseAbi(["function nextTaskId() view returns(uint256)", "function coordinator() view returns(address)", "function disputeResolver() view returns(address)", "function agentRegistry() view returns(address)"]);
-    const agentAbi = parseAbi(["function agentCount() view returns(uint256)", "function stakeManager() view returns(address)"]);
+    const agentAbi = parseAbi(["function agentCount() view returns(uint256)", "function stakeManager() view returns(address)", "function taskRegistry() view returns(address)"]);
     const registryAbi = parseAbi(["function taskRegistry() view returns(address)"]);
     const resolverAbi = parseAbi(["function registry() view returns(address)", "function quorum() view returns(uint256)", "function isArbitrator(address) view returns(bool)"]);
     const tokenAbi = parseAbi(["function balanceOf(address) view returns(uint256)"]);
     const ownableAbi = parseAbi(["function owner() view returns(address)"]);
     const [
-      nextTaskId, registeredAgents, onchainCoordinator, disputeResolver, taskAgentRegistry, agentStakeManager,
-      stakeRegistry, vaultRegistry, resolverRegistry, resolverQuorum, reserveBalance, arbitratorChecks, ownership,
+      nextTaskId, registeredAgents, onchainCoordinator, disputeResolver, taskAgentRegistry, agentStakeManager, agentTaskRegistry,
+      stakeRegistry, stakeAgentRegistry, vaultRegistry, resolverRegistry, resolverQuorum, reserveBalance, arbitratorChecks, ownership,
     ] = await Promise.all([
       publicClient.readContract({ address: deployment.contracts.taskRegistry, abi: taskAbi, functionName: "nextTaskId" }),
       publicClient.readContract({ address: deployment.contracts.agentRegistry, abi: agentAbi, functionName: "agentCount" }),
@@ -148,7 +148,9 @@ export async function runPilotPreflight(options: { requirePristine?: boolean; si
       publicClient.readContract({ address: deployment.contracts.taskRegistry, abi: taskAbi, functionName: "disputeResolver" }),
       publicClient.readContract({ address: deployment.contracts.taskRegistry, abi: taskAbi, functionName: "agentRegistry" }),
       publicClient.readContract({ address: deployment.contracts.agentRegistry, abi: agentAbi, functionName: "stakeManager" }),
+      publicClient.readContract({ address: deployment.contracts.agentRegistry, abi: agentAbi, functionName: "taskRegistry" }),
       publicClient.readContract({ address: deployment.contracts.stakeManager, abi: registryAbi, functionName: "taskRegistry" }),
+      publicClient.readContract({ address: deployment.contracts.stakeManager, abi: parseAbi(["function agentRegistry() view returns(address)"]), functionName: "agentRegistry" }),
       publicClient.readContract({ address: deployment.contracts.rewardVault, abi: registryAbi, functionName: "taskRegistry" }),
       publicClient.readContract({ address: deployment.contracts.disputeResolver, abi: resolverAbi, functionName: "registry" }),
       publicClient.readContract({ address: deployment.contracts.disputeResolver, abi: resolverAbi, functionName: "quorum" }),
@@ -160,8 +162,8 @@ export async function runPilotPreflight(options: { requirePristine?: boolean; si
     const equal = (left: string, right: string) => left.toLowerCase() === right.toLowerCase();
     const wiringVerified =
       equal(onchainCoordinator, deployment.coordinator) && equal(disputeResolver, deployment.contracts.disputeResolver) &&
-      equal(taskAgentRegistry, deployment.contracts.agentRegistry) && equal(agentStakeManager, deployment.contracts.stakeManager) &&
-      equal(stakeRegistry, deployment.contracts.taskRegistry) && equal(vaultRegistry, deployment.contracts.taskRegistry) &&
+      equal(taskAgentRegistry, deployment.contracts.agentRegistry) && equal(agentStakeManager, deployment.contracts.stakeManager) && equal(agentTaskRegistry, deployment.contracts.taskRegistry) &&
+      equal(stakeRegistry, deployment.contracts.taskRegistry) && equal(stakeAgentRegistry, deployment.contracts.agentRegistry) && equal(vaultRegistry, deployment.contracts.taskRegistry) &&
       equal(resolverRegistry, deployment.contracts.taskRegistry) && Number(resolverQuorum) === deployment.arbitratorQuorum &&
       arbitratorChecks.every(Boolean) && reserveBalance >= parseEther("100000") && ownership.every((owner) => equal(owner, deployment.owner));
     if (!wiringVerified) blockers.push("PILOT_DEPLOYMENT_WIRING_INVALID");

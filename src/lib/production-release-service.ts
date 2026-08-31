@@ -39,7 +39,7 @@ const deploymentSchema = z.object({
 
 const requiredDeploymentTransactions = [
   "deploy.token", "deploy.stakeManager", "deploy.agentRegistry", "deploy.rewardVault", "deploy.taskRegistry", "deploy.disputeResolver",
-  "wire.stakeManager", "wire.disputeResolver", "wire.rewardVault", "fund.rewardReserve",
+  "wire.stakeManager", "wire.stakeAgentRegistry", "wire.agentRegistry", "wire.disputeResolver", "wire.rewardVault", "fund.rewardReserve",
   "ownership.TestToken", "ownership.StakeCreditManager", "ownership.RewardVault", "ownership.TaskRegistry", "ownership.DisputeResolver",
 ] as const;
 

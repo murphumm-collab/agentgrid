@@ -143,8 +143,22 @@ export async function heartbeatAgentJob(id: string, agentId: string) {
   await assertCanonicalLease(id, agentId);
   const r = await redis();
   const leaseMs = runtimeConfig().AGENT_LEASE_SECONDS * 1_000;
-  await r.pExpire(leaseKey(id), leaseMs);
-  await r.zAdd(leasesKey, [{ score: Date.now() + leaseMs, value: id }]);
+  // The lease TTL and its recovery index are one invariant. If the process
+  // crashes between separate PEXPIRE/ZADD calls, a renewed lease can later
+  // expire without appearing in the recovery set and the job is lost forever.
+  const renewed = await r.eval(
+    [
+      "if redis.call('GET',KEYS[1])~=ARGV[1] then return 0 end",
+      "redis.call('PEXPIRE',KEYS[1],ARGV[2])",
+      "redis.call('ZADD',KEYS[2],ARGV[3],ARGV[4])",
+      "return 1",
+    ].join("\n"),
+    {
+      keys: [leaseKey(id), leasesKey],
+      arguments: [agentId, String(leaseMs), String(Date.now() + leaseMs), id],
+    },
+  );
+  if (Number(renewed) !== 1) throw new Error("JOB_LEASE_NOT_OWNED");
   return { leaseSeconds: runtimeConfig().AGENT_LEASE_SECONDS };
 }
 

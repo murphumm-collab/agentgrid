@@ -13,6 +13,15 @@ async function main() {
   try { await heartbeatAgentJob(job.id, "agent-wrong"); } catch { wrongOwnerRejected = true; }
   if (!wrongOwnerRejected) throw new Error("QUEUE_LEASE_OWNERSHIP_FAILED");
   await heartbeatAgentJob(job.id, "agent-smoke");
+  const redis = createClient({ url: process.env.REDIS_URL });
+  await redis.connect();
+  const [renewedTtlMs, recoveryDeadline] = await Promise.all([
+    redis.pTTL(`agentgrid:lease:${job.id}`),
+    redis.zScore("agentgrid:leases", job.id),
+  ]);
+  if (renewedTtlMs <= 0 || recoveryDeadline === null || recoveryDeadline <= Date.now()) {
+    throw new Error("QUEUE_HEARTBEAT_RECOVERY_INDEX_NOT_ATOMIC");
+  }
   await completeAgentJob(job.id, "agent-smoke", { artifactHash: "sha256:smoke" });
 
   const crashOwner = `0x${suffix.replaceAll("-", "").padEnd(40, "0").slice(0, 40)}`;
@@ -23,8 +32,6 @@ async function main() {
   if (!await enqueueAgentJob(crashJob)) throw new Error("QUEUE_CRASH_JOB_ENQUEUE_FAILED");
   const beforeCrash = await leaseAgentJob("agent-before-crash", "EXECUTOR", crashOwner);
   if (beforeCrash?.job.id !== crashJob.id) throw new Error("QUEUE_CRASH_JOB_INITIAL_LEASE_FAILED");
-  const redis = createClient({ url: process.env.REDIS_URL });
-  await redis.connect();
   await redis.del(`agentgrid:lease:${crashJob.id}`);
   await redis.zAdd("agentgrid:leases", [{ score: Date.now() - 1, value: crashJob.id }]);
   await redis.close();
@@ -32,7 +39,7 @@ async function main() {
   if (recovered?.job.id !== crashJob.id) throw new Error("QUEUE_CRASH_JOB_NOT_RECOVERED");
   await completeAgentJob(crashJob.id, "agent-after-crash", { recovered: true });
 
-  console.log(JSON.stringify({ enqueued: true, idempotent: true, leased: true, heartbeat: true, wrongOwnerRejected, completed: true, crashedLeaseRecovered: true }));
+  console.log(JSON.stringify({ enqueued: true, idempotent: true, leased: true, heartbeat: true, heartbeatRecoveryIndexAtomic: true, wrongOwnerRejected, completed: true, crashedLeaseRecovered: true }));
   await closeRedisForTests();
 }
 

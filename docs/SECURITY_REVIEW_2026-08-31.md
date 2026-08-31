@@ -11,7 +11,9 @@ are fixed and covered by focused tests/smoke exercises. A backup credential leak
 through process arguments and deterministic reward-padding exposure were also
 reduced in the candidate.
 
-Public launch remains gated by external secret/KMS custody, TLS/WAF/rate limits,
+Participant stake is now task-bound and queue heartbeat recovery metadata is
+updated atomically; the previous controls only checked stake at selection time
+and could lose a renewed lease after a process crash. Public launch remains gated by external secret/KMS custody, TLS/WAF/rate limits,
 off-host backup and alert receiver configuration, an independent Solidity and
 Web/API audit, BSC Testnet deployment evidence, and independently operated pilot
 wallets. The production Compose file binds the Web service only to
@@ -396,7 +398,7 @@ wallets. The production Compose file binds the Web service only to
   `src/lib/production-release-service.ts`
 - **Evidence:** The broadcaster now requires an exact acknowledgement, persists
   every transaction hash in a mode-0600 configuration-bound resume file before
-  confirmation, rejects an existing final manifest and records the exact 15-step
+  confirmation, rejects an existing final manifest and records the exact 17-step
   transaction set. The verifier checks all receipts and five-confirmation depth,
   deployment addresses, exact runtime code, wiring, roles, ownership and reserve.
   A separate production-release gate hashes 12 launch preimages and requires
@@ -442,6 +444,42 @@ wallets. The production Compose file binds the Web service only to
   separate gates.
 - **False-positive notes:** Demo mode remains intentionally non-authoritative and
   does not issue a production publication credential.
+
+### AG-SEC-017 — Agent stake was not task-bound or slashable after assignment
+
+- **Severity:** High
+- **Status:** Fixed for evaluator/executor/tester assignment locks; two timeout policies remain open
+- **Location:** `contracts/src/StakeCreditManager.sol`,
+  `contracts/src/AgentRegistry.sol`, `contracts/src/TaskRegistry.sol`
+- **Evidence:** Every assigned role reserves 100 AGT in an on-chain task lock;
+  1,000 AGT can back at most ten concurrent assignments. A locked position cannot
+  withdraw or issue a publisher Credit. Evaluation expiry slashes non-reporters
+  by 1%; executor inactivity eviction slashes before unlock. Twelve full-chain
+  tests include expiry, maintenance replacement and terminal release.
+- **Impact before fix:** Stake was checked only at selection/claim. An Agent could
+  request withdrawal immediately afterward, and the protocol could not slash the
+  position because it was never bound to the task.
+- **Fix:** Bounded collateral accounting, AgentRegistry/StakeCreditManager
+  least-privilege wiring, terminal unlocks and deterministic inactivity slashes.
+- **Residual mitigation:** Selected-tester inactivity replacement and publisher
+  silence in `USER_REVIEW` remain explicit launch blockers. TaskRegistry is
+  24,419 bytes, so those paths require modularization before implementation.
+
+### AG-SEC-018 — Heartbeat renewal and crash-recovery indexing were not atomic
+
+- **Severity:** High
+- **Status:** Fixed in candidate
+- **Location:** `src/lib/agent-queue.ts`, `scripts/queue-smoke.ts`
+- **Evidence:** One Redis Lua transaction verifies lease ownership, extends the
+  TTL and updates the sorted recovery deadline. The smoke verifies both renewed
+  TTL and a future recovery score, then separately proves an expired crash lease
+  is redelivered.
+- **Impact before fix:** A crash after `PEXPIRE` but before `ZADD` could renew the
+  lease while removing its only future recovery signal, permanently losing the
+  job after the renewed TTL expired.
+- **Fix:** Atomic TTL/recovery-index invariant.
+- **False-positive notes:** Canonical chain-event validation still occurs before
+  renewal and again at every worker mutation boundary.
 
 ## Verified controls and limitations
 

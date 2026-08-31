@@ -74,7 +74,7 @@ unactivated local candidate. It is not BSC deployment or public-launch approval.
 ## External blockers that local development cannot close
 
 - Funded BSC Testnet deployer and independent role wallets.
-- Actual 15-transaction BSC deployment plus five-confirmation receipts.
+- Actual 17-transaction BSC deployment plus five-confirmation receipts.
 - Three real adopted business tasks and the signed pilot task-set evidence.
 - Target TLS/WAF/trusted-proxy and KMS custody/recovery drills.
 - Off-host backup/restore and live alert-delivery evidence.
