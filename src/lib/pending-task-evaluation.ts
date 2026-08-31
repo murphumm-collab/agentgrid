@@ -7,6 +7,7 @@ export const pendingTaskEvaluationSchema = z.object({
   requestedReward: z.string().regex(/^\d+(?:\.\d+)?$/),
   maxExecutors: z.number().int().min(1).max(32),
   executionMode: z.enum(["COLLABORATION", "COMPETITION"]),
+  requiredTesterCapabilities: z.number().int().min(2).max(255).refine((mask) => (mask & 7) === 2, "INVALID_TESTER_CAPABILITY_MASK"),
   transactionHash: z.string().regex(/^0x[0-9a-fA-F]{64}$/).transform((value) => value as Hash).optional(),
 }).strict();
 

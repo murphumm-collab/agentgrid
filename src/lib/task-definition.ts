@@ -2,6 +2,8 @@ import { keccak256, stringToHex } from "viem";
 import { z } from "zod";
 
 export const taskDefinitionVersion = "AGENTGRID_TASK_DEFINITION_V1" as const;
+export const verificationTypes = ["AUTOMATED_TEST", "ARTIFACT_INSPECTION", "DATA_VALIDATION", "EXTERNAL_OBSERVATION", "HUMAN_REVIEW"] as const;
+export type VerificationType = typeof verificationTypes[number];
 
 const boundedLine = z.string().trim().min(3).max(500);
 const reportHashSchema = z.string().regex(/^0x[0-9a-f]{64}$/);
@@ -12,6 +14,7 @@ export const completionCriterionSchema = z.object({
   verificationMethod: boundedLine,
   evidenceRequired: boundedLine,
   passCondition: boundedLine,
+  verificationType: z.enum(verificationTypes).default("AUTOMATED_TEST"),
   required: z.boolean().default(true),
 }).strict();
 
@@ -58,6 +61,7 @@ export const taskClarificationDraftSchema = z.object({
     verificationMethod: z.string().trim().max(500),
     evidenceRequired: z.string().trim().max(500),
     passCondition: z.string().trim().max(500),
+    verificationType: z.enum(verificationTypes).default("AUTOMATED_TEST"),
     required: z.boolean().default(true),
   }).strict()).max(12).default([]),
 }).strict();

@@ -10,6 +10,7 @@ import { competitionScoreBps, competitionWeightsBps } from "@/lib/competition-sc
 import { contributionFormulaVersion } from "@/lib/contribution-weights";
 import { evidenceJsonBodyLimit, readJsonBody } from "@/lib/request-body";
 import { roleCanLease } from "@/lib/agent-roles";
+import { criterionVerificationResultsSchema, validateCriterionEvidenceBindings, validateCriterionResults } from "@/lib/criterion-verification";
 
 const reportSchema = z.object({
   passed: z.boolean(), exitCode: z.number().int(), timedOut: z.boolean(), durationMs: z.number().int().nonnegative().max(11 * 60_000),
@@ -34,6 +35,9 @@ const reportSchema = z.object({
     }).strict()).min(1).max(32),
   }).strict().optional(),
   maintenanceRepairCheckpoint: z.number().int().min(1).max(3).optional(),
+  // Optional only for legacy tasks. Do not add a Zod default here: the tester
+  // signs the exact JSON object and parsing must not mutate that signed object.
+  criterionResults: criterionVerificationResultsSchema.optional(),
 }).strict();
 const schema = z.object({ taskId: z.string().regex(/^\d+$/), testerAgentId: z.string().min(3).max(120), artifactHash: z.string().regex(/^sha256:[0-9a-f]{64}$/), report: reportSchema, signature: z.string().regex(/^0x[0-9a-fA-F]{130}$/) }).strict();
 
@@ -45,6 +49,12 @@ export async function POST(request: NextRequest) {
     const task = (await protocolSnapshot()).tasks.find((item) => item.id === input.taskId);
     if (!task || task.testerId?.toLowerCase() !== agent.owner.toLowerCase()) throw new Error("TESTER_NOT_ASSIGNED");
     if (task.state !== "TESTING" && task.state !== "MAINTENANCE") throw new Error("TASK_NOT_ACCEPTING_EVIDENCE");
+    const criterionResults = input.report.criterionResults ?? [];
+    if (task.completionDefinition) {
+      validateCriterionResults(task.completionDefinition, criterionResults, input.report.passed);
+      validateCriterionEvidenceBindings(criterionResults, input.artifactHash);
+    }
+    else if (criterionResults.length) throw new Error("LEGACY_TASK_CRITERION_RESULTS_FORBIDDEN");
     const isCompetition = task.executionMode === "COMPETITION";
     if ((task.maintenanceRepairCheckpoint ?? undefined) !== input.report.maintenanceRepairCheckpoint) throw new Error("MAINTENANCE_REPAIR_CHECKPOINT_MISMATCH");
     if (!isCompetition && input.report.competition) throw new Error("COMPETITION_REPORT_FOR_COLLABORATION_TASK");

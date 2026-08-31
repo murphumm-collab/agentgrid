@@ -100,6 +100,14 @@ describe("tester selection and evidence", () => {
     expect(() => selectRandomTester(task(), [agent({ owner: "publisher" })], "seed")).toThrow("NO_ELIGIBLE_TESTER");
   });
 
+  it("filters random testers by every declared verification speciality", () => {
+    const typedTask = task({ requiredTesterCapabilities: ["AUTOMATED_TEST", "DATA_VALIDATION"] });
+    const generic = agent({ id: "generic", capabilities: ["AUTOMATED_TEST"] });
+    const specialist = agent({ id: "specialist", capabilities: ["AUTOMATED_TEST", "DATA_VALIDATION"] });
+    expect(selectRandomTester(typedTask, [generic, specialist], "seed").tester.id).toBe("specialist");
+    expect(() => selectRandomTester(typedTask, [generic], "seed")).toThrow("NO_ELIGIBLE_TESTER");
+  });
+
   it("validates all software gates and percentages", () => {
     expect(validateSoftwareEvidence(evidence())).toEqual({ passed: true, failures: [] });
     const failed = validateSoftwareEvidence(evidence({ testsPassed: false, hiddenTestsPassed: false, lineCoverage: 0.84, branchCoverage: 0.79, criticalBranchCoverage: 0.94, artifactHash: "bad" }));

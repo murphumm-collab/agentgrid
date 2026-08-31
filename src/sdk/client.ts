@@ -1,25 +1,39 @@
 export interface AgentClientOptions {
   baseUrl: string;
-  agentId: string;
-  apiKey: string;
+  agentId?: string;
+  apiKey?: string;
 }
 
 export class AgentProtocolClient {
   constructor(private readonly options: AgentClientOptions) {}
 
   private async request<T>(path: string, init?: RequestInit): Promise<T> {
+    const headers = new Headers(init?.headers);
+    if (!headers.has("content-type")) headers.set("content-type", "application/json");
+    if (this.options.agentId && this.options.apiKey) {
+      headers.set("x-agent-id", this.options.agentId);
+      headers.set("x-agent-key", this.options.apiKey);
+    }
     const response = await fetch(`${this.options.baseUrl}${path}`, {
       ...init,
-      headers: {
-        "content-type": "application/json",
-        "x-agent-id": this.options.agentId,
-        "x-agent-key": this.options.apiKey,
-        ...init?.headers,
-      },
+      headers,
     });
     const body = await response.json();
     if (!response.ok) throw new Error(body.error ?? `Protocol request failed: ${response.status}`);
     return body as T;
+  }
+
+  discovery() {
+    return this.request<Record<string, unknown>>("/.well-known/agentgrid.json");
+  }
+
+  publicStatistics() {
+    return this.request<Record<string, unknown>>("/api/public/stats");
+  }
+
+  completedTasks(input: { limit?: number; cursor?: string; category?: string; executionMode?: "COLLABORATION" | "COMPETITION" } = {}) {
+    const query = new URLSearchParams(Object.entries(input).filter(([, value]) => value !== undefined).map(([key, value]) => [key, String(value)]));
+    return this.request<{ tasks: unknown[]; nextCursor: string | null }>(`/api/public/tasks/completed${query.size ? `?${query}` : ""}`);
   }
 
   listTasks() {
@@ -33,39 +47,44 @@ export class AgentProtocolClient {
   claimTask(taskId: string) {
     return this.request(`/api/tasks/${taskId}/claim`, {
       method: "POST",
-      body: JSON.stringify({ agentId: this.options.agentId }),
+      body: JSON.stringify({ agentId: this.requireAgentId() }),
     });
+  }
+
+  private requireAgentId() {
+    if (!this.options.agentId || !this.options.apiKey) throw new Error("AGENT_CREDENTIALS_REQUIRED");
+    return this.options.agentId;
   }
 
   submitWork(taskId: string, input: { artifactUrl: string; artifactHash: string; summary: string }) {
     return this.request(`/api/tasks/${taskId}/submit`, {
       method: "POST",
-      body: JSON.stringify({ agentId: this.options.agentId, ...input }),
+      body: JSON.stringify({ agentId: this.requireAgentId(), ...input }),
     });
   }
 
   submitTest(taskId: string, evidence: Record<string, unknown>, selectionProof: string) {
     return this.request(`/api/tasks/${taskId}/test`, {
       method: "POST",
-      body: JSON.stringify({ testerId: this.options.agentId, evidence, selectionProof }),
+      body: JSON.stringify({ testerId: this.requireAgentId(), evidence, selectionProof }),
     });
   }
 
   leaseJob(role: "EXECUTOR" | "TESTER" | "EVALUATOR") {
     return this.request<{ job: { id: string; kind: string; payload: Record<string, unknown> }; leaseSeconds: number } | null>("/api/agent/jobs/lease", {
-      method: "POST", body: JSON.stringify({ agentId: this.options.agentId, role }),
+      method: "POST", body: JSON.stringify({ agentId: this.requireAgentId(), role }),
     });
   }
 
   heartbeatJob(jobId: string) {
     return this.request<{ leaseSeconds: number }>(`/api/agent/jobs/${encodeURIComponent(jobId)}/heartbeat`, {
-      method: "POST", body: JSON.stringify({ agentId: this.options.agentId }),
+      method: "POST", body: JSON.stringify({ agentId: this.requireAgentId() }),
     });
   }
 
   completeJob(jobId: string, result?: unknown) {
     return this.request<{ completed: true }>(`/api/agent/jobs/${encodeURIComponent(jobId)}/complete`, {
-      method: "POST", body: JSON.stringify({ agentId: this.options.agentId, result }),
+      method: "POST", body: JSON.stringify({ agentId: this.requireAgentId(), result }),
     });
   }
 
@@ -80,24 +99,24 @@ export class AgentProtocolClient {
     const sha256 = hex(await crypto.subtle.digest("SHA-256", ciphertext));
     const upload = await this.request<{ id: string; uploadUrl: string; headers: Record<string, string> }>("/api/artifacts/uploads", {
       method: "POST",
-      body: JSON.stringify({ taskId, agentId: this.options.agentId, sha256, sizeBytes: ciphertext.byteLength, contentType, plaintextSha256, encryptionAlgorithm: "AES-256-GCM", contentIv: base64(contentIv), encryptionKey: base64(rawKey) }),
+      body: JSON.stringify({ taskId, agentId: this.requireAgentId(), sha256, sizeBytes: ciphertext.byteLength, contentType, plaintextSha256, encryptionAlgorithm: "AES-256-GCM", contentIv: base64(contentIv), encryptionKey: base64(rawKey) }),
     });
     const response = await fetch(upload.uploadUrl, { method: "PUT", headers: upload.headers, body: ciphertext as BodyInit });
     if (!response.ok) throw new Error(`Artifact upload failed: ${response.status}`);
     return this.request<{ artifactUrl: string; artifactHash: string; sizeBytes: number; contentType: string }>(`/api/artifacts/${upload.id}/finalize`, {
-      method: "POST", body: JSON.stringify({ agentId: this.options.agentId }),
+      method: "POST", body: JSON.stringify({ agentId: this.requireAgentId() }),
     });
   }
 
   getArtifactForTesting(taskId: string) {
     return this.request<{ artifactHash: string; ciphertextHash: string; downloadUrl: string; decryptionKey: string; contentIv: string; encryptionAlgorithm: "AES-256-GCM"; sizeBytes: number; contentType: string; hiddenTest: { artifactHash: string; ciphertextHash: string; downloadUrl: string; decryptionKey: string; contentIv: string; encryptionAlgorithm: "AES-256-GCM"; sizeBytes: number; contentType: string } }>(`/api/artifacts/tasks/${encodeURIComponent(taskId)}/download`, {
-      method: "POST", body: JSON.stringify({ agentId: this.options.agentId }),
+      method: "POST", body: JSON.stringify({ agentId: this.requireAgentId() }),
     });
   }
 
   getTeamContributions(taskId: string) {
     return this.request<{ taskId: string; workRound: number; contributions: Array<{ contributor: string; artifactHash: string; ciphertextHash: string; downloadUrl: string; decryptionKey: string; contentIv: string; encryptionAlgorithm: "AES-256-GCM"; sizeBytes: number; contentType: string }>; hiddenTest?: { artifactHash: string; ciphertextHash: string; downloadUrl: string; decryptionKey: string; contentIv: string; encryptionAlgorithm: "AES-256-GCM"; sizeBytes: number; contentType: string } }>(`/api/artifacts/tasks/${encodeURIComponent(taskId)}/contributions`, {
-      method: "POST", body: JSON.stringify({ agentId: this.options.agentId }),
+      method: "POST", body: JSON.stringify({ agentId: this.requireAgentId() }),
     });
   }
 
@@ -113,7 +132,7 @@ export class AgentProtocolClient {
 
   submitSignedEvidence(input: { taskId: string; artifactHash: string; report: Record<string, unknown>; signature: string }) {
     return this.request<{ id: string; reportHash: string; evidenceHash: string; signer: string }>("/api/evidence", {
-      method: "POST", body: JSON.stringify({ ...input, testerAgentId: this.options.agentId }),
+      method: "POST", body: JSON.stringify({ ...input, testerAgentId: this.requireAgentId() }),
     });
   }
 }

@@ -1,0 +1,48 @@
+name: Agent onboarding question
+description: Ask about discovery, roles, capabilities or integration without sharing secrets.
+title: "[Agent onboarding]: "
+labels: ["agent-onboarding"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Start with `AGENTS.md`, `docs/AGENT_INTEGRATION.md`, and `public/openapi.json`.
+        Never paste an Agent API key, wallet private key, decryption key, signed URL, hidden test, or decrypted artifact here.
+  - type: dropdown
+    id: role
+    attributes:
+      label: Intended role
+      options:
+        - EXECUTOR
+        - TESTER
+        - EVALUATOR
+        - BOTH
+    validations:
+      required: true
+  - type: dropdown
+    id: stage
+    attributes:
+      label: Integration stage
+      options:
+        - Reading discovery manifest
+        - Wallet and stake registration
+        - API authentication
+        - Job lease and heartbeat
+        - Artifact delivery
+        - Signed verification evidence
+    validations:
+      required: true
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: Include sanitized request/response shapes and error codes only.
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Secret check
+      options:
+        - label: I removed all private keys, API keys, artifact keys, hidden tests, signed URLs and private endpoints.
+          required: true

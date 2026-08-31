@@ -54,6 +54,7 @@ contract TaskRegistry is Ownable {
     uint256 public nextTaskId = 1;
     mapping(uint256 => Task) public tasks;
     mapping(uint256 => ExecutionMode) private taskExecutionMode;
+    mapping(uint256 => uint8) public taskRequiredTesterCapabilities;
     mapping(uint256 => address) private competitionWinner;
     mapping(uint256 => uint256) public taskPublicationFee;
     mapping(uint256 => uint256) private publisherStakeBasis;
@@ -111,6 +112,7 @@ contract TaskRegistry is Ownable {
 
     event TaskCreated(uint256 indexed taskId, address indexed publisher, uint256 indexed positionId, bytes32 specHash);
     event TaskExecutionModeSet(uint256 indexed taskId, ExecutionMode mode);
+    event TaskTesterCapabilitiesSet(uint256 indexed taskId, uint8 requiredCapabilities);
     event TaskEvaluationRequested(
         uint256 indexed taskId,
         address indexed publisher,
@@ -199,7 +201,18 @@ contract TaskRegistry is Ownable {
         uint8 maxExecutors,
         ExecutionMode mode
     ) external returns (uint256 taskId) {
-        return _createTask(positionId, specHash, requestedReward, maxExecutors, mode);
+        return _createTask(positionId, specHash, requestedReward, maxExecutors, mode, agentRegistry.CAPABILITY_TEST());
+    }
+
+    function createTaskWithModeAndTesterCapabilities(
+        uint256 positionId,
+        bytes32 specHash,
+        uint256 requestedReward,
+        uint8 maxExecutors,
+        ExecutionMode mode,
+        uint8 requiredTesterCapabilities
+    ) external returns (uint256 taskId) {
+        return _createTask(positionId, specHash, requestedReward, maxExecutors, mode, requiredTesterCapabilities);
     }
 
     function _createTask(
@@ -207,10 +220,14 @@ contract TaskRegistry is Ownable {
         bytes32 specHash,
         uint256 requestedReward,
         uint8 maxExecutors,
-        ExecutionMode mode
+        ExecutionMode mode,
+        uint8 requiredTesterCapabilities
     ) private returns (uint256 taskId) {
         if (stakeManager.ownerOf(positionId) != msg.sender) revert Unauthorized();
         if (specHash == bytes32(0) || requestedReward == 0 || maxExecutors == 0 || maxExecutors > 32) revert InvalidState();
+        // A task may require one or more verification specialities, but it may
+        // not accidentally require executor/evaluator roles from its tester.
+        if ((requiredTesterCapabilities & agentRegistry.BASE_CAPABILITIES()) != agentRegistry.CAPABILITY_TEST()) revert InvalidTesterSet();
         taskId = nextTaskId++;
         tasks[taskId] = Task({
             publisher: msg.sender,
@@ -235,6 +252,7 @@ contract TaskRegistry is Ownable {
             state: State.Evaluating
         });
         taskExecutionMode[taskId] = mode;
+        taskRequiredTesterCapabilities[taskId] = requiredTesterCapabilities;
         uint256 count = agentRegistry.agentCount();
         if (count < EVALUATOR_COUNT) revert InvalidEvaluation();
         uint256 eligibleEvaluatorCount;
@@ -264,6 +282,7 @@ contract TaskRegistry is Ownable {
             selection.deadline
         );
         emit TaskExecutionModeSet(taskId, mode);
+        emit TaskTesterCapabilitiesSet(taskId, requiredTesterCapabilities);
     }
 
     /// @dev Selects a stable three-agent panel from a candidate snapshot committed
@@ -568,7 +587,7 @@ contract TaskRegistry is Ownable {
             address candidate = agentRegistry.agentAt((start + i) % task.testerCandidateCount);
             if (
                 candidate != task.publisher && !isTaskExecutor[taskId][candidate] && !isTaskEvaluator[taskId][candidate] &&
-                agentRegistry.isEligibleFor(candidate, agentRegistry.CAPABILITY_TEST())
+                agentRegistry.isEligibleFor(candidate, taskRequiredTesterCapabilities[taskId])
             ) {
                 tester = candidate;
                 break;

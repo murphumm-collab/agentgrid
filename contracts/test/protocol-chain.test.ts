@@ -138,6 +138,13 @@ describe("AgentGrid Solidity protocol", () => {
     await write(wallet, addresses.agentRegistry, "AgentRegistry", "register", [positionId]);
   }
 
+  async function registerAgentWithCapabilities(wallet: Wallet, positionId: bigint, capabilities: number) {
+    await write(wallet, addresses.token, "TestToken", "faucet");
+    await write(wallet, addresses.token, "TestToken", "approve", [addresses.stakeManager, parseEther("1000")]);
+    await write(wallet, addresses.stakeManager, "StakeCreditManager", "createPosition", [parseEther("1000")]);
+    await write(wallet, addresses.agentRegistry, "AgentRegistry", "registerWithCapabilities", [positionId, capabilities]);
+  }
+
   async function registerEvaluationAgents() {
     const transport = custom(provider as never);
     const wallets = [5, 6, 7].map((addressIndex) => createWalletClient({
@@ -263,6 +270,32 @@ describe("AgentGrid Solidity protocol", () => {
     expect(await read(addresses.token, "TestToken", "balanceOf", [executor.account!.address])).toBe(parseEther("9052"));
     expect(await read(addresses.token, "TestToken", "balanceOf", [tester.account!.address])).toBe(parseEther("9012"));
     expect(await read(addresses.token, "TestToken", "balanceOf", [reserveAccount.address])).toBe(parseEther("16"));
+  });
+
+  it("selects a tester only when every task verification capability matches", async () => {
+    const transport = custom(provider as never);
+    const specialist = createWalletClient({ account: mnemonicToAccount(mnemonic, { addressIndex: 8 }), chain: localChain, transport });
+    const evaluators = await registerEvaluationAgents();
+    await write(publisher, addresses.token, "TestToken", "faucet");
+    await write(publisher, addresses.token, "TestToken", "approve", [addresses.stakeManager, parseEther("1000")]);
+    await write(publisher, addresses.stakeManager, "StakeCreditManager", "createPosition", [parseEther("1000")]);
+    await write(publisher, addresses.stakeManager, "StakeCreditManager", "issueCredit", [4n]);
+    const requiredCapabilities = 2 | 8 | 32; // TEST + AUTOMATED_TEST + DATA_VALIDATION
+    await write(publisher, addresses.taskRegistry, "TaskRegistry", "createTaskWithModeAndTesterCapabilities", [
+      4n, keccak256(stringToHex("typed-verification-spec")), parseEther("1000"), 1, 0, requiredCapabilities,
+    ]);
+    expect(await read(addresses.taskRegistry, "TaskRegistry", "taskRequiredTesterCapabilities", [1n])).toBe(requiredCapabilities);
+    await approveEvaluation(1n, evaluators);
+    await registerAgent(executor, 5n);
+    await registerAgent(tester, 6n); // role-capable, but no verification speciality
+    await registerAgentWithCapabilities(specialist, 7n, requiredCapabilities);
+    await write(executor, addresses.taskRegistry, "TaskRegistry", "claimTask", [1n]);
+    const artifact = keccak256(stringToHex("typed-verification-artifact"));
+    await write(executor, addresses.taskRegistry, "TaskRegistry", "submitContribution", [1n, artifact]);
+    await write(executor, addresses.taskRegistry, "TaskRegistry", "submitWork", [1n, artifact]);
+    await assignTester(1n);
+    const task = (await read(addresses.taskRegistry, "TaskRegistry", "tasks", [1n])) as readonly unknown[];
+    expect(String(task[2]).toLowerCase()).toBe(specialist.account!.address.toLowerCase());
   });
 
   it("requires every executor contribution, excludes the whole team from testing, and splits executor rewards", async () => {

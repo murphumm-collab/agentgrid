@@ -105,6 +105,7 @@ export async function protocolSnapshot() {
         executorWeightsBps: Array.isArray(report.executorWeightsBps) ? report.executorWeightsBps.map(Number) : undefined,
         contributionWork: Array.isArray(report.contributionWork) ? report.contributionWork as NonNullable<typeof task.testResult>["contributionWork"] : undefined,
         competition: report.competition && typeof report.competition === "object" ? report.competition as NonNullable<typeof task.testResult>["competition"] : undefined,
+        criterionResults: Array.isArray(report.criterionResults) ? report.criterionResults as NonNullable<typeof task.testResult>["criterionResults"] : undefined,
       };
     }
     for (const adoption of await latestBusinessAdoptions()) {
@@ -238,6 +239,7 @@ export async function createTask(input: z.infer<typeof createTaskSchema>) {
       testerSelectionProof: null,
       criteria: parsed.criteria.map((description, index) => ({ id: `criterion-${index + 1}`, description })),
       completionDefinition: parsed.completionDefinition,
+      requiredTesterCapabilities: [...new Set(parsed.completionDefinition.acceptanceCriteria.map((criterion) => criterion.verificationType))],
       submission: null,
       testResult: null,
       rewardGrantId: null,

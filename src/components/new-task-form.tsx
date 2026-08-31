@@ -10,7 +10,8 @@ import { publishCommittedTask, waitForBrowserTransaction } from "@/lib/chain-act
 import { parsePendingTaskEvaluation, type PendingTaskEvaluation } from "@/lib/pending-task-evaluation";
 import { taskCategories, taskCategoryGroupLabel, taskCategoryGroups } from "@/components/task-category";
 import { TaskSpecAssistant } from "@/components/task-spec-assistant";
-import { assessTaskDefinition, taskDefinitionSchema, taskDefinitionVersion } from "@/lib/task-definition";
+import { assessTaskDefinition, taskDefinitionSchema, taskDefinitionVersion, verificationTypes } from "@/lib/task-definition";
+import { requiredTesterCapabilityMask } from "@/lib/agent-roles";
 
 function storageKey(publisher: string) {
   return `agentgrid:pending-evaluation:${publisher.toLowerCase()}`;
@@ -58,7 +59,7 @@ export function NewTaskForm({ positions, publisher, locale, production = false }
         await publishCommittedTask({
           positionId: BigInt(pending.positionId), specHash: pending.specHash,
           requestedReward: pending.requestedReward, maxExecutors: pending.maxExecutors,
-          executionMode: pending.executionMode,
+          executionMode: pending.executionMode, requiredTesterCapabilities: pending.requiredTesterCapabilities,
         }, (transactionHash) => persistPending({ ...pending, transactionHash }));
       }
       persistPending(null);
@@ -85,13 +86,15 @@ export function NewTaskForm({ positions, publisher, locale, production = false }
     const methods = lines("verificationMethods");
     const evidence = lines("evidenceRequirements");
     const passConditions = lines("passConditions");
-    if ([methods, evidence, passConditions].some((items) => items.length !== criteria.length)) throw new Error(locale === "zh" ? "每条完成条件都必须有同顺序的验证方法、所需证据和通过阈值" : "Every completion criterion needs a matching verification method, evidence requirement and pass condition in the same order");
+    const criterionVerificationTypes = lines("verificationTypes");
+    if ([methods, evidence, passConditions, criterionVerificationTypes].some((items) => items.length !== criteria.length)) throw new Error(locale === "zh" ? "每条完成条件都必须有同顺序的验证类型、验证方法、所需证据和通过阈值" : "Every completion criterion needs a matching verification type, method, evidence requirement and pass condition in the same order");
+    if (criterionVerificationTypes.some((item) => !verificationTypes.includes(item as typeof verificationTypes[number]))) throw new Error(locale === "zh" ? "存在不支持的验证类型" : "Unsupported verification type");
     let aiReviews: unknown[] = [];
     try { aiReviews = JSON.parse(String(formData.get("aiReviewMetadata") ?? "[]")); } catch { throw new Error(locale === "zh" ? "AI 评审记录无效，请重新校验" : "Invalid AI review metadata; run the check again"); }
     const completionDefinition = taskDefinitionSchema.parse({
       version: taskDefinitionVersion, targetUsers: formData.get("targetUsers"), deliverables: lines("deliverables"), constraints: lines("constraints"),
       outOfScope: lines("outOfScope"), assumptions: lines("assumptions"), aiReviews,
-      acceptanceCriteria: criteria.map((description, index) => ({ id: `criterion-${index + 1}`, description, verificationMethod: methods[index], evidenceRequired: evidence[index], passCondition: passConditions[index], required: true })),
+      acceptanceCriteria: criteria.map((description, index) => ({ id: `criterion-${index + 1}`, description, verificationMethod: methods[index], evidenceRequired: evidence[index], passCondition: passConditions[index], verificationType: criterionVerificationTypes[index], required: true })),
     });
     const readiness = assessTaskDefinition(completionDefinition);
     if (!readiness.ready) throw new Error(`${locale === "zh" ? "完成定义尚不可独立验收" : "Completion definition is not independently verifiable"}: ${[...readiness.blockers, ...readiness.warnings].join(", ")}`);
@@ -133,6 +136,7 @@ export function NewTaskForm({ positions, publisher, locale, production = false }
         positionId: String(payload.stakePositionId), specHash: body.specHash,
         requestedReward: String(payload.requestedReward), maxExecutors: payload.maxExecutors,
         executionMode: payload.executionMode === "COMPETITION" ? "COMPETITION" : "COLLABORATION",
+        requiredTesterCapabilities: requiredTesterCapabilityMask(completionDefinition),
       });
       persistPending(pending);
       setSubmitting(false);
@@ -167,6 +171,7 @@ export function NewTaskForm({ positions, publisher, locale, production = false }
         {production && <label className="field"><span className="label">{locale === "zh" ? "申请奖励 (tAGT)" : "Requested reward (tAGT)"}</span><input className="input" name="requestedReward" type="number" min="1" defaultValue="2500" required /></label>}
         {production && <label className="field field-full"><span className="label">{locale === "zh" ? "隐藏测试包 (.tar.gz)" : "Hidden tests (.tar.gz)"}</span><input className="input" name="hiddenTests" type="file" accept=".gz,application/gzip" required /><span className="hint">{locale === "zh" ? "发布前在浏览器本地加密；执行 Agent 不可访问。测试文件需以 .test.js 或 .test.mjs 结尾，从 test/hidden 运行。" : "Encrypted locally before publication and never exposed to executors. Include .test.js or .test.mjs files, run from test/hidden."}</span></label>}
         <label className="field field-full"><span className="label">{t(locale, "acceptanceCriteria")}</span><textarea className="textarea" name="criteria" required defaultValue={locale === "zh" ? "应用可以无错误构建\n公开测试和隐藏测试全部通过\n关键分支覆盖率不低于 95%" : "Application builds without errors\nPublic and hidden tests pass\nCritical branch coverage is at least 95%"} /><span className="hint">{t(locale, "criteriaHint")}</span></label>
+        <label className="field field-full"><span className="label">{locale === "zh" ? "验证类型（逐行对应）" : "Verification types (line-aligned)"}</span><textarea className="textarea" name="verificationTypes" required defaultValue={"AUTOMATED_TEST\nAUTOMATED_TEST\nAUTOMATED_TEST"} /><span className="hint">{locale === "zh" ? "可选：AUTOMATED_TEST、ARTIFACT_INSPECTION、DATA_VALIDATION、EXTERNAL_OBSERVATION、HUMAN_REVIEW。通用 CI Agent 只能接 AUTOMATED_TEST。" : "Allowed: AUTOMATED_TEST, ARTIFACT_INSPECTION, DATA_VALIDATION, EXTERNAL_OBSERVATION, HUMAN_REVIEW. The generic CI Agent can only accept AUTOMATED_TEST."}</span></label>
         <label className="field field-full"><span className="label">{locale === "zh" ? "验证方法（与完成条件逐行对应）" : "Verification methods (line-aligned with criteria)"}</span><textarea className="textarea" name="verificationMethods" required defaultValue={locale === "zh" ? "在隔离环境执行生产构建命令\n由随机测试 Agent 运行公开及加密隐藏测试\n生成覆盖率报告并检查关键分支" : "Run the production build command in an isolated environment\nRandom tester Agent runs public and encrypted hidden tests\nGenerate coverage report and inspect critical branches"} /></label>
         <label className="field field-full"><span className="label">{locale === "zh" ? "必须提交的证据（逐行对应）" : "Required evidence (line-aligned)"}</span><textarea className="textarea" name="evidenceRequirements" required defaultValue={locale === "zh" ? "签名构建日志与成果哈希\n测试 Agent 签名的测试结果与隐藏测试清单哈希\n签名覆盖率报告" : "Signed build log and artifact hash\nTester-signed results and hidden-test manifest hash\nSigned coverage report"} /></label>
         <label className="field field-full"><span className="label">{locale === "zh" ? "二元或数字通过条件（逐行对应）" : "Binary or numeric pass conditions (line-aligned)"}</span><textarea className="textarea" name="passConditions" required defaultValue={locale === "zh" ? "构建命令退出码必须等于 0\n所有公开测试和隐藏测试必须通过，失败数等于 0\n关键分支覆盖率必须不低于 95%" : "Build command exit code must equal 0\nAll public and hidden tests must pass with zero failures\nCritical branch coverage must be at least 95%"} /></label>

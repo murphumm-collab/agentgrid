@@ -3,6 +3,8 @@ import type { ProtocolDatabase } from "./types";
 import { runtimeConfig } from "./env";
 import { randomUUID } from "node:crypto";
 import { rewrapArtifactKey } from "./artifact-crypto";
+import { taskDefinitionSchema } from "./task-definition";
+import { requiredTesterCapabilityMask } from "./agent-roles";
 
 let pool: Pool | undefined;
 let migrated = false;
@@ -390,13 +392,31 @@ export async function persistChainBatch(name: string, fromBlock: bigint, nextBlo
         );
       }
       if (event.eventName === "TaskCreated" && event.eventArgs?.specHash) {
+        const candidate = await client.query<{ id: string; spec: Record<string, unknown> }>(
+          `SELECT id,spec FROM task_commitments WHERE spec_hash=$1 AND publisher=$2 AND status IN ('APPROVED','ORPHANED') FOR UPDATE`,
+          [String(event.eventArgs.specHash), String(event.eventArgs.publisher).toLowerCase()],
+        );
+        if (candidate.rowCount !== 1) throw new Error("APPROVED_TASK_COMMITMENT_NOT_FOUND_OR_AMBIGUOUS");
+        const definition = candidate.rows[0].spec.completionDefinition
+          ? taskDefinitionSchema.parse(candidate.rows[0].spec.completionDefinition)
+          : undefined;
+        const expectedTesterCapabilities = definition ? requiredTesterCapabilityMask(definition) : 2;
+        const recordedCapabilities = await client.query<{ requiredCapabilities: string }>(
+          `SELECT event_args->>'requiredCapabilities' AS "requiredCapabilities" FROM chain_events
+           WHERE event_name='TaskTesterCapabilitiesSet' AND event_args->>'taskId'=$1
+           ORDER BY block_number DESC,log_index DESC LIMIT 1`,
+          [String(event.eventArgs.taskId)],
+        );
+        if (Number(recordedCapabilities.rows[0]?.requiredCapabilities ?? 2) !== expectedTesterCapabilities) {
+          await client.query(`UPDATE task_commitments SET status='REJECTED',evaluation_approved=FALSE WHERE id=$1`, [candidate.rows[0].id]);
+          continue;
+        }
         const confirmed = await client.query<{ executorSlots: number }>(
           `UPDATE task_commitments SET status='CONFIRMED',chain_task_id=$1,transaction_hash=$2,confirmed_at=NOW()
-           WHERE spec_hash=$3 AND publisher=$4 AND status IN ('APPROVED','ORPHANED')
+           WHERE id=$3
            RETURNING LEAST(32,GREATEST(1,(spec->>'maxExecutors')::int)) AS "executorSlots"`,
-          [String(event.eventArgs.taskId), event.transactionHash, String(event.eventArgs.specHash), String(event.eventArgs.publisher).toLowerCase()],
+          [String(event.eventArgs.taskId), event.transactionHash, candidate.rows[0].id],
         );
-        if (confirmed.rowCount !== 1) throw new Error("APPROVED_TASK_COMMITMENT_NOT_FOUND_OR_AMBIGUOUS");
         const executorSlots = confirmed.rows[0].executorSlots;
         for (let slot = 1; slot <= executorSlots; slot += 1) {
           const id = `${event.chainId}:${event.transactionHash}:${event.logIndex}:EXECUTE_TASK:${slot}`;
@@ -502,7 +522,7 @@ export async function persistChainBatch(name: string, fromBlock: bigint, nextBlo
 
 const notificationEvents = new Set([
   "TaskEvaluationRequested", "TaskEvaluationFeeCharged", "TaskEvaluatorsAssigned", "TaskEvaluationSubmitted", "TaskEvaluationFinalized", "TaskEvaluationExpired", "EvaluationFeePaid", "EvaluationFeeSettled",
-  "TaskCreated", "TaskExecutionModeSet", "TaskPublicationFeeCharged", "TaskClaimed", "ExecutorEvicted", "TeamClosed", "ContributionSubmitted", "TeamReady", "CompetitionReady", "WorkSubmitted", "TesterAssigned", "TestSubmitted", "CompetitionResultSubmitted", "UserReviewed",
+  "TaskCreated", "TaskExecutionModeSet", "TaskTesterCapabilitiesSet", "TaskPublicationFeeCharged", "TaskClaimed", "ExecutorEvicted", "TeamClosed", "ContributionSubmitted", "TeamReady", "CompetitionReady", "WorkSubmitted", "TesterAssigned", "TestSubmitted", "CompetitionResultSubmitted", "UserReviewed",
   "RejectionResponded", "RejectionResolved", "MaintenanceValidated", "MaintenanceRepairRequested", "GrantCreated", "FutureParticipantsUpdated", "RewardClaimed",
 ]);
 

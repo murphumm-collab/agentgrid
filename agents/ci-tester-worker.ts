@@ -11,6 +11,8 @@ import { chainContractAddresses, runtimeConfig } from "../src/lib/env";
 import { decryptArtifactDownload, downloadAndRunSandbox } from "../src/lib/sandbox";
 import { evidenceMessage } from "../src/lib/signed-evidence";
 import { requiredConfigValue, requiredSecret } from "../src/lib/secrets";
+import { automatedCriterionResults } from "../src/lib/criterion-verification";
+import type { TaskDefinition } from "../src/lib/task-definition";
 
 function required(name: string) { return ["AGENT_API_KEY", "AGENT_WALLET_PRIVATE_KEY"].includes(name) ? requiredSecret(name) : requiredConfigValue(name); }
 let heartbeatTimer: ReturnType<typeof setInterval> | undefined;
@@ -21,7 +23,7 @@ async function main() {
   if (!leased) { console.log("No assigned test job."); return; }
   heartbeatTimer = setInterval(() => { void protocol.heartbeatJob(leased.job.id).catch(() => undefined); }, Math.max(5_000, Math.floor(leased.leaseSeconds * 1_000 / 3)));
   const taskId = String(leased.job.payload.taskId);
-  const task = ((await protocol.listTasks()).tasks as Array<{ id: string; executionMode?: "COLLABORATION" | "COMPETITION"; maintenanceRepairCheckpoint?: number | null }>).find((item) => item.id === taskId);
+  const task = ((await protocol.listTasks()).tasks as Array<{ id: string; executionMode?: "COLLABORATION" | "COMPETITION"; maintenanceRepairCheckpoint?: number | null; completionDefinition?: TaskDefinition }>).find((item) => item.id === taskId);
   if (!task) throw new Error("TEST_TASK_NOT_INDEXED");
   const account = privateKeyToAccount(required("AGENT_WALLET_PRIVATE_KEY") as Hex);
   const config = runtimeConfig();
@@ -88,26 +90,28 @@ async function main() {
     contributionWork = calculateContributionWeights(finalManifest, ordered.map((item, index) => ({ contributor: item.contributor, manifest: contributionManifests[index] })), executors[0]);
     executorWeightsBps = contributionWork.map((item) => item.weightBps);
   }
-  const signedReport = { ...report, contributionWork, contributionFormulaVersion, executorWeightsBps, ...(competitionResult ? { competition: competitionResult } : {}), ...(task.maintenanceRepairCheckpoint ? { maintenanceRepairCheckpoint: task.maintenanceRepairCheckpoint } : {}) };
+  const criterionResults = task.completionDefinition ? automatedCriterionResults(task.completionDefinition, report, artifact.artifactHash) : [];
+  const finalPassed = report.passed && (!task.completionDefinition || task.completionDefinition.acceptanceCriteria.every((criterion, index) => !criterion.required || criterionResults[index]?.passed));
+  const signedReport = { ...report, passed: finalPassed, criterionResults, contributionWork, contributionFormulaVersion, executorWeightsBps, ...(competitionResult ? { competition: competitionResult } : {}), ...(task.maintenanceRepairCheckpoint ? { maintenanceRepairCheckpoint: task.maintenanceRepairCheckpoint } : {}) };
   const commitment = evidenceMessage({ taskId, artifactHash: artifact.artifactHash, report: signedReport });
   const signature = await account.signMessage({ message: commitment.message });
   await protocol.heartbeatJob(leased.job.id);
   const evidence = await protocol.submitSignedEvidence({ taskId, artifactHash: artifact.artifactHash, report: signedReport as unknown as Record<string, unknown>, signature });
   await protocol.heartbeatJob(leased.job.id);
   const hash = checkpoint
-    ? await wallet.writeContract({ address: chainContractAddresses().taskRegistry, abi: taskRegistryAbi, functionName: "validateMaintenance", args: [BigInt(taskId), checkpoint, report.passed, evidence.evidenceHash as Hex] })
+    ? await wallet.writeContract({ address: chainContractAddresses().taskRegistry, abi: taskRegistryAbi, functionName: "validateMaintenance", args: [BigInt(taskId), checkpoint, finalPassed, evidence.evidenceHash as Hex] })
     : competition
       ? await wallet.writeContract({
         address: chainContractAddresses().taskRegistry, abi: taskRegistryAbi, functionName: "submitCompetitionTest",
-        args: [BigInt(taskId), report.passed, (competitionResult?.winner ?? `0x${"0".repeat(40)}`) as Hex,
+        args: [BigInt(taskId), finalPassed, (competitionResult?.winner ?? `0x${"0".repeat(40)}`) as Hex,
           competitionResult?.selectedArtifactHash ? keccak256(stringToHex(competitionResult.selectedArtifactHash)) : `0x${"0".repeat(64)}`,
           evidence.evidenceHash as Hex, executorWeightsBps],
       })
-    : await wallet.writeContract({ address: chainContractAddresses().taskRegistry, abi: taskRegistryAbi, functionName: "submitTest", args: [BigInt(taskId), report.passed, evidence.evidenceHash as Hex, executorWeightsBps] });
+    : await wallet.writeContract({ address: chainContractAddresses().taskRegistry, abi: taskRegistryAbi, functionName: "submitTest", args: [BigInt(taskId), finalPassed, evidence.evidenceHash as Hex, executorWeightsBps] });
   const receipt = await publicClient.waitForTransactionReceipt({ hash, confirmations: config.CHAIN_CONFIRMATIONS });
   if (receipt.status !== "success") throw new Error("CHAIN_TEST_SUBMISSION_REVERTED");
-  await completeAgentJob(leased.job.id, required("AGENT_ID"), { reportHash: evidence.reportHash, evidenceHash: evidence.evidenceHash, transactionHash: hash, passed: report.passed });
-  console.log(JSON.stringify({ taskId, checkpoint, passed: report.passed, reportHash: evidence.reportHash, evidenceHash: evidence.evidenceHash, transactionHash: hash }));
+  await completeAgentJob(leased.job.id, required("AGENT_ID"), { reportHash: evidence.reportHash, evidenceHash: evidence.evidenceHash, transactionHash: hash, passed: finalPassed });
+  console.log(JSON.stringify({ taskId, checkpoint, passed: finalPassed, reportHash: evidence.reportHash, evidenceHash: evidence.evidenceHash, transactionHash: hash }));
 }
 
 void main().catch((error) => {

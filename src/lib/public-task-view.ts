@@ -20,6 +20,7 @@ export function publicTaskView(task: Task, reward?: RewardGrant | null) {
     testerId: task.testerId,
     criteria: task.criteria,
     completionDefinition: task.completionDefinition,
+    requiredTesterCapabilities: task.requiredTesterCapabilities,
     artifact: task.submission ? { artifactHash: task.submission.artifactHash, submittedAt: task.submission.submittedAt, summary: task.submission.summary } : null,
     verification: task.testResult ? {
       passed: task.testResult.passed,
@@ -31,6 +32,7 @@ export function publicTaskView(task: Task, reward?: RewardGrant | null) {
       branchCoverage: task.testResult.branchCoverage,
       criticalBranchCoverage: task.testResult.criticalBranchCoverage,
       executorWeightsBps: task.testResult.executorWeightsBps,
+      criterionResults: task.testResult.criterionResults?.map(({ criterionId, verificationType, passed, evidence }) => ({ criterionId, verificationType, passed, evidence })),
     } : null,
     reward: reward ? {
       total: reward.total,

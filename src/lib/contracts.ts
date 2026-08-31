@@ -38,6 +38,8 @@ export const agentRegistryAbi = parseAbi([
 
 export const taskRegistryAbi = parseAbi([
   "function createTaskWithMode(uint256 positionId,bytes32 specHash,uint256 requestedReward,uint8 maxExecutors,uint8 mode) returns (uint256)",
+  "function createTaskWithModeAndTesterCapabilities(uint256 positionId,bytes32 specHash,uint256 requestedReward,uint8 maxExecutors,uint8 mode,uint8 requiredTesterCapabilities) returns (uint256)",
+  "function taskRequiredTesterCapabilities(uint256 taskId) view returns (uint8)",
   "function finalizeEvaluationPanel(uint256 taskId)",
   "function submitEvaluation(uint256 taskId,bytes32 categoryHash,uint16 difficultyBps,uint32 estimatedHours,uint16 testabilityBps,uint256 recommendedReward,bool approve,bytes32 reportHash)",
   "function finalizeTaskEvaluation(uint256 taskId)",
@@ -71,6 +73,7 @@ export const taskRegistryAbi = parseAbi([
   "function resolveRejection(uint256 taskId,bool executorWins,bytes32 resolutionHash)",
   "event TaskCreated(uint256 indexed taskId,address indexed publisher,uint256 indexed positionId,bytes32 specHash)",
   "event TaskExecutionModeSet(uint256 indexed taskId,uint8 mode)",
+  "event TaskTesterCapabilitiesSet(uint256 indexed taskId,uint8 requiredCapabilities)",
   "event TaskEvaluationRequested(uint256 indexed taskId,address indexed publisher,uint256 indexed positionId,bytes32 specHash,uint256 selectionBlock,bytes32 candidateSetHash,uint256 candidateCount,uint256 deadline)",
   "event TaskEvaluationFeeCharged(uint256 indexed taskId,uint256 indexed positionId,uint256 amount,address indexed recipient)",
   "event TaskEvaluatorsAssigned(uint256 indexed taskId,address indexed evaluator0,address indexed evaluator1,address evaluator2,bytes32 selectionProof)",

@@ -47,6 +47,18 @@ describe("confirmed chain business projection", () => {
     expect(result.positions[0]).toMatchObject({ amount: 950, activeTaskId: null });
   });
 
+  it("does not publish a TaskCreated event whose local commitment was rejected", () => {
+    const commitment: CommitmentProjectionRow = {
+      specHash: `0x${"4".repeat(64)}`, publisher: "0xPublisher", status: "REJECTED", chainTaskId: "44",
+      createdAt: "2026-01-01T00:00:00.000Z", confirmedAt: null,
+      spec: { title: "Rejected capability mismatch", description: "A task whose tester mask did not match its committed completion criteria.", category: "Development", maxExecutors: 1, declaredDurationHours: 24, criteria: ["Tests pass"] },
+    };
+    const result = projectChainBusiness({ commitments: [commitment], events: [
+      event("TaskCreated", { taskId: "44", publisher: "0xPublisher", positionId: "5", specHash: commitment.specHash }, "1"),
+    ] });
+    expect(result.tasks).toEqual([]);
+  });
+
   it("projects the private evaluation lifecycle before marketplace publication", () => {
     const commitment: CommitmentProjectionRow = {
       specHash: `0x${"7".repeat(64)}`, publisher: "0xPublisher", status: "CONFIRMED", chainTaskId: "12",

@@ -7,7 +7,12 @@
   "openapi": "/openapi.json",
   "publicStatistics": "/api/public/stats",
   "completedTasks": "/api/public/tasks/completed",
+  "githubRepository": "https://github.com/murphumm-collab/agentgrid",
+  "githubAgentGuide": "https://github.com/murphumm-collab/agentgrid/blob/main/AGENTS.md",
   "agentRegistration": "/api/agents",
+  "jobLease": "/api/agent/jobs/lease",
+  "assignedEvaluation": "/api/agent/evaluations/{taskId}",
+  "signedTestEvidence": "/api/evidence",
   "authentication": {
     "registration": "BSC wallet session plus eligible staked AgentRegistry position",
     "agentRequests": ["x-agent-id", "x-agent-key"],
@@ -19,6 +24,7 @@
     "collaborative or competitive execution",
     "AES-256-GCM artifact delivery",
     "independent signed verification",
+    "criterion-level typed evidence and capability-matched tester selection",
     "weighted delivery and maintenance rewards"
   ],
   "a2aCompatible": false,

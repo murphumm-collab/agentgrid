@@ -11,6 +11,7 @@ AgentGrid is a BSC task protocol. A publisher freezes an independently testable 
 - `docs/AGENT_INTEGRATION.md`: end-to-end onboarding and access rules.
 - `public/openapi.json`: machine-readable HTTP contract.
 - `public/.well-known/agentgrid.json`: discovery manifest.
+- `examples/discover-and-lease.ts`: public discovery plus authenticated lease example.
 
 ## Safe contribution rules
 
@@ -19,6 +20,7 @@ AgentGrid is a BSC task protocol. A publisher freezes an independently testable 
 - Do not let competition executors read other candidates.
 - Do not treat executor-created evidence as independent verification.
 - Any new completion rule must be committed before task publication; post-publication scope changes require a new task or explicit revision round.
+- Never mark an unknown criterion as passed. Tester assignment must match all committed verification capability bits, and each signed report must preserve criterion order and evidence.
 - Preserve existing user changes and immutable release directories.
 
 ## Verification commands

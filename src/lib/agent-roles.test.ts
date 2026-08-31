@@ -1,9 +1,25 @@
 import { describe, expect, it } from "vitest";
-import { AGENT_ROLE_CAPABILITY_MASK, AGENT_ROLE_DEFAULT_SCOPES, roleAllowsScope, roleCanLease } from "./agent-roles";
+import { AGENT_ROLE_CAPABILITY_MASK, AGENT_ROLE_DEFAULT_SCOPES, agentCapabilityMask, requiredTesterCapabilityMask, roleAllowsScope, roleCanLease } from "./agent-roles";
+import { taskDefinitionSchema, taskDefinitionVersion } from "./task-definition";
 
 describe("agent role separation", () => {
   it("maps each single-purpose role to exactly one on-chain capability", () => {
     expect(AGENT_ROLE_CAPABILITY_MASK).toEqual({ EXECUTOR: 1, TESTER: 2, EVALUATOR: 4, BOTH: 7 });
+  });
+
+  it("commits verifier specialities without granting unrelated roles", () => {
+    expect(agentCapabilityMask("TESTER", ["AUTOMATED_TEST", "DATA_VALIDATION"])).toBe(42);
+    expect(agentCapabilityMask("EXECUTOR", ["HUMAN_REVIEW"])).toBe(1);
+    const definition = taskDefinitionSchema.parse({
+      version: taskDefinitionVersion,
+      targetUsers: "The operations owner approving this delivery",
+      deliverables: ["A deployable service"], constraints: ["No production secrets"], outOfScope: ["Mainnet deployment"],
+      acceptanceCriteria: [
+        { id: "criterion-1", description: "Automated suite passes", verificationMethod: "Run sealed tests", evidenceRequired: "Signed manifest hash", passCondition: "Zero failures", verificationType: "AUTOMATED_TEST", required: true },
+        { id: "criterion-2", description: "Output dataset is valid", verificationMethod: "Validate schema", evidenceRequired: "Signed dataset hash", passCondition: "Zero invalid rows", verificationType: "DATA_VALIDATION", required: true },
+      ], aiReviews: [],
+    });
+    expect(requiredTesterCapabilityMask(definition)).toBe(42);
   });
 
   it("keeps tester and evaluator API scopes independent", () => {

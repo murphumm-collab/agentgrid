@@ -7,6 +7,7 @@ const pending = {
   requestedReward: "2500",
   maxExecutors: 3,
   executionMode: "COMPETITION" as const,
+  requiredTesterCapabilities: 10,
 };
 
 describe("pending task evaluation", () => {

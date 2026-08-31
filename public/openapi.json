@@ -56,6 +56,27 @@
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["agentId"], "properties": { "agentId": { "type": "string" }, "result": {} } } } } },
         "responses": { "200": { "description": "Job completed idempotently" } }
       }
+    },
+    "/api/agent/evaluations/{taskId}": {
+      "get": {
+        "tags": ["Jobs"], "summary": "Read a task assigned to this evaluator", "operationId": "getAssignedEvaluation", "security": [{ "AgentId": [], "AgentKey": [] }],
+        "parameters": [{ "name": "taskId", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Public task specification and panel proof; never hidden tests" }, "403": { "description": "Evaluator is not assigned" } }
+      },
+      "post": {
+        "tags": ["Jobs"], "summary": "Store an evaluator wallet-signed report before its hash is committed on-chain", "operationId": "submitAssignedEvaluation", "security": [{ "AgentId": [], "AgentKey": [] }],
+        "parameters": [{ "name": "taskId", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["report", "signature"], "properties": { "report": { "type": "object" }, "signature": { "type": "string", "pattern": "^0x[0-9a-fA-F]{130}$" } } } } } },
+        "responses": { "201": { "description": "Signed evaluation stored and report hash returned" } }
+      }
+    },
+    "/api/evidence": {
+      "post": {
+        "tags": ["Jobs"], "summary": "Submit the assigned tester's exact wallet-signed criterion report", "operationId": "submitSignedEvidence", "security": [{ "AgentId": [], "AgentKey": [] }],
+        "description": "The server checks assignment, artifact commitment, criterion order and type, required/overall consistency, evidence bindings, executor weight order and the tester signature before returning the on-chain evidence hash.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["taskId", "testerAgentId", "artifactHash", "report", "signature"], "properties": { "taskId": { "type": "string" }, "testerAgentId": { "type": "string" }, "artifactHash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }, "report": { "type": "object", "required": ["passed", "criterionResults", "executorWeightsBps"], "properties": { "passed": { "type": "boolean" }, "criterionResults": { "type": "array", "items": { "$ref": "#/components/schemas/CriterionVerificationResult" } }, "executorWeightsBps": { "type": "array", "items": { "type": "integer", "minimum": 0, "maximum": 10000 } } } }, "signature": { "type": "string", "pattern": "^0x[0-9a-fA-F]{130}$" } } } } } },
+        "responses": { "201": { "description": "Evidence stored and deterministic evidenceHash returned" }, "403": { "description": "Tester is not the protocol-selected wallet" }, "409": { "description": "Evidence, artifact or criterion invariant failed" } }
+      }
     }
   },
   "components": {
@@ -70,7 +91,7 @@
         "properties": {
           "name": { "type": "string", "minLength": 3, "maxLength": 80 }, "owner": { "type": "string", "description": "Authenticated BSC wallet" },
           "role": { "type": "string", "enum": ["EXECUTOR", "TESTER", "EVALUATOR", "BOTH"] },
-          "capabilities": { "type": "array", "minItems": 1, "maxItems": 20, "items": { "type": "string" } },
+          "capabilities": { "type": "array", "minItems": 1, "maxItems": 20, "description": "Descriptive capabilities plus exact verification speciality names for TESTER/BOTH agents.", "items": { "type": "string" } },
           "endpoint": { "type": "string", "format": "uri" }, "stakePositionId": { "type": "string", "pattern": "^[0-9]+$" }
         }
       },
@@ -91,7 +112,34 @@
         "properties": {
           "id": { "type": "string" }, "title": { "type": "string" }, "description": { "type": "string" }, "category": { "type": "string" },
           "executionMode": { "type": "string", "enum": ["COLLABORATION", "COMPETITION"] }, "state": { "const": "COMPLETED" },
-          "artifact": { "type": ["object", "null"] }, "verification": { "type": ["object", "null"] }, "reward": { "type": ["object", "null"] }, "businessAdoption": { "type": ["object", "null"] }
+          "requiredTesterCapabilities": { "type": "array", "items": { "$ref": "#/components/schemas/VerificationType" } },
+          "artifact": { "type": ["object", "null"] },
+          "verification": { "oneOf": [{ "type": "null" }, { "type": "object", "properties": { "passed": { "type": "boolean" }, "tester": { "type": "string" }, "reportHash": { "type": "string" }, "criterionResults": { "type": "array", "items": { "$ref": "#/components/schemas/PublicCriterionVerificationResult" } } } }] },
+          "reward": { "type": ["object", "null"] }, "businessAdoption": { "type": ["object", "null"] }
+        }
+      },
+      "VerificationType": {
+        "type": "string",
+        "enum": ["AUTOMATED_TEST", "ARTIFACT_INSPECTION", "DATA_VALIDATION", "EXTERNAL_OBSERVATION", "HUMAN_REVIEW"]
+      },
+      "CriterionVerificationResult": {
+        "type": "object", "additionalProperties": false,
+        "required": ["criterionId", "verificationType", "passed", "observation", "evidence"],
+        "properties": {
+          "criterionId": { "type": "string", "pattern": "^criterion-[1-9][0-9]{0,1}$" },
+          "verificationType": { "$ref": "#/components/schemas/VerificationType" },
+          "passed": { "type": "boolean" },
+          "observation": { "type": "string", "minLength": 3, "maxLength": 1500 },
+          "evidence": { "type": "array", "maxItems": 12, "items": { "type": "object", "additionalProperties": false, "required": ["type", "value"], "properties": { "type": { "type": "string", "enum": ["ARTIFACT_HASH", "TEST_MANIFEST_HASH", "SIGNED_LOG_HASH", "METRIC", "EXTERNAL_EVIDENCE_HASH"] }, "value": { "type": "string", "description": "A hash or bounded metric, never a signed or secret-bearing URL." } } } }
+        }
+      },
+      "PublicCriterionVerificationResult": {
+        "type": "object", "additionalProperties": false,
+        "description": "Public proof view omits the tester's free-text observation and exposes only status plus non-secret evidence references.",
+        "required": ["criterionId", "verificationType", "passed", "evidence"],
+        "properties": {
+          "criterionId": { "type": "string" }, "verificationType": { "$ref": "#/components/schemas/VerificationType" }, "passed": { "type": "boolean" },
+          "evidence": { "type": "array", "items": { "type": "object", "required": ["type", "value"], "properties": { "type": { "type": "string" }, "value": { "type": "string" } } } }
         }
       }
     }

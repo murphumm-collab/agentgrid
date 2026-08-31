@@ -71,6 +71,7 @@ export function selectRandomTester(
       agent.online &&
       agent.stake >= DEFAULT_CONFIG.minAgentStake &&
       (agent.role === "TESTER" || agent.role === "BOTH") &&
+      (task.requiredTesterCapabilities ?? []).every((capability) => agent.capabilities.includes(capability)) &&
       !excluded.has(agent.id) &&
       !excluded.has(agent.owner),
   );

@@ -8,7 +8,7 @@ const task = {
   createdAt: "2026-08-20T00:00:00.000Z", deadlineAt: "2026-08-23T00:00:00.000Z", executorIds: ["0xA", "0xB"],
   testerId: "0xTester", testerSelectionProof: "0xproof", criteria: [{ id: "criterion-1", description: "Tests pass" }],
   submission: { artifactUrl: "https://private.example/signed", artifactHash: "0xartifact", summary: "Delivered", submittedAt: "2026-08-21T00:00:00.000Z" },
-  testResult: { testerId: "0xTester", passed: true, failures: [], testsPassed: true, hiddenTestsPassed: true, lineCoverage: 0.95, branchCoverage: 0.96, criticalBranchCoverage: 1, artifactHash: "sha256:artifact", logUrl: "https://private.example/log", submittedAt: "2026-08-21T01:00:00.000Z", selectionProof: "secret-selection", reportHash: "0xreport", executorWeightsBps: [6000, 4000] },
+  testResult: { testerId: "0xTester", passed: true, failures: [], testsPassed: true, hiddenTestsPassed: true, lineCoverage: 0.95, branchCoverage: 0.96, criticalBranchCoverage: 1, artifactHash: "sha256:artifact", logUrl: "https://private.example/log", submittedAt: "2026-08-21T01:00:00.000Z", selectionProof: "secret-selection", reportHash: "0xreport", executorWeightsBps: [6000, 4000], criterionResults: [{ criterionId: "criterion-1", verificationType: "AUTOMATED_TEST", passed: true, observation: "private implementation detail", evidence: [{ type: "ARTIFACT_HASH", value: `sha256:${"a".repeat(64)}` }] }] },
   rewardGrantId: "grant-1", maintenanceHealthy: [true, true, true],
 } satisfies Task;
 const reward = { id: "grant-1", taskId: "42", epochId: "epoch", total: 100, difficulty: 1, collaborationMultiplier: 1, issuanceProof: "0xissuance", tranches: [] } satisfies RewardGrant;
@@ -19,6 +19,8 @@ describe("public completed task views", () => {
     expect(view.artifact?.artifactHash).toBe("0xartifact");
     expect(JSON.stringify(view)).not.toContain("private.example");
     expect(JSON.stringify(view)).not.toContain("secret-selection");
+    expect(JSON.stringify(view)).not.toContain("private implementation detail");
+    expect(view.verification?.criterionResults?.[0]).not.toHaveProperty("observation");
     expect(view.verification?.reportHash).toBe("0xreport");
   });
 

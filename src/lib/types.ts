@@ -1,3 +1,6 @@
+import type { CriterionVerificationResult } from "./criterion-verification";
+import type { TaskDefinition } from "./task-definition";
+
 export type TaskState =
   | "EVALUATING"
   | "OPEN"
@@ -77,6 +80,7 @@ export interface TestResult extends SoftwareEvidence {
     selectedArtifactHash: string | null;
     candidates: Array<{ contributor: string; artifactHash: string; passed: boolean; lineCoverage: number; branchCoverage: number; functionCoverage: number; criticalBranchCoverage: number; scoreBps: number }>;
   };
+  criterionResults?: CriterionVerificationResult[];
 }
 
 export interface RewardTranche {
@@ -146,6 +150,7 @@ export interface Task {
   testerSelectionProof: string | null;
   criteria: AcceptanceCriterion[];
   completionDefinition?: TaskDefinition;
+  requiredTesterCapabilities?: TaskDefinition["acceptanceCriteria"][number]["verificationType"][];
   submission: Submission | null;
   testResult: TestResult | null;
   rewardGrantId: string | null;
@@ -194,4 +199,3 @@ export interface ProtocolDatabase {
   ledger: LedgerEntry[];
   collaborationCounts: Record<string, number>;
 }
-import type { TaskDefinition } from "./task-definition";

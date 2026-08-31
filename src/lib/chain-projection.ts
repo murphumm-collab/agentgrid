@@ -1,6 +1,7 @@
 import { formatEther } from "viem";
 import type { RewardGrant, StakePosition, Task } from "./types";
-import type { TaskDefinition } from "./task-definition";
+import { verificationTypes, type TaskDefinition } from "./task-definition";
+import { TESTER_VERIFICATION_CAPABILITY_MASK } from "./agent-roles";
 import type { ChainProjectionRow, CommitmentProjectionRow } from "./store-postgres";
 
 type Args = Record<string, string | number | boolean | Array<string | number | boolean>>;
@@ -31,6 +32,7 @@ export function projectChainBusiness(rows: { events: ChainProjectionRow[]; commi
       teamClosed: false, contributionHashes: {}, workRound: 1,
       criteria: spec.criteria.map((description, index) => ({ id: `criterion-${index + 1}`, description })),
       completionDefinition: spec.completionDefinition,
+      requiredTesterCapabilities: spec.completionDefinition ? [...new Set(spec.completionDefinition.acceptanceCriteria.map((criterion) => criterion.verificationType))] : undefined,
       submission: null, testResult: null, rewardGrantId: null, maintenanceHealthy: [false, false, false],
     };
   };
@@ -111,6 +113,8 @@ export function projectChainBusiness(rows: { events: ChainProjectionRow[]; commi
       }
       case "TaskCreated": {
         const taskId = id(args, "taskId");
+        const commitment = commitmentByHash.get(`${id(args, "publisher").toLowerCase()}:${id(args, "specHash").toLowerCase()}`);
+        if (commitment?.status !== "CONFIRMED") break;
         const existing = tasks.get(taskId);
         if (existing) existing.state = "OPEN";
         else {
@@ -122,6 +126,12 @@ export function projectChainBusiness(rows: { events: ChainProjectionRow[]; commi
       case "TaskExecutionModeSet": {
         const task = tasks.get(id(args, "taskId"));
         if (task) task.executionMode = Number(args.mode) === 1 ? "COMPETITION" : "COLLABORATION";
+        break;
+      }
+      case "TaskTesterCapabilitiesSet": {
+        const task = tasks.get(id(args, "taskId"));
+        const mask = Number(args.requiredCapabilities);
+        if (task) task.requiredTesterCapabilities = verificationTypes.filter((capability) => (mask & TESTER_VERIFICATION_CAPABILITY_MASK[capability]) !== 0);
         break;
       }
       case "TaskClaimed": {

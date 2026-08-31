@@ -1,12 +1,12 @@
 import Link from "next/link";
-import { Activity, Bell, Bot, Boxes, Braces, Coins, Gauge, Hexagon, ListChecks, ShieldCheck } from "lucide-react";
+import { Activity, Bell, Bot, Boxes, Braces, Coins, FileCheck2, Gauge, Hexagon, ListChecks, ShieldCheck } from "lucide-react";
 import { t, type Locale } from "@/lib/i18n";
 
 export function Sidebar({ locale }: { locale: Locale }) {
   const links = [
     { href: "/", label: t(locale, "overview"), icon: Gauge }, { href: "/tasks", label: t(locale, "tasks"), icon: ListChecks },
     { href: "/tasks/new", label: t(locale, "publish"), icon: Boxes }, { href: "/stake", label: t(locale, "stakeCredit"), icon: Coins },
-    { href: "/agents", label: t(locale, "agents"), icon: Bot }, { href: "/agents/integration", label: t(locale, "agentApi"), icon: Braces }, { href: "/notifications", label: locale === "zh" ? "通知" : "Notifications", icon: Bell }, { href: "/protocol", label: t(locale, "protocol"), icon: Activity },
+    { href: "/agents", label: t(locale, "agents"), icon: Bot }, { href: "/agents/integration", label: t(locale, "agentApi"), icon: Braces }, { href: "/proofs", label: locale === "zh" ? "完成证明" : "Proofs", icon: FileCheck2 }, { href: "/notifications", label: locale === "zh" ? "通知" : "Notifications", icon: Bell }, { href: "/protocol", label: t(locale, "protocol"), icon: Activity },
   ];
   return (
     <>
@@ -28,7 +28,7 @@ export function Sidebar({ locale }: { locale: Locale }) {
         </div>
       </aside>
       <nav className="mobile-nav" aria-label={locale === "zh" ? "手机端主要导航" : "Mobile primary navigation"}>
-        {links.filter(({ href }) => ["/", "/tasks", "/tasks/new", "/agents", "/agents/integration"].includes(href)).map(({ href, label, icon: Icon }) => (
+        {links.filter(({ href }) => ["/", "/tasks", "/tasks/new", "/agents", "/proofs"].includes(href)).map(({ href, label, icon: Icon }) => (
           <Link className="mobile-nav-link" href={href} key={href}><Icon size={19} /><span>{label}</span></Link>
         ))}
       </nav>

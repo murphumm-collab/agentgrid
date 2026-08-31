@@ -10,7 +10,7 @@ type AssistantResponse = {
   reviews: Array<{ role: string; provider: string; model: string; reportHash: string; review: TaskClarificationReview }>;
   recommendation: {
     targetUsers: string; deliverables: string[]; constraints: string[]; outOfScope: string[]; assumptions: string[];
-    acceptanceCriteria: Array<{ description: string; verificationMethod: string; evidenceRequired: string; passCondition: string }>;
+    acceptanceCriteria: Array<{ description: string; verificationMethod: string; evidenceRequired: string; passCondition: string; verificationType: string }>;
     aiReviews: Array<{ role: string; provider: string; model: string; reportHash: string }>;
   };
   assessment: TaskDefinitionAssessment;
@@ -48,13 +48,14 @@ export function TaskSpecAssistant({ formId, publisher, locale }: { formId: strin
       const methods = lines(data.get("verificationMethods"));
       const evidence = lines(data.get("evidenceRequirements"));
       const passConditions = lines(data.get("passConditions"));
+      const verificationTypes = lines(data.get("verificationTypes"));
       const response = await fetch("/api/task-spec-assistant", {
         method: "POST", headers: { "content-type": "application/json" },
         body: JSON.stringify({
           publisher, title: data.get("title"), businessOutcome: data.get("description"), category: data.get("category"),
           targetUsers: String(data.get("targetUsers") ?? ""), deliverables: lines(data.get("deliverables")), constraints: lines(data.get("constraints")),
           outOfScope: lines(data.get("outOfScope")), assumptions: lines(data.get("assumptions")),
-          criteria: criteria.map((description, index) => ({ description, verificationMethod: methods[index] ?? "", evidenceRequired: evidence[index] ?? "", passCondition: passConditions[index] ?? "", required: true })),
+          criteria: criteria.map((description, index) => ({ description, verificationMethod: methods[index] ?? "", evidenceRequired: evidence[index] ?? "", passCondition: passConditions[index] ?? "", verificationType: verificationTypes[index] ?? "AUTOMATED_TEST", required: true })),
         }),
       });
       const body = await response.json();
@@ -80,6 +81,7 @@ export function TaskSpecAssistant({ formId, publisher, locale }: { formId: strin
     setField(form, "verificationMethods", recommendation.acceptanceCriteria.map((item) => item.verificationMethod).join("\n"));
     setField(form, "evidenceRequirements", recommendation.acceptanceCriteria.map((item) => item.evidenceRequired).join("\n"));
     setField(form, "passConditions", recommendation.acceptanceCriteria.map((item) => item.passCondition).join("\n"));
+    setField(form, "verificationTypes", recommendation.acceptanceCriteria.map((item) => item.verificationType).join("\n"));
     setField(form, "aiReviewMetadata", JSON.stringify(recommendation.aiReviews));
     setError(null);
   }
