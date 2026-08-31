@@ -3,7 +3,7 @@ import type { ProtocolDatabase } from "./types";
 import { runtimeConfig } from "./env";
 import { randomUUID } from "node:crypto";
 import { rewrapArtifactKey } from "./artifact-crypto";
-import { taskDefinitionSchema } from "./task-definition";
+import { taskDefinitionReviewBindingHash, taskDefinitionSchema } from "./task-definition";
 import { requiredTesterCapabilityMask } from "./agent-roles";
 
 let pool: Pool | undefined;
@@ -66,6 +66,19 @@ export async function migratePostgres(initialState?: ProtocolDatabase) {
         evaluation_approved BOOLEAN,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         confirmed_at TIMESTAMPTZ
+      );
+      CREATE TABLE IF NOT EXISTS task_definition_reviews (
+        id UUID PRIMARY KEY,
+        publisher TEXT NOT NULL,
+        reviewed_task_hash TEXT NOT NULL CHECK(reviewed_task_hash ~ '^0x[0-9a-f]{64}$'),
+        definition_hash TEXT NOT NULL CHECK(definition_hash ~ '^0x[0-9a-f]{64}$'),
+        recommendation JSONB NOT NULL,
+        reviewers JSONB NOT NULL,
+        assessment JSONB NOT NULL,
+        expires_at TIMESTAMPTZ NOT NULL,
+        consumed_at TIMESTAMPTZ,
+        commitment_id UUID UNIQUE REFERENCES task_commitments(id) ON DELETE RESTRICT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
       CREATE TABLE IF NOT EXISTS chain_cursors (
         name TEXT PRIMARY KEY,
@@ -216,6 +229,8 @@ export async function migratePostgres(initialState?: ProtocolDatabase) {
       ALTER TABLE artifact_manifests ADD COLUMN IF NOT EXISTS seal_iv TEXT;
       ALTER TABLE artifact_manifests ADD COLUMN IF NOT EXISTS seal_tag TEXT;
       CREATE UNIQUE INDEX IF NOT EXISTS task_commitments_publisher_spec_idx ON task_commitments(publisher,spec_hash);
+      CREATE INDEX IF NOT EXISTS task_definition_reviews_publisher_idx ON task_definition_reviews(publisher,created_at DESC);
+      CREATE INDEX IF NOT EXISTS task_definition_reviews_expiry_idx ON task_definition_reviews(expires_at) WHERE consumed_at IS NULL;
       CREATE INDEX IF NOT EXISTS audit_events_created_at_idx ON audit_events(created_at DESC);
       CREATE INDEX IF NOT EXISTS auth_nonces_expires_at_idx ON auth_nonces(expires_at);
       CREATE INDEX IF NOT EXISTS chain_events_block_idx ON chain_events(chain_id, block_number);
@@ -254,13 +269,54 @@ export interface TaskCommitmentInput {
   spec: unknown;
 }
 
+export interface TaskDefinitionReviewInput {
+  id: string;
+  publisher: string;
+  reviewedTaskHash: string;
+  definitionHash: string;
+  recommendation: unknown;
+  reviewers: unknown;
+  assessment: unknown;
+  expiresAt: Date;
+}
+
+export async function storeTaskDefinitionReview(input: TaskDefinitionReviewInput) {
+  await migratePostgres();
+  const result = await databasePool().query(
+    `INSERT INTO task_definition_reviews(id,publisher,reviewed_task_hash,definition_hash,recommendation,reviewers,assessment,expires_at)
+     VALUES($1,$2,$3,$4,$5::jsonb,$6::jsonb,$7::jsonb,$8)
+     RETURNING id,reviewed_task_hash AS "reviewedTaskHash",definition_hash AS "definitionHash",expires_at::text AS "expiresAt"`,
+    [input.id, input.publisher.toLowerCase(), input.reviewedTaskHash.toLowerCase(), input.definitionHash.toLowerCase(),
+      JSON.stringify(input.recommendation), JSON.stringify(input.reviewers), JSON.stringify(input.assessment), input.expiresAt],
+  );
+  return result.rows[0];
+}
+
 export async function createTaskCommitment(input: TaskCommitmentInput) {
   await migratePostgres();
-  const hiddenTestId = String((input.spec as { hiddenTestManifestId?: unknown }).hiddenTestManifestId ?? "");
-  const hiddenTestHash = String((input.spec as { hiddenTestPlaintextSha256?: unknown }).hiddenTestPlaintextSha256 ?? "").toLowerCase();
+  const rawSpec = input.spec as {
+    definitionReviewId?: unknown; hiddenTestManifestId?: unknown; hiddenTestPlaintextSha256?: unknown;
+    title?: unknown; description?: unknown; category?: unknown; completionDefinition?: unknown;
+  };
+  const definitionReviewId = String(rawSpec.definitionReviewId ?? "");
+  const hiddenTestId = String(rawSpec.hiddenTestManifestId ?? "");
+  const hiddenTestHash = String(rawSpec.hiddenTestPlaintextSha256 ?? "").toLowerCase();
+  const reviewedTaskHash = taskDefinitionReviewBindingHash({
+    title: rawSpec.title,
+    businessOutcome: rawSpec.description,
+    category: rawSpec.category,
+    completionDefinition: rawSpec.completionDefinition,
+  });
   const client = await databasePool().connect();
   try {
     await client.query("BEGIN");
+    const review = await client.query<{ reviewedTaskHash: string }>(
+      `SELECT reviewed_task_hash AS "reviewedTaskHash" FROM task_definition_reviews
+       WHERE id=$1 AND publisher=$2 AND consumed_at IS NULL AND expires_at>NOW() FOR UPDATE`,
+      [definitionReviewId, input.publisher.toLowerCase()],
+    );
+    if (!review.rows[0]) throw new Error("TASK_DEFINITION_REVIEW_REQUIRED");
+    if (review.rows[0].reviewedTaskHash.toLowerCase() !== reviewedTaskHash.toLowerCase()) throw new Error("TASK_DEFINITION_CHANGED_AFTER_REVIEW");
     const hidden = await client.query<{ plaintextSha256: string }>(
       `SELECT plaintext_sha256 AS "plaintextSha256" FROM hidden_test_manifests
        WHERE id=$1 AND publisher=$2 AND status='READY' FOR UPDATE`,
@@ -274,9 +330,66 @@ export async function createTaskCommitment(input: TaskCommitmentInput) {
       [input.id, input.publisher.toLowerCase(), input.specHash, JSON.stringify(input.spec)],
     );
     await client.query("UPDATE hidden_test_manifests SET status='BOUND',commitment_id=$2 WHERE id=$1", [hiddenTestId, input.id]);
+    await client.query("UPDATE task_definition_reviews SET consumed_at=NOW(),commitment_id=$2 WHERE id=$1", [definitionReviewId, input.id]);
     await client.query("COMMIT");
     return result.rows[0];
   } catch (error) { await rollback(client); throw error; } finally { client.release(); }
+}
+
+export interface PendingTaskCommitmentRow {
+  id: string;
+  publisher: string;
+  specHash: string;
+  spec: Record<string, unknown>;
+  status: "DRAFT" | "ORPHANED";
+  evaluationTransactionHash: string | null;
+  createdAt: string;
+}
+
+export async function pendingTaskCommitmentForPublisher(publisher: string) {
+  await migratePostgres();
+  const result = await databasePool().query<PendingTaskCommitmentRow>(
+    `SELECT id,publisher,spec_hash AS "specHash",spec,status,
+       evaluation_transaction_hash AS "evaluationTransactionHash",created_at::text AS "createdAt"
+     FROM task_commitments
+     WHERE publisher=$1 AND status IN ('DRAFT','ORPHANED')
+     ORDER BY created_at ASC,id ASC LIMIT 1`,
+    [publisher.toLowerCase()],
+  );
+  return result.rows[0] ?? null;
+}
+
+export async function bindTaskCommitmentEvaluationTransaction(id: string, publisher: string, transactionHash: string) {
+  await migratePostgres();
+  const result = await databasePool().query<PendingTaskCommitmentRow>(
+    `UPDATE task_commitments SET evaluation_transaction_hash=$3
+     WHERE id=$1 AND publisher=$2 AND status IN ('DRAFT','ORPHANED')
+       AND (evaluation_transaction_hash IS NULL OR LOWER(evaluation_transaction_hash)=LOWER($3))
+     RETURNING id,publisher,spec_hash AS "specHash",spec,status,
+       evaluation_transaction_hash AS "evaluationTransactionHash",created_at::text AS "createdAt"`,
+    [id, publisher.toLowerCase(), transactionHash.toLowerCase()],
+  );
+  if (result.rows[0]) return result.rows[0];
+  const existing = await databasePool().query<{ transactionHash: string | null }>(
+    `SELECT evaluation_transaction_hash AS "transactionHash" FROM task_commitments
+     WHERE id=$1 AND publisher=$2 AND status IN ('DRAFT','ORPHANED')`,
+    [id, publisher.toLowerCase()],
+  );
+  if (!existing.rows[0]) throw new Error("TASK_COMMITMENT_NOT_FOUND");
+  throw new Error("TASK_COMMITMENT_TRANSACTION_EQUIVOCATION");
+}
+
+export async function clearRevertedTaskCommitmentEvaluationTransaction(id: string, publisher: string, transactionHash: string) {
+  await migratePostgres();
+  const result = await databasePool().query(
+    `UPDATE task_commitments SET evaluation_transaction_hash=NULL
+     WHERE id=$1 AND publisher=$2 AND status IN ('DRAFT','ORPHANED')
+       AND LOWER(evaluation_transaction_hash)=LOWER($3)
+     RETURNING id`,
+    [id, publisher.toLowerCase(), transactionHash.toLowerCase()],
+  );
+  if (!result.rows[0]) throw new Error("TASK_COMMITMENT_TRANSACTION_NOT_FOUND");
+  return { id: result.rows[0].id, cleared: true };
 }
 
 export interface HiddenTestManifestInput {

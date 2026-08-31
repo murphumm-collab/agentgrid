@@ -3,6 +3,7 @@ import { z } from "zod";
 import { assessTaskDefinition, taskDefinitionSchema } from "./task-definition";
 
 export const taskSpecSchema = z.object({
+  definitionReviewId: z.string().uuid(),
   stakePositionId: z.coerce.number().int().positive(),
   title: z.string().trim().min(8).max(160),
   description: z.string().trim().min(30).max(10_000),

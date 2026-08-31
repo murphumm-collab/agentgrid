@@ -15,6 +15,7 @@ const completionDefinition = {
 describe("task commitments", () => {
   it("creates a deterministic bytes32 commitment", () => {
     const spec = taskSpecSchema.parse({
+      definitionReviewId: "f59d7736-338b-4a25-b844-4e1f4a79ba24",
       stakePositionId: 7, title: "Ship a real service", description: "Deliver a deployed service with monitoring and a rollback runbook.",
       category: "Development", maxExecutors: 2, declaredDurationHours: 48, criteria: completionDefinition.acceptanceCriteria.map((item) => item.description), completionDefinition, requestedReward: 2500,
       hiddenTestManifestId: "07a92c98-e8c9-40f4-8f79-91a57f10186b", hiddenTestPlaintextSha256: "a".repeat(64),
@@ -29,6 +30,7 @@ describe("task commitments", () => {
 
   it("rejects criteria that are changed outside the frozen completion definition", () => {
     expect(() => taskSpecSchema.parse({
+      definitionReviewId: "f59d7736-338b-4a25-b844-4e1f4a79ba24",
       stakePositionId: 7, title: "Ship a real service", description: "Deliver a deployed service with monitoring and a rollback runbook.",
       category: "Development", maxExecutors: 2, declaredDurationHours: 48, criteria: ["Looks good", "Service builds without errors"], completionDefinition, requestedReward: 2500,
       hiddenTestManifestId: "07a92c98-e8c9-40f4-8f79-91a57f10186b", hiddenTestPlaintextSha256: "a".repeat(64),

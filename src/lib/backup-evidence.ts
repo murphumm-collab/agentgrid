@@ -16,7 +16,7 @@ const restoreSchema = z.object({
   completedAt: z.string().datetime({ offset: true }),
   source: z.enum(["local", "off-host-download"]),
   checksumVerified: z.literal(true),
-  coreTables: z.literal(10),
+  coreTables: z.literal(11),
   isolatedDatabaseDropped: z.literal(true),
 }).strict();
 

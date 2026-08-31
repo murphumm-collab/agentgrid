@@ -41,6 +41,12 @@ function jsonRpcResult(request: { id?: string | number | null; method?: string; 
   if (request.method === "eth_chainId") return "0x61";
   if (request.method === "eth_blockNumber") return "0x1";
   if (request.method === "eth_getCode") return "0x6000";
+  if (request.method === "eth_getLogs") return [];
+  if (request.method === "eth_getTransactionReceipt") return {
+    transactionHash: String(request.params?.[0]), transactionIndex: "0x0", blockHash: `0x${"55".repeat(32)}`, blockNumber: "0x1",
+    from: publisher, to: contractAddress, cumulativeGasUsed: "0x5208", gasUsed: "0x5208", contractAddress: null,
+    logs: [], logsBloom: `0x${"00".repeat(256)}`, status: "0x0", effectiveGasPrice: "0x1", type: "0x2",
+  };
   if (request.method !== "eth_call") throw new Error(`UNSUPPORTED_RPC_METHOD_${request.method}`);
   const call = request.params?.[0] as { data?: string } | undefined;
   const selector = call?.data?.slice(0, 10);
@@ -72,6 +78,45 @@ async function rpcServer() {
   const address = server.address();
   if (!address || typeof address === "string") throw new Error("RPC_SMOKE_ADDRESS_UNAVAILABLE");
   return { server, url: `http://127.0.0.1:${address.port}` };
+}
+
+async function specAssistantAiServer() {
+  const server = createServer((request, response) => {
+    let body = "";
+    request.setEncoding("utf8");
+    request.on("data", (chunk) => { body += chunk; });
+    request.on("end", () => {
+      try {
+        const parsed = JSON.parse(body) as { messages?: Array<{ content?: string }> };
+        const role = parsed.messages?.[0]?.content?.includes("VALIDATION_CRITIC") ? "VALIDATION_CRITIC" : "REQUIREMENTS_WRITER";
+        const review = {
+          role,
+          summary: `${role} independently checked the business outcome and every verifier-controlled pass condition.`,
+          clarifyingQuestions: [],
+          risks: ["Post-publication scope changes require a new commitment."],
+          suggestedTargetUsers: "Settlement operations owners who approve the monitored workflow",
+          suggestedDeliverables: ["Runnable monitored service archive", "Operator verification and rollback runbook"],
+          suggestedConstraints: ["No production credentials and no outbound network during independent verification"],
+          suggestedOutOfScope: ["Mainnet deployment and requirements introduced after publication"],
+          suggestedAssumptions: ["Input events follow the committed JSON schema"],
+          suggestedCriteria: [
+            { description: "The service builds and all sealed tests pass", verificationMethod: "Run the fixed build and sealed test commands in the protocol sandbox", evidenceRequired: "Tester-signed exit codes, test manifest hash and artifact hash", passCondition: "Build exit code equals 0 and failed test count equals 0", verificationType: "AUTOMATED_TEST", required: true },
+            { description: "Critical branch coverage meets the committed threshold", verificationMethod: "Run verifier-owned coverage collection against every delivered source module", evidenceRequired: "Tester-signed coverage metrics and artifact hash", passCondition: "Critical branch coverage is greater than or equal to 95%", verificationType: "AUTOMATED_TEST", required: true },
+          ],
+        };
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify(review) } }] }));
+      } catch {
+        response.writeHead(400, { "content-type": "application/json" });
+        response.end(JSON.stringify({ error: "INVALID_AI_REQUEST" }));
+      }
+    });
+  });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("SPEC_ASSISTANT_AI_SMOKE_ADDRESS_UNAVAILABLE");
+  return { server, url: `http://127.0.0.1:${address.port}/v1` };
 }
 
 async function freePort() {
@@ -176,10 +221,18 @@ async function verifyBinaryBodyPolicy(baseUrl: string, manifestId: string, authS
   await expectBodyPolicyError(await fetch(request), 413, "REQUEST_BODY_TOO_LARGE");
 }
 
+async function publisherHeaders(baseUrl: string, authSecret: string) {
+  const session = await new SignJWT({ address: publisher, chainId: 97 })
+    .setProtectedHeader({ alg: "HS256" }).setSubject(publisher.toLowerCase()).setIssuedAt().setExpirationTime("10m")
+    .setIssuer("agentgrid").setAudience("agentgrid-web").sign(new TextEncoder().encode(authSecret));
+  return { origin: baseUrl, cookie: `agentgrid-session=${session}`, "content-type": "application/json" };
+}
+
 async function main() {
   const admin = new Pool({ connectionString: baseDatabaseUrl, max: 1 });
   const redis = createClient({ url: redisUrl });
   const rpc = await rpcServer();
+  const specAi = await specAssistantAiServer();
   const port = await freePort();
   const baseUrl = `http://127.0.0.1:${port}`;
   const isolatedDatabaseUrl = new URL(baseDatabaseUrl);
@@ -195,6 +248,7 @@ async function main() {
     ARTIFACT_MASTER_KEY: artifactMasterKey,
     ADMIN_API_KEY: `runtime-admin-${randomBytes(32).toString("hex")}`,
     ALERT_WEBHOOK_SECRET: `runtime-alert-${randomBytes(32).toString("hex")}`,
+    SPEC_ASSISTANT_AI_API_KEY: `runtime-ai-${randomBytes(32).toString("hex")}`,
   };
   const secretFiles = Object.fromEntries(Object.entries(secretValues).map(([name, value]) => {
     const filename = path.join(secretFolder, name.toLowerCase());
@@ -216,6 +270,10 @@ async function main() {
     ADMIN_API_KEY_FILE: secretFiles.ADMIN_API_KEY,
     ALERT_WEBHOOK_URL: "https://alerts.invalid/agentgrid-smoke",
     ALERT_WEBHOOK_SECRET_FILE: secretFiles.ALERT_WEBHOOK_SECRET,
+    SPEC_ASSISTANT_AI_API_KEY_FILE: secretFiles.SPEC_ASSISTANT_AI_API_KEY,
+    SPEC_ASSISTANT_AI_BASE_URL: specAi.url,
+    SPEC_ASSISTANT_AI_ALLOWED_ORIGINS: new URL(specAi.url).origin,
+    SPEC_ASSISTANT_AI_MODELS: "requirements-smoke,critic-smoke",
     S3_ENDPOINT: "http://127.0.0.1:9000",
     S3_REGION: "us-east-1",
     S3_BUCKET: "agentgrid-artifacts",
@@ -311,7 +369,84 @@ async function main() {
     web = await startWeb();
     const readinessResponse = await fetch(`${baseUrl}/api/health/ready`, { signal: AbortSignal.timeout(10_000) });
     const readiness = await readinessResponse.json() as { checks?: Record<string, boolean> };
-    if (!readinessResponse.ok || readiness.checks?.fileBackedSecrets !== true) throw new Error("DELIVERY_SMOKE_FILE_SECRET_READINESS_FAILED");
+    if (!readinessResponse.ok || readiness.checks?.fileBackedSecrets !== true || readiness.checks?.taskDefinitionAi !== true) throw new Error("DELIVERY_SMOKE_FILE_SECRET_READINESS_FAILED");
+    const authenticatedPublisherHeaders = await publisherHeaders(baseUrl, secretValues.AUTH_SECRET);
+    const reviewedTitle = "Build a settlement monitoring service";
+    const reviewedOutcome = "Alert settlement operations before a failed transfer breaches the committed service-level objective.";
+    const reviewedCategory = "Automation";
+    const reviewResponse = await fetch(`${baseUrl}/api/task-spec-assistant`, {
+      method: "POST", headers: authenticatedPublisherHeaders, signal: AbortSignal.timeout(10_000), body: JSON.stringify({
+        publisher, title: reviewedTitle, businessOutcome: reviewedOutcome, category: reviewedCategory,
+        targetUsers: "Settlement operations owners who approve the monitored workflow",
+        deliverables: ["Runnable monitored service archive", "Operator verification and rollback runbook"],
+        constraints: ["No production credentials and no outbound network during independent verification"],
+        outOfScope: ["Mainnet deployment and requirements introduced after publication"], assumptions: ["Input events follow the committed JSON schema"],
+        criteria: [
+          { description: "The service builds and all sealed tests pass", verificationMethod: "Run the fixed build and sealed test commands in the protocol sandbox", evidenceRequired: "Tester-signed exit codes, test manifest hash and artifact hash", passCondition: "Build exit code equals 0 and failed test count equals 0", verificationType: "AUTOMATED_TEST", required: true },
+          { description: "Critical branch coverage meets the committed threshold", verificationMethod: "Run verifier-owned coverage collection against every delivered source module", evidenceRequired: "Tester-signed coverage metrics and artifact hash", passCondition: "Critical branch coverage is greater than or equal to 95%", verificationType: "AUTOMATED_TEST", required: true },
+        ],
+      }),
+    });
+    const reviewed = await reviewResponse.json() as {
+      error?: string; assessment?: { ready?: boolean }; reviews?: Array<{ provider?: string }>;
+      definitionReview?: { id?: string; expiresAt?: string } | null;
+      recommendation?: { acceptanceCriteria?: Array<{ description: string }> } & Record<string, unknown>;
+    };
+    if (!reviewResponse.ok || reviewed.assessment?.ready !== true || !reviewed.definitionReview?.id || !reviewed.recommendation
+      || reviewed.reviews?.filter((item) => item.provider === new URL(specAi.url).origin).length !== 2) {
+      throw new Error(`DELIVERY_SMOKE_TASK_DEFINITION_REVIEW_FAILED_${reviewed.error ?? "INVALID_RESPONSE"}`);
+    }
+    const reviewedHiddenTestId = randomUUID();
+    const reviewedHiddenTestHash = randomBytes(32).toString("hex");
+    await store.createHiddenTestManifest({
+      id: reviewedHiddenTestId, publisher, objectKey: `hidden-tests/${publisher.toLowerCase()}/${reviewedHiddenTestId}`,
+      sha256: randomBytes(32).toString("hex"), plaintextSha256: reviewedHiddenTestHash, sizeBytes: 8, contentType: "application/gzip",
+      encryptionAlgorithm: "AES-256-GCM", contentIv: randomBytes(12).toString("base64"), sealedKey: randomBytes(32).toString("base64"),
+      sealIv: randomBytes(12).toString("base64"), sealTag: randomBytes(16).toString("base64"),
+    });
+    await store.finalizeHiddenTestManifest(reviewedHiddenTestId, publisher);
+    const reviewedCommitmentBody = {
+      publisher, definitionReviewId: reviewed.definitionReview.id, stakePositionId: 9, title: reviewedTitle, description: reviewedOutcome,
+      category: reviewedCategory, executionMode: "COLLABORATION", maxExecutors: 2, declaredDurationHours: 48,
+      criteria: reviewed.recommendation.acceptanceCriteria!.map((criterion) => criterion.description), completionDefinition: reviewed.recommendation,
+      requestedReward: 2500, hiddenTestManifestId: reviewedHiddenTestId, hiddenTestPlaintextSha256: reviewedHiddenTestHash,
+    };
+    const commitmentResponse = await fetch(`${baseUrl}/api/chain/task-commitments`, {
+      method: "POST", headers: authenticatedPublisherHeaders, signal: AbortSignal.timeout(10_000), body: JSON.stringify(reviewedCommitmentBody),
+    });
+    const committed = await commitmentResponse.json() as { error?: string; id?: string };
+    if (!commitmentResponse.ok || !committed.id) throw new Error(`DELIVERY_SMOKE_REVIEWED_COMMITMENT_FAILED_${committed.error ?? "INVALID_RESPONSE"}`);
+    const recoveredBeforeBroadcastResponse = await fetch(`${baseUrl}/api/chain/task-commitments`, {
+      headers: authenticatedPublisherHeaders, signal: AbortSignal.timeout(10_000), cache: "no-store",
+    });
+    const recoveredBeforeBroadcast = await recoveredBeforeBroadcastResponse.json() as { error?: string; pending?: { commitmentId?: string; specHash?: string; transactionHash?: string; broadcastReady?: boolean } };
+    if (!recoveredBeforeBroadcastResponse.ok || recoveredBeforeBroadcast.pending?.commitmentId !== committed.id
+      || recoveredBeforeBroadcast.pending.transactionHash || recoveredBeforeBroadcast.pending.broadcastReady !== false) {
+      throw new Error(`DELIVERY_SMOKE_COMMITMENT_RECOVERY_FAILED_${recoveredBeforeBroadcast.error ?? "INVALID_RESPONSE"}`);
+    }
+    const revertedEvaluationTransaction = `0x${"de".repeat(32)}`;
+    const bindResponse = await fetch(`${baseUrl}/api/chain/task-commitments/${encodeURIComponent(committed.id)}/transaction`, {
+      method: "POST", headers: authenticatedPublisherHeaders, signal: AbortSignal.timeout(10_000),
+      body: JSON.stringify({ publisher, transactionHash: revertedEvaluationTransaction }),
+    });
+    const bound = await bindResponse.json() as { error?: string; transactionHash?: string };
+    if (!bindResponse.ok || bound.transactionHash !== revertedEvaluationTransaction) throw new Error(`DELIVERY_SMOKE_TRANSACTION_BIND_FAILED_${bound.error ?? "INVALID_RESPONSE"}`);
+    const recoveredAfterBroadcastResponse = await fetch(`${baseUrl}/api/chain/task-commitments`, {
+      headers: authenticatedPublisherHeaders, signal: AbortSignal.timeout(10_000), cache: "no-store",
+    });
+    const recoveredAfterBroadcast = await recoveredAfterBroadcastResponse.json() as { pending?: { transactionHash?: string } };
+    if (!recoveredAfterBroadcastResponse.ok || recoveredAfterBroadcast.pending?.transactionHash !== revertedEvaluationTransaction) throw new Error("DELIVERY_SMOKE_BOUND_TRANSACTION_NOT_RECOVERED");
+    const clearResponse = await fetch(`${baseUrl}/api/chain/task-commitments/${encodeURIComponent(committed.id)}/transaction`, {
+      method: "DELETE", headers: authenticatedPublisherHeaders, signal: AbortSignal.timeout(10_000),
+      body: JSON.stringify({ publisher, transactionHash: revertedEvaluationTransaction }),
+    });
+    const cleared = await clearResponse.json() as { error?: string; cleared?: boolean };
+    if (!clearResponse.ok || cleared.cleared !== true) throw new Error(`DELIVERY_SMOKE_REVERTED_TRANSACTION_CLEAR_FAILED_${cleared.error ?? "INVALID_RESPONSE"}`);
+    const reviewReplayResponse = await fetch(`${baseUrl}/api/chain/task-commitments`, {
+      method: "POST", headers: authenticatedPublisherHeaders, signal: AbortSignal.timeout(10_000), body: JSON.stringify(reviewedCommitmentBody),
+    });
+    const reviewReplay = await reviewReplayResponse.json() as { error?: string };
+    if (reviewReplayResponse.status !== 409 || reviewReplay.error !== "TASK_DEFINITION_REVIEW_REQUIRED") throw new Error("DELIVERY_SMOKE_DEFINITION_REVIEW_REPLAY_ACCEPTED");
     const chainConfigResponse = await fetch(`${baseUrl}/api/chain/config`, { signal: AbortSignal.timeout(10_000) });
     const chainConfig = await chainConfigResponse.json() as { chainId?: number; confirmations?: number; walletConnectProjectId?: string; contracts?: Record<string, string> };
     if (
@@ -381,6 +516,12 @@ async function main() {
       encryptedArtifactVerifiedAndSealed: true,
       duplicateCompletionRejected: true,
       fileBackedReadiness: true,
+      externalAiDefinitionReview: true,
+      definitionReviewBoundAndConsumed: true,
+      definitionReviewReplayRejected: true,
+      serverCommitmentCrashRecovery: true,
+      evaluationTransactionHashRecovered: true,
+      revertedTransactionServerVerified: true,
       runtimeBrowserChainConfig: true,
       browserTransactionConfirmations: chainConfig.confirmations,
       boundedJsonRequests: true,
@@ -400,6 +541,7 @@ async function main() {
     await admin.query(`DROP ROLE IF EXISTS ${databaseRole}`).catch(() => undefined);
     await admin.end().catch(() => undefined);
     await closeServer(rpc.server).catch(() => undefined);
+    await closeServer(specAi.server).catch(() => undefined);
     rmSync(secretFolder, { recursive: true, force: true });
   }
 }

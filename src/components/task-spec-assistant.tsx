@@ -15,6 +15,8 @@ type AssistantResponse = {
   };
   assessment: TaskDefinitionAssessment;
   definitionHash: string;
+  reviewedTaskHash: string;
+  definitionReview: { id: string; expiresAt: string } | null;
 };
 
 function lines(value: FormDataEntryValue | null) {
@@ -33,7 +35,7 @@ function setField(form: HTMLFormElement, name: string, value: string) {
   control.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
-export function TaskSpecAssistant({ formId, publisher, locale }: { formId: string; publisher: string; locale: Locale }) {
+export function TaskSpecAssistant({ formId, publisher, locale, production = false }: { formId: string; publisher: string; locale: Locale; production?: boolean }) {
   const [result, setResult] = useState<AssistantResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -42,6 +44,7 @@ export function TaskSpecAssistant({ formId, publisher, locale }: { formId: strin
     const form = document.getElementById(formId) as HTMLFormElement | null;
     if (!form) return;
     setLoading(true); setError(null);
+    setField(form, "definitionReviewId", "");
     try {
       const data = new FormData(form);
       const criteria = lines(data.get("criteria"));
@@ -69,6 +72,7 @@ export function TaskSpecAssistant({ formId, publisher, locale }: { formId: strin
     if (!result) return;
     const blocking = result.reviews.flatMap((item) => item.review.clarifyingQuestions).some((item) => item.blocking);
     if (blocking) { setError(locale === "zh" ? "请先回答所有阻塞问题，再重新校验；系统不会替发布者猜测业务事实。" : "Answer every blocking question and re-run the check; the system will not guess business facts."); return; }
+    if (!result.assessment.ready || (production && !result.definitionReview)) { setError(locale === "zh" ? "当前定义未通过服务器校验，不能生成发布凭证。" : "The definition did not pass the server gate, so no publication credential was issued."); return; }
     const form = document.getElementById(formId) as HTMLFormElement | null;
     if (!form) return;
     const recommendation = result.recommendation;
@@ -83,6 +87,7 @@ export function TaskSpecAssistant({ formId, publisher, locale }: { formId: strin
     setField(form, "passConditions", recommendation.acceptanceCriteria.map((item) => item.passCondition).join("\n"));
     setField(form, "verificationTypes", recommendation.acceptanceCriteria.map((item) => item.verificationType).join("\n"));
     setField(form, "aiReviewMetadata", JSON.stringify(recommendation.aiReviews));
+    setField(form, "definitionReviewId", result.definitionReview?.id ?? "");
     setError(null);
   }
 
@@ -91,13 +96,14 @@ export function TaskSpecAssistant({ formId, publisher, locale }: { formId: strin
   const blocking = questions.some((item) => item.blocking);
   return <section className="spec-assistant">
     <div className="section-head"><div><div className="eyebrow">AI DEFINITION GATE</div><h3 className="section-title">{locale === "zh" ? "发布前需求澄清" : "Pre-publish requirement clarification"}</h3></div><button type="button" className="button button-secondary" onClick={review} disabled={loading}><Sparkles size={15} />{loading ? (locale === "zh" ? "正在交叉校验…" : "Cross-checking…") : (locale === "zh" ? "让 AI 校验完成定义" : "Ask AI to validate completion")}</button></div>
-    <p className="hint">{locale === "zh" ? "需求编写 AI 负责拆解；验证批评 AI 专门找模糊条件、不可复现证据和容易刷的指标。真实 AI 未配置时会使用确定性规则引擎。" : "A requirements writer structures the task; a validation critic looks for ambiguity, irreproducible evidence and gameable metrics. A deterministic rule engine is used when external AI is not configured."}</p>
+    <p className="hint">{locale === "zh" ? `需求编写 AI 负责拆解；验证批评 AI 专门找模糊条件、不可复现证据和容易刷的指标。${production ? "生产发布必须同时取得两个外部 AI 角色的有效报告；规则引擎只能提示，不能签发发布凭证。" : "真实 AI 未配置时会使用确定性规则引擎。"}` : `A requirements writer structures the task; a validation critic looks for ambiguity, irreproducible evidence and gameable metrics. ${production ? "Production publication requires valid reports from both external AI roles; the rule engine can advise but cannot issue a publication credential." : "A deterministic rule engine is used when external AI is not configured."}`}</p>
     {result && <>
       <div className={`notice ${blocking || !result.assessment.ready ? "error" : "success"}`} style={{ marginTop: 14 }}>{blocking || !result.assessment.ready ? <ShieldAlert size={15} /> : <Check size={15} />} <strong>{locale === "zh" ? `就绪度 ${result.assessment.score}/100` : `Readiness ${result.assessment.score}/100`}</strong> · {result.aiAvailable ? (locale === "zh" ? "多模型 AI 已参与" : "Multi-model AI participated") : (locale === "zh" ? "规则引擎校验" : "Rule-engine validation")}</div>
       {questions.length > 0 && <div className="spec-review-list"><strong>{locale === "zh" ? "发布者必须回答" : "Publisher must answer"}</strong>{questions.map((item) => <div className="spec-review-item" key={item.id}><Bot size={14} /><span>{item.question}<small>{item.reason}</small></span></div>)}</div>}
       {risks.length > 0 && <details className="spec-review-details"><summary>{locale === "zh" ? `查看 ${risks.length} 项验收风险` : `View ${risks.length} validation risks`}</summary><ul>{risks.map((risk) => <li key={risk}>{risk}</li>)}</ul></details>}
       <div className="hint" style={{ marginTop: 10 }}>{result.reviews.map((item) => `${item.role}: ${item.provider}/${item.model}`).join(" · ")}</div>
-      <button type="button" className="button button-primary" style={{ marginTop: 12 }} onClick={apply} disabled={blocking}>{locale === "zh" ? "采用 AI 优化后的验收规则" : "Apply AI-refined completion rules"}</button>
+      <button type="button" className="button button-primary" style={{ marginTop: 12 }} onClick={apply} disabled={blocking || !result.assessment.ready || (production && !result.definitionReview)}>{locale === "zh" ? "采用 AI 优化后的验收规则" : "Apply AI-refined completion rules"}</button>
+      {production && result.definitionReview && <div className="hint" style={{ marginTop: 10 }}>{locale === "zh" ? `服务器发布凭证有效至 ${new Date(result.definitionReview.expiresAt).toLocaleString("zh-CN")}；修改任务定义后必须重新校验。` : `Server publication credential expires ${new Date(result.definitionReview.expiresAt).toLocaleString("en-US")}; any definition change requires another review.`}</div>}
     </>}
     {error && <div className="notice error" style={{ marginTop: 12 }}>{error}</div>}
   </section>;

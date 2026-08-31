@@ -74,7 +74,7 @@ wallets. The production Compose file binds the Web service only to
   `src/lib/kms-custody-evidence.ts`,
   `scripts/kms-custody-verify.ts`,
   `scripts/kms-custody-smoke.ts`
-- **Evidence:** Production Compose now sets `REQUIRE_FILE_SECRETS=true`, mounts 14
+- **Evidence:** Production Compose now sets `REQUIRE_FILE_SECRETS=true`, mounts 15
   external role-specific Secrets, and contains no direct database, master/API key,
   alert HMAC key, operator key, or evaluator wallet variable. The reader rejects
   direct-plus-file conflicts, relative/non-regular/unsafe files, NUL/empty/oversized
@@ -198,7 +198,7 @@ wallets. The production Compose file binds the Web service only to
   `src/lib/operational-monitor.ts`, `scripts/monitoring-alert-drill.ts`,
   `docs/RELEASE_CHECKLIST.md:80-82`
 - **Evidence:** Candidate code supports KMS-encrypted S3 copies, checksum metadata,
-  atomic success manifests and streamed restore verification of ten lifecycle
+  atomic success manifests and streamed restore verification of eleven lifecycle
   tables. Production Compose now passes the target configuration and mounts two
   dedicated file-only backup credentials. The off-host verifier downloads the
   remote manifest and dump again, verifies bytes/length/metadata/SHA-256, restores
@@ -411,6 +411,32 @@ wallets. The production Compose file binds the Web service only to
   preimages exist and reviewers sign them.
 - **False-positive notes:** Example drafts and local cryptographic fixtures prove
   the gate behavior only; they are deliberately not launch evidence.
+
+### AG-SEC-016 — AI completion reviews were advisory and client-forgeable
+
+- **Severity:** High
+- **Status:** Fixed in candidate
+- **Location:** `src/app/api/task-spec-assistant/route.ts`,
+  `src/lib/store-postgres.ts`, `src/components/new-task-form.tsx`
+- **Evidence:** Production requires valid structured reports from both external
+  requirements-writer and validation-critic roles. A ready result creates an expiring,
+  publisher-bound server record containing the reviewed task hash, exact
+  definition hash, reviewer identities/report hashes and assessment. Production
+  commitment creation atomically verifies the credential, exact title, business
+  outcome, category and completion definition, consumes it once, and binds its
+  UUID into the on-chain task specification. Changed, expired, cross-publisher
+  and replayed credentials fail before the hidden-test manifest is consumed.
+  The review table is included in backup/restore verification.
+- **Impact before fix:** A publisher could skip the AI gate or submit arbitrary
+  `aiReviews` metadata while still producing a syntactically testable task.
+- **Fix:** Mandatory server-issued, exact-definition-bound, one-time publication
+  credential in production.
+- **Residual mitigation:** AI review improves testability but cannot supply
+  missing business facts or prove that an off-platform outcome is truthful;
+  random evaluators, independent testers and publisher adoption evidence remain
+  separate gates.
+- **False-positive notes:** Demo mode remains intentionally non-authoritative and
+  does not issue a production publication credential.
 
 ## Verified controls and limitations
 

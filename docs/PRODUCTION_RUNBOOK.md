@@ -31,7 +31,7 @@ pnpm start
 The commands above are a local smoke topology only. Do not use `.env.example`
 for a public deployment. For the production topology, copy
 `.env.production.example` to `.env.production`, keep only non-secret addresses
-and URLs in it, and have the platform provide the 14 external secrets declared
+and URLs in it, and have the platform provide the 15 external secrets declared
 by `docker-compose.production.yml`. PostgreSQL and MinIO consume their official
 `*_FILE` variables; AgentGrid Web/Workers use the same file-only policy. Run
 `pnpm production:secrets:smoke` to inspect the fully expanded Compose model and
@@ -705,7 +705,7 @@ upload cannot falsely claim an off-host copy.
 
 `pnpm ops:backup:verify` verifies manifest size and SHA-256, streams rather than
 buffers the dump into an exact disposable `agentgrid_restore_<timestamp>_<nonce>`
-database, checks the ten delivery/lifecycle core tables (including
+database, checks the eleven delivery/lifecycle core tables (including
 `artifact_release_audit` and `business_adoption_attestations`), and drops only
 that temporary database. With the exact candidate/deployment bindings configured,
 it can write the mode-0600 `backupRestoreReport` preimage.
@@ -723,7 +723,7 @@ pnpm ops:backup:offhost:verify
 
 The second command downloads both objects again, compares the remote manifest
 byte-for-byte, verifies length/metadata/dump SHA-256 while streaming into a mode-
-0600 temporary file, restores that downloaded file, checks all ten tables and
+0600 temporary file, restores that downloaded file, checks all eleven tables and
 deletes the restore database and temporary dump. `BACKUP_OFFHOST_LOCAL_SMOKE=true`
 exists only for local MinIO path testing; its report is labelled `local-smoke` /
 `none-local-smoke` and is explicitly rejected by the production release gate.

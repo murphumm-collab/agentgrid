@@ -10,6 +10,7 @@ export const runtimeSecretNames = [
   "ADMIN_API_KEY",
   "ALERT_WEBHOOK_SECRET",
   "TRUSTED_PROXY_SHARED_SECRET",
+  "SPEC_ASSISTANT_AI_API_KEY",
   "AUTH_SECRET",
 ] as const;
 
@@ -25,6 +26,7 @@ export const productionReadyFileSecrets = [
   "ARTIFACT_MASTER_KEY",
   "ADMIN_API_KEY",
   "ALERT_WEBHOOK_SECRET",
+  "SPEC_ASSISTANT_AI_API_KEY",
   "AUTH_SECRET",
 ] as const;
 

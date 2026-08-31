@@ -4,6 +4,7 @@ import { chainContractAddresses, isProductionMode, runtimeConfig } from "@/lib/e
 import { postgresReady } from "@/lib/store-postgres";
 import { redisReady } from "@/lib/agent-queue";
 import { enforceProductionFileSecrets, productionReadyFileSecrets } from "@/lib/secrets";
+import { taskSpecAiConfigurationReady } from "@/lib/task-spec-assistant";
 
 async function rpc(method: string, params: unknown[] = []) {
   const response = await fetch(runtimeConfig().BSC_TESTNET_RPC_URL, {
@@ -18,13 +19,14 @@ async function rpc(method: string, params: unknown[] = []) {
 export async function GET() {
   const checks: Record<string, boolean> = {
     configuration: true, artifactEncryption: true, database: true, redis: true,
-    artifactStorage: true, alerting: !isProductionMode(), fileBackedSecrets: !isProductionMode(), bscRpc: false, contractsDeployed: !isProductionMode(),
+    artifactStorage: true, alerting: !isProductionMode(), fileBackedSecrets: !isProductionMode(), taskDefinitionAi: !isProductionMode(), bscRpc: false, contractsDeployed: !isProductionMode(),
   };
   if (isProductionMode()) {
     try {
       checks.artifactEncryption = Boolean(runtimeConfig().ARTIFACT_MASTER_KEY);
       checks.alerting = Boolean(runtimeConfig().ALERT_WEBHOOK_URL && runtimeConfig().ALERT_WEBHOOK_SECRET);
       checks.fileBackedSecrets = runtimeConfig().REQUIRE_FILE_SECRETS && enforceProductionFileSecrets(process.env, productionReadyFileSecrets);
+      checks.taskDefinitionAi = taskSpecAiConfigurationReady();
       checks.database = await postgresReady();
       checks.redis = await redisReady();
       checks.artifactStorage = await artifactStorageReady();

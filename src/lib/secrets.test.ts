@@ -37,10 +37,10 @@ describe("file-backed production secrets", () => {
 
   it("rejects missing or placeholder core production secrets", () => {
     const environment: Record<string, string> = { REQUIRE_FILE_SECRETS: "true" };
-    for (const name of ["DATABASE_URL", "S3_ACCESS_KEY", "S3_SECRET_KEY", "ARTIFACT_MASTER_KEY", "ADMIN_API_KEY", "ALERT_WEBHOOK_SECRET", "AUTH_SECRET"]) {
+    for (const name of ["DATABASE_URL", "S3_ACCESS_KEY", "S3_SECRET_KEY", "ARTIFACT_MASTER_KEY", "ADMIN_API_KEY", "ALERT_WEBHOOK_SECRET", "SPEC_ASSISTANT_AI_API_KEY", "AUTH_SECRET"]) {
       environment[`${name}_FILE`] = secretFile(name.toLowerCase(), `${name.toLowerCase()}-secure-production-value`);
     }
-    const required = ["DATABASE_URL", "S3_ACCESS_KEY", "S3_SECRET_KEY", "ARTIFACT_MASTER_KEY", "ADMIN_API_KEY", "ALERT_WEBHOOK_SECRET", "AUTH_SECRET"];
+    const required = ["DATABASE_URL", "S3_ACCESS_KEY", "S3_SECRET_KEY", "ARTIFACT_MASTER_KEY", "ADMIN_API_KEY", "ALERT_WEBHOOK_SECRET", "SPEC_ASSISTANT_AI_API_KEY", "AUTH_SECRET"];
     expect(enforceProductionFileSecrets(environment, required)).toBe(true);
     environment.AUTH_SECRET_FILE = secretFile("placeholder", "replace-with-production-secret");
     expect(() => enforceProductionFileSecrets(environment, required)).toThrow("AUTH_SECRET_PLACEHOLDER_FORBIDDEN");

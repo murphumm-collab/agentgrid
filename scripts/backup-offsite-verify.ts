@@ -100,7 +100,7 @@ async function main() {
       restore: { ...restore, source: "off-host-download" },
     });
     const output = await writeNewEvidenceFile(evidenceFilename, report);
-    console.log(JSON.stringify({ offsiteBackupVerified: true, streamedDownload: true, restored: true, coreTables: 10, output, endpointClass: configuration.endpointClass }));
+    console.log(JSON.stringify({ offsiteBackupVerified: true, streamedDownload: true, restored: true, coreTables: 11, output, endpointClass: configuration.endpointClass }));
   } finally { await fs.rm(temporary, { recursive: true, force: true }); }
 }
 

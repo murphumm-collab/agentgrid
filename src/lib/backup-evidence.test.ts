@@ -12,7 +12,7 @@ function local() {
   return {
     version: 1, scope: "agentgrid-backup-restore", observedAt: new Date(base + 20_000).toISOString(), chainId: 97,
     candidateBuildId: "candidate-build", deploymentManifestSha256: digest("3"), backup,
-    restore: { completedAt: new Date(base + 10_000).toISOString(), source: "local", checksumVerified: true, coreTables: 10, isolatedDatabaseDropped: true },
+    restore: { completedAt: new Date(base + 10_000).toISOString(), source: "local", checksumVerified: true, coreTables: 11, isolatedDatabaseDropped: true },
   };
 }
 function offsite() {
@@ -23,7 +23,7 @@ function offsite() {
       endpointClass: "https-custom", bucketHash: digest("4"), objectPrefixHash: digest("5"), encryption: "aws:kms",
       contentLengthVerified: true, metadataSha256Verified: true, manifestBytesVerified: true, dumpSha256Verified: true,
     },
-    restore: { completedAt: new Date(base + 30_000).toISOString(), source: "off-host-download", checksumVerified: true, coreTables: 10, isolatedDatabaseDropped: true },
+    restore: { completedAt: new Date(base + 30_000).toISOString(), source: "off-host-download", checksumVerified: true, coreTables: 11, isolatedDatabaseDropped: true },
   };
 }
 

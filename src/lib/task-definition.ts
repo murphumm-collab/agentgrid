@@ -84,6 +84,13 @@ export const taskClarificationReviewSchema = z.object({
   suggestedCriteria: z.array(completionCriterionSchema.omit({ id: true })).min(2).max(12),
 }).strict();
 
+export const taskDefinitionReviewBindingSchema = z.object({
+  title: z.string().trim().min(8).max(160),
+  businessOutcome: z.string().trim().min(30).max(10_000),
+  category: z.string().trim().min(2).max(64),
+  completionDefinition: taskDefinitionSchema,
+}).strict();
+
 export type TaskDefinition = z.infer<typeof taskDefinitionSchema>;
 export type TaskClarificationDraft = z.infer<typeof taskClarificationDraftSchema>;
 export type TaskClarificationReview = z.infer<typeof taskClarificationReviewSchema>;
@@ -128,6 +135,10 @@ function canonical(value: unknown): unknown {
 
 export function taskDefinitionHash(definition: TaskDefinition) {
   return keccak256(stringToHex(JSON.stringify(canonical(taskDefinitionSchema.parse(definition)))));
+}
+
+export function taskDefinitionReviewBindingHash(raw: unknown) {
+  return keccak256(stringToHex(JSON.stringify(canonical(taskDefinitionReviewBindingSchema.parse(raw)))));
 }
 
 export function reviewReportHash(review: TaskClarificationReview) {

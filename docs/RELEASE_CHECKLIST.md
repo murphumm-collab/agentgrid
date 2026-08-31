@@ -7,7 +7,7 @@ real-user pilot.
 ## A. Reproducible local gates
 
 - [x] `pnpm lint`
-- [x] `pnpm test` — 178 tests across 45 files. The displayed 100% coverage applies
+- [x] `pnpm test` — 181 tests across 45 files. The displayed 100% coverage applies
   only to `src/lib/protocol.ts`; it is not evidence of full Worker/API coverage.
 - [x] `pnpm contracts:compile` — eight compiled deployable artifacts, including
   the six production deployment contracts
@@ -27,7 +27,8 @@ real-user pilot.
   hidden tests and verifier-owned coverage
 - [x] `pnpm ops:artifact-key:smoke` — disposable-database old-to-new key rotation
 - [x] `pnpm ops:backup && pnpm ops:backup:verify` — manifest size/SHA-256 checked
-  before a streamed custom dump restored all ten delivery/lifecycle core tables;
+  before a streamed custom dump restored all eleven delivery/lifecycle core tables,
+  including server-bound task-definition reviews;
   output completion now requires both `pg_dump` exit 0 and a flushed file stream
 - [x] `pnpm reorg:queue:smoke` — exact chain provenance and canonical block time,
   outbox rewind, queued orphan discard, in-flight cancellation,
@@ -41,20 +42,20 @@ real-user pilot.
   runtime browser-chain configuration without build-time public contract values
 - [x] `pnpm production:secrets:smoke` — the expanded 13-service topology has no
   plaintext sensitive environment variables, enforces file-only policy, and
-  verifies all 14 external role-specific Secret mounts, including dedicated
-  off-host backup credentials; the bundled Migration
+  verifies all 15 external role-specific Secret mounts, including dedicated
+  off-host backup and task-definition AI credentials; the bundled Migration
   Worker also completes against an isolated database using only 0400 files
 - [x] `pnpm ops:kms:smoke` — four fresh values are recovered from exact 0400
   files, AES-256-GCM and three wallet-signature round trips pass, raw values are
   absent from the 0600 report, symlink/mount-write paths are rejected, and the
   resulting `local-smoke` evidence cannot satisfy the production gate.
 - [x] One uninterrupted current `pnpm release:qa:run` passed all 22 fixed commands
-  and bound the unactivated candidate `mF4tYVUh4d0LwTDCsP9Y1`. Report SHA-256 is
-  `029a00126b17135d8a50c277478c06c701e9eb0d354d433ea42dd35e1689d686`.
+  and bound the unactivated candidate `0tCFYaVSMa3XoMJUWKw7M`. Report SHA-256 is
+  `9fabf0f8e8d2be41d058093e51273fca5b4a0e96dbb1110c9c69cf0d4400cc93`.
   The bound source SHA-256 is
-  `sha256:e9fe413af620823e7f916f585389ba5028473796905b387db79d05a37f8ffe64`.
+  `sha256:9b0584b15410e0a740186dfdc3a05bdaadffb0f1394da7efc04548a314dae266`.
   Its manifest SHA-256 is
-  `sha256:445d47a680b9daa3b1f8575c5039c8a441419e1e3101fab123e16b58dc1fdc22`.
+  `sha256:2bb5ab489ac55fb60d58636eefee7ea93ef7f39ef63e46f4ee6ba996ea8a4f7f`.
   It includes acknowledged monitoring, trusted-proxy and KMS recovery smokes.
   All earlier QA reports and candidates remain historical evidence only.
 
@@ -153,6 +154,12 @@ real-user pilot.
 
 ## E. Product-scope gates
 
+- [x] Production publication requires valid structured reports from external
+  requirements-writer and validation-critic AI roles plus an unexpired, publisher-bound, one-time
+  server review of the exact title, business outcome, category and completion
+  definition. Requirements-writer/validation-critic report hashes are committed
+  into the definition; changing or replaying the reviewed payload is rejected
+  atomically before hidden tests are bound.
 - [x] Multi-executor collaboration commits each encrypted contribution, excludes
   all executors from tester selection, records tester-signed work weights and
   distributes every reward tranche by the on-chain weight vector.

@@ -120,6 +120,25 @@ export type TaskSpecAssistantResult = {
   recommendation: TaskDefinition;
 };
 
+export function taskSpecAiConfigurationReady(environment: NodeJS.ProcessEnv = process.env) {
+  try {
+    const baseUrl = environment.SPEC_ASSISTANT_AI_BASE_URL?.trim();
+    const models = environment.SPEC_ASSISTANT_AI_MODELS?.split(",").map((value) => value.trim()).filter(Boolean) ?? [];
+    const key = configuredSecret("SPEC_ASSISTANT_AI_API_KEY", environment);
+    if (!baseUrl || models.length < 2 || !key.value) return false;
+    if (environment.REQUIRE_FILE_SECRETS === "true" && key.source !== "file") return false;
+    approvedAiBaseUrl(baseUrl, true, environment.SPEC_ASSISTANT_AI_ALLOWED_ORIGINS);
+    return true;
+  } catch { return false; }
+}
+
+export function requiredExternalAiReviewBlockers(reviews: TaskSpecAssistantResult["reviews"], production: boolean) {
+  if (!production) return [];
+  const externalRoles = new Set(reviews.filter((item) => item.provider !== "agentgrid-rule-engine").map((item) => item.role));
+  return (["REQUIREMENTS_WRITER", "VALIDATION_CRITIC"] as const)
+    .filter((role) => !externalRoles.has(role)).map((role) => `EXTERNAL_AI_${role}_MISSING`);
+}
+
 export async function clarifyTaskSpecification(raw: unknown): Promise<TaskSpecAssistantResult> {
   const draft = taskClarificationDraftSchema.parse(raw);
   const rawBaseUrl = process.env.SPEC_ASSISTANT_AI_BASE_URL?.trim();

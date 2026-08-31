@@ -32,12 +32,28 @@ export function NewTaskForm({ positions, publisher, locale, production = false }
 
   useEffect(() => {
     if (!production || !publisher) return;
-    try {
+    let cancelled = false;
+    const recover = async () => {
+      try {
       const stored = window.localStorage.getItem(storageKey(publisher));
-      if (stored) setPendingEvaluation(parsePendingTaskEvaluation(JSON.parse(stored)));
-    } catch {
-      window.localStorage.removeItem(storageKey(publisher));
-    }
+        if (stored) {
+          setPendingEvaluation(parsePendingTaskEvaluation(JSON.parse(stored)));
+          return;
+        }
+      } catch { window.localStorage.removeItem(storageKey(publisher)); }
+      try {
+        const response = await fetch("/api/chain/task-commitments", { cache: "no-store" });
+        const body = await response.json();
+        if (!response.ok) throw new Error(body.error ?? "TASK_COMMITMENT_RECOVERY_FAILED");
+        if (!cancelled && body.pending) persistPending(parsePendingTaskEvaluation(body.pending));
+      } catch (caught) {
+        if (!cancelled) setError(errorMessage(caught));
+      }
+    };
+    void recover();
+    return () => { cancelled = true; };
+    // persistPending intentionally uses the current publisher and does not need to trigger recovery again.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [production, publisher]);
 
   function persistPending(value: PendingTaskEvaluation | null) {
@@ -52,22 +68,61 @@ export function NewTaskForm({ positions, publisher, locale, production = false }
   async function sendEvaluationTransaction(pending: PendingTaskEvaluation) {
     setSubmitting(true);
     setError(null);
+    let current = pending;
     try {
-      if (pending.transactionHash) {
-        await waitForBrowserTransaction(pending.transactionHash);
+      if (!current.transactionHash && current.broadcastReady !== undefined) {
+        const recoveryResponse = await fetch("/api/chain/task-commitments", { cache: "no-store" });
+        const recoveryBody = await recoveryResponse.json();
+        if (!recoveryResponse.ok) throw new Error(recoveryBody.error ?? "TASK_COMMITMENT_RECOVERY_FAILED");
+        if (!recoveryBody.pending) throw new Error("TASK_COMMITMENT_NOT_FOUND");
+        current = parsePendingTaskEvaluation(recoveryBody.pending);
+        persistPending(current);
+        if (!current.transactionHash && current.broadcastReady === false) {
+          throw new Error(`${locale === "zh" ? "服务器正在核对链上是否已有交易，请在此时间后重试" : "The server is reconciling a possible chain transaction; retry after"}: ${current.retryAfter ?? "later"}`);
+        }
+      }
+      if (current.transactionHash) {
+        const bindResponse = await fetch(`/api/chain/task-commitments/${encodeURIComponent(current.commitmentId)}/transaction`, {
+          method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({ publisher, transactionHash: current.transactionHash }),
+        });
+        const bound = await bindResponse.json();
+        if (!bindResponse.ok) throw new Error(bound.error ?? "TASK_COMMITMENT_TRANSACTION_BIND_FAILED");
+        await waitForBrowserTransaction(current.transactionHash);
       } else {
         await publishCommittedTask({
-          positionId: BigInt(pending.positionId), specHash: pending.specHash,
-          requestedReward: pending.requestedReward, maxExecutors: pending.maxExecutors,
-          executionMode: pending.executionMode, requiredTesterCapabilities: pending.requiredTesterCapabilities,
-        }, (transactionHash) => persistPending({ ...pending, transactionHash }));
+          positionId: BigInt(current.positionId), specHash: current.specHash,
+          requestedReward: current.requestedReward, maxExecutors: current.maxExecutors,
+          executionMode: current.executionMode, requiredTesterCapabilities: current.requiredTesterCapabilities,
+        }, async (transactionHash) => {
+          current = { ...current, transactionHash, broadcastReady: false };
+          persistPending(current);
+          const bindResponse = await fetch(`/api/chain/task-commitments/${encodeURIComponent(current.commitmentId)}/transaction`, {
+            method: "POST", headers: { "content-type": "application/json" },
+            body: JSON.stringify({ publisher, transactionHash }),
+          });
+          const bound = await bindResponse.json();
+          if (!bindResponse.ok) throw new Error(bound.error ?? "TASK_COMMITMENT_TRANSACTION_BIND_FAILED");
+        });
       }
       persistPending(null);
       setSubmitted(true);
       router.refresh();
     } catch (caught) {
-      if (caught instanceof Error && caught.message === "TRANSACTION_REVERTED") persistPending({ ...pending, transactionHash: undefined });
-      setError(errorMessage(caught));
+      if (caught instanceof Error && caught.message === "TRANSACTION_REVERTED" && current.transactionHash) {
+        try {
+          const clearResponse = await fetch(`/api/chain/task-commitments/${encodeURIComponent(current.commitmentId)}/transaction`, {
+            method: "DELETE", headers: { "content-type": "application/json" },
+            body: JSON.stringify({ publisher, transactionHash: current.transactionHash }),
+          });
+          const cleared = await clearResponse.json();
+          if (!clearResponse.ok) throw new Error(cleared.error ?? "REVERTED_TRANSACTION_CLEAR_FAILED");
+          persistPending({ ...current, transactionHash: undefined, broadcastReady: true });
+          setError(locale === "zh" ? "链上交易已回滚，服务器已验证；你可以安全重试。" : "The transaction reverted and was verified by the server; it is safe to retry.");
+        } catch (clearError) {
+          setError(`${locale === "zh" ? "交易回滚，但服务器尚未确认；已保留交易哈希以阻止重复发布" : "The transaction reverted but the server has not verified it; the hash is retained to prevent duplicate publication"}: ${errorMessage(clearError)}`);
+        }
+      } else setError(errorMessage(caught));
     } finally {
       setSubmitting(false);
     }
@@ -91,6 +146,8 @@ export function NewTaskForm({ positions, publisher, locale, production = false }
     if (criterionVerificationTypes.some((item) => !verificationTypes.includes(item as typeof verificationTypes[number]))) throw new Error(locale === "zh" ? "存在不支持的验证类型" : "Unsupported verification type");
     let aiReviews: unknown[] = [];
     try { aiReviews = JSON.parse(String(formData.get("aiReviewMetadata") ?? "[]")); } catch { throw new Error(locale === "zh" ? "AI 评审记录无效，请重新校验" : "Invalid AI review metadata; run the check again"); }
+    const definitionReviewId = String(formData.get("definitionReviewId") ?? "").trim();
+    if (production && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(definitionReviewId)) throw new Error(locale === "zh" ? "发布前必须完成 AI 定义校验并采用服务器签发的结果" : "Run and apply the server-issued AI definition review before publication");
     const completionDefinition = taskDefinitionSchema.parse({
       version: taskDefinitionVersion, targetUsers: formData.get("targetUsers"), deliverables: lines("deliverables"), constraints: lines("constraints"),
       outOfScope: lines("outOfScope"), assumptions: lines("assumptions"), aiReviews,
@@ -123,7 +180,7 @@ export function NewTaskForm({ positions, publisher, locale, production = false }
       publisher, stakePositionId: formData.get("stakePositionId"), title: formData.get("title"),
       description: formData.get("description"), category: formData.get("category"), executionMode: formData.get("executionMode"), maxExecutors: Number(formData.get("maxExecutors")),
       declaredDurationHours: Number(formData.get("declaredDurationHours")), criteria, completionDefinition, requestedReward: Number(formData.get("requestedReward") ?? 2500),
-      ...(production ? { hiddenTestManifestId, hiddenTestPlaintextSha256 } : {}),
+      ...(production ? { definitionReviewId, hiddenTestManifestId, hiddenTestPlaintextSha256 } : {}),
     };
     const response = await fetch(production ? "/api/chain/task-commitments" : "/api/tasks", {
       method: "POST", headers: { "content-type": "application/json" },
@@ -133,6 +190,7 @@ export function NewTaskForm({ positions, publisher, locale, production = false }
     if (!response.ok) { setError(body.error ?? t(locale, "unablePublish")); return; }
     if (production) {
       const pending = parsePendingTaskEvaluation({
+        commitmentId: body.id,
         positionId: String(payload.stakePositionId), specHash: body.specHash,
         requestedReward: String(payload.requestedReward), maxExecutors: payload.maxExecutors,
         executionMode: payload.executionMode === "COMPETITION" ? "COMPETITION" : "COLLABORATION",
@@ -176,7 +234,8 @@ export function NewTaskForm({ positions, publisher, locale, production = false }
         <label className="field field-full"><span className="label">{locale === "zh" ? "必须提交的证据（逐行对应）" : "Required evidence (line-aligned)"}</span><textarea className="textarea" name="evidenceRequirements" required defaultValue={locale === "zh" ? "签名构建日志与成果哈希\n测试 Agent 签名的测试结果与隐藏测试清单哈希\n签名覆盖率报告" : "Signed build log and artifact hash\nTester-signed results and hidden-test manifest hash\nSigned coverage report"} /></label>
         <label className="field field-full"><span className="label">{locale === "zh" ? "二元或数字通过条件（逐行对应）" : "Binary or numeric pass conditions (line-aligned)"}</span><textarea className="textarea" name="passConditions" required defaultValue={locale === "zh" ? "构建命令退出码必须等于 0\n所有公开测试和隐藏测试必须通过，失败数等于 0\n关键分支覆盖率必须不低于 95%" : "Build command exit code must equal 0\nAll public and hidden tests must pass with zero failures\nCritical branch coverage must be at least 95%"} /></label>
         <input type="hidden" name="aiReviewMetadata" defaultValue="[]" />
-        <div className="field field-full"><TaskSpecAssistant formId="new-task-form" publisher={publisher} locale={locale} /></div>
+        <input type="hidden" name="definitionReviewId" defaultValue="" />
+        <div className="field field-full"><TaskSpecAssistant formId="new-task-form" publisher={publisher} locale={locale} production={production} /></div>
       </fieldset>
       <div className="notice" style={{ marginTop: 20 }}><ShieldCheck size={15} style={{ verticalAlign: "middle", marginRight: 8 }} />{t(locale, "publishLockNotice")}</div>
       {production && <div className="notice" style={{ marginTop: 12 }}>{locale === "zh" ? "提交申请会从质押中扣除 3 AGT 不可退评估费，并分给实际提交报告的评估 Agent。只有至少 2/3 通过并公开任务时，才另扣发布费：有效奖励额的 2%，最低 10 AGT，最高为仓位的 10%。" : "Submitting charges a non-refundable 3 AGT evaluation fee from the stake and pays evaluators who report. A separate publication fee is charged only after at least 2 of 3 approve: 2% of effective reward, minimum 10 AGT, capped at 10% of the position."}</div>}

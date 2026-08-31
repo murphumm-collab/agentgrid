@@ -1,5 +1,6 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { Pool } from "pg";
+import { taskDefinitionHash, taskDefinitionReviewBindingHash } from "../src/lib/task-definition";
 
 function required(name: string) {
   const value = process.env[name];
@@ -111,27 +112,61 @@ async function main() {
     const capabilityTaskId = "77";
     const capabilitySpecHash = `0x${randomBytes(32).toString("hex")}`;
     const hiddenTestId = randomUUID();
+    const definitionReviewId = randomUUID();
     const hiddenPlaintext = randomBytes(32).toString("hex");
+    const capabilityCompletionDefinition = {
+      version: "AGENTGRID_TASK_DEFINITION_V1" as const, targetUsers: "Operations owner responsible for approving the deployed workflow",
+      deliverables: ["A runnable monitored service"], constraints: ["No production secrets"], outOfScope: ["Mainnet deployment"], assumptions: [], aiReviews: [],
+      acceptanceCriteria: [
+        { id: "criterion-1", description: "All hidden tests pass", verificationMethod: "Run the sealed test bundle", evidenceRequired: "Signed manifest and metrics", passCondition: "Zero failures", verificationType: "AUTOMATED_TEST" as const, required: true },
+        { id: "criterion-2", description: "The production build succeeds", verificationMethod: "Run the production build", evidenceRequired: "Signed exit code", passCondition: "Exit code equals zero", verificationType: "AUTOMATED_TEST" as const, required: true },
+      ],
+    };
+    await store.storeTaskDefinitionReview({
+      id: definitionReviewId, publisher: owners[6],
+      reviewedTaskHash: taskDefinitionReviewBindingHash({ title: "Capability mismatch smoke task", businessOutcome: "Proves a chain reorganization cannot revive a task with a weaker tester capability mask.", category: "Development", completionDefinition: capabilityCompletionDefinition }),
+      definitionHash: taskDefinitionHash(capabilityCompletionDefinition), recommendation: capabilityCompletionDefinition,
+      reviewers: [], assessment: { ready: true, score: 100, blockers: [], warnings: [] }, expiresAt: new Date(Date.now() + 60_000),
+    });
     await store.createHiddenTestManifest({
       id: hiddenTestId, publisher: owners[6], objectKey: `hidden/${hiddenTestId}`, sha256: randomBytes(32).toString("hex"),
       plaintextSha256: hiddenPlaintext, sizeBytes: 1, contentType: "application/gzip", encryptionAlgorithm: "AES-256-GCM",
       contentIv: "iv", sealedKey: "key", sealIv: "seal-iv", sealTag: "seal-tag",
     });
     await store.finalizeHiddenTestManifest(hiddenTestId, owners[6]);
-    await store.createTaskCommitment({ id: randomUUID(), publisher: owners[6], specHash: capabilitySpecHash, spec: {
+    const capabilitySpec = {
+      definitionReviewId,
       stakePositionId: 1, title: "Capability mismatch smoke task", description: "Proves a chain reorganization cannot revive a task with a weaker tester capability mask.",
       category: "Development", executionMode: "COLLABORATION", maxExecutors: 1, declaredDurationHours: 24,
       criteria: ["All hidden tests pass", "The production build succeeds"], requestedReward: 100,
       hiddenTestManifestId: hiddenTestId, hiddenTestPlaintextSha256: hiddenPlaintext,
-      completionDefinition: {
-        version: "AGENTGRID_TASK_DEFINITION_V1", targetUsers: "Operations owner responsible for approving the deployed workflow",
-        deliverables: ["A runnable monitored service"], constraints: ["No production secrets"], outOfScope: ["Mainnet deployment"], assumptions: [], aiReviews: [],
-        acceptanceCriteria: [
-          { id: "criterion-1", description: "All hidden tests pass", verificationMethod: "Run the sealed test bundle", evidenceRequired: "Signed manifest and metrics", passCondition: "Zero failures", verificationType: "AUTOMATED_TEST", required: true },
-          { id: "criterion-2", description: "The production build succeeds", verificationMethod: "Run the production build", evidenceRequired: "Signed exit code", passCondition: "Exit code equals zero", verificationType: "AUTOMATED_TEST", required: true },
-        ],
-      },
-    } });
+      completionDefinition: capabilityCompletionDefinition,
+    };
+    let crossPublisherReviewRejected = false;
+    try { await store.createTaskCommitment({ id: randomUUID(), publisher: owners[5], specHash: `0x${randomBytes(32).toString("hex")}`, spec: capabilitySpec }); }
+    catch (error) { crossPublisherReviewRejected = error instanceof Error && error.message === "TASK_DEFINITION_REVIEW_REQUIRED"; }
+    if (!crossPublisherReviewRejected) throw new Error("REORG_SMOKE_CROSS_PUBLISHER_REVIEW_ACCEPTED");
+    const expiredReviewId = randomUUID();
+    await store.storeTaskDefinitionReview({
+      id: expiredReviewId, publisher: owners[6],
+      reviewedTaskHash: taskDefinitionReviewBindingHash({ title: capabilitySpec.title, businessOutcome: capabilitySpec.description, category: capabilitySpec.category, completionDefinition: capabilityCompletionDefinition }),
+      definitionHash: taskDefinitionHash(capabilityCompletionDefinition), recommendation: capabilityCompletionDefinition,
+      reviewers: [], assessment: { ready: true, score: 100, blockers: [], warnings: [] }, expiresAt: new Date(Date.now() - 1_000),
+    });
+    let expiredReviewRejected = false;
+    try { await store.createTaskCommitment({ id: randomUUID(), publisher: owners[6], specHash: `0x${randomBytes(32).toString("hex")}`, spec: { ...capabilitySpec, definitionReviewId: expiredReviewId } }); }
+    catch (error) { expiredReviewRejected = error instanceof Error && error.message === "TASK_DEFINITION_REVIEW_REQUIRED"; }
+    if (!expiredReviewRejected) throw new Error("REORG_SMOKE_EXPIRED_DEFINITION_REVIEW_ACCEPTED");
+    let changedDefinitionRejected = false;
+    try {
+      await store.createTaskCommitment({ id: randomUUID(), publisher: owners[6], specHash: `0x${randomBytes(32).toString("hex")}`, spec: { ...capabilitySpec, description: `${capabilitySpec.description} Altered.` } });
+    } catch (error) { changedDefinitionRejected = error instanceof Error && error.message === "TASK_DEFINITION_CHANGED_AFTER_REVIEW"; }
+    if (!changedDefinitionRejected) throw new Error("REORG_SMOKE_CHANGED_DEFINITION_ACCEPTED");
+    await store.createTaskCommitment({ id: randomUUID(), publisher: owners[6], specHash: capabilitySpecHash, spec: capabilitySpec });
+    let reviewReplayRejected = false;
+    try { await store.createTaskCommitment({ id: randomUUID(), publisher: owners[6], specHash: `0x${randomBytes(32).toString("hex")}`, spec: capabilitySpec }); }
+    catch (error) { reviewReplayRejected = error instanceof Error && error.message === "TASK_DEFINITION_REVIEW_REQUIRED"; }
+    if (!reviewReplayRejected) throw new Error("REORG_SMOKE_DEFINITION_REVIEW_REPLAY_ACCEPTED");
     const capabilityBlockHash = `0x${randomBytes(32).toString("hex")}`;
     const capabilityTransactionHash = `0x${randomBytes(32).toString("hex")}`;
     await store.persistChainBatch(cursorName, 101n, 102n, capabilityBlockHash, [
@@ -156,6 +191,10 @@ async function main() {
       inFlightOrphanCancelled: true,
       canonicalReplacementExecuted: true,
       mismatchedLogRejected: true,
+      changedDefinitionRejected: true,
+      crossPublisherDefinitionReviewRejected: true,
+      expiredDefinitionReviewRejected: true,
+      definitionReviewReplayRejected: true,
       capabilityMismatchRejectedAfterRebuild: true,
     }));
   } finally {

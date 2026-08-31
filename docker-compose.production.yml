@@ -76,7 +76,8 @@ services:
       ADMIN_API_KEY_FILE: /run/secrets/admin_api_key
       ALERT_WEBHOOK_SECRET_FILE: /run/secrets/alert_webhook_secret
       TRUSTED_PROXY_SHARED_SECRET_FILE: /run/secrets/trusted_proxy_shared_secret
-    secrets: [database_url, auth_secret, s3_access_key, s3_secret_key, artifact_master_key, admin_api_key, alert_webhook_secret, trusted_proxy_shared_secret]
+      SPEC_ASSISTANT_AI_API_KEY_FILE: /run/secrets/spec_assistant_ai_api_key
+    secrets: [database_url, auth_secret, s3_access_key, s3_secret_key, artifact_master_key, admin_api_key, alert_webhook_secret, trusted_proxy_shared_secret, spec_assistant_ai_api_key]
     ports: ["127.0.0.1:3000:3000"]
     depends_on:
       migrate: { condition: service_completed_successfully }
@@ -237,3 +238,6 @@ secrets:
   backup_s3_secret_key:
     external: true
     name: ${AGENTGRID_BACKUP_S3_SECRET_KEY_SECRET:-agentgrid_backup_s3_secret_key}
+  spec_assistant_ai_api_key:
+    external: true
+    name: ${AGENTGRID_SPEC_ASSISTANT_AI_API_KEY_SECRET:-agentgrid_spec_assistant_ai_api_key}

@@ -79,15 +79,15 @@ export async function restoreVerifiedBackupDump(dumpPath: string) {
     await restoreDumpFile(database, dumpPath);
     const { stdout } = await dockerPostgres([
       "psql", "-U", "agentgrid", "-d", database, "-tAc",
-      "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public' AND table_name IN ('protocol_state','chain_events','artifact_manifests','hidden_test_manifests','signed_test_evidence','signed_task_evaluations','job_outbox','notifications','artifact_release_audit','business_adoption_attestations');",
+      "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public' AND table_name IN ('protocol_state','chain_events','artifact_manifests','hidden_test_manifests','signed_test_evidence','signed_task_evaluations','job_outbox','notifications','artifact_release_audit','business_adoption_attestations','task_definition_reviews');",
     ]);
     coreTables = Number(stdout.trim());
-    if (coreTables !== 10) throw new Error(`RESTORE_CORE_TABLES_MISSING_${coreTables}`);
+    if (coreTables !== 11) throw new Error(`RESTORE_CORE_TABLES_MISSING_${coreTables}`);
     completedAt = new Date().toISOString();
   } finally {
     await dockerPostgres(["dropdb", "-U", "agentgrid", "--if-exists", database]);
   }
-  return { completedAt, checksumVerified: true as const, coreTables: 10 as const, isolatedDatabaseDropped: true as const };
+  return { completedAt, checksumVerified: true as const, coreTables: 11 as const, isolatedDatabaseDropped: true as const };
 }
 
 export async function resolveBackupFolder() {

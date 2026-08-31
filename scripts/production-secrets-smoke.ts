@@ -29,7 +29,7 @@ async function main() {
   const forbiddenDirect = [
     "DATABASE_URL", "AUTH_SECRET", "ARTIFACT_MASTER_KEY", "ADMIN_API_KEY", "ALERT_WEBHOOK_SECRET", "TRUSTED_PROXY_SHARED_SECRET",
     "S3_ACCESS_KEY", "S3_SECRET_KEY", "PROTOCOL_OPERATOR_PRIVATE_KEY", "AGENT_API_KEY", "AGENT_WALLET_PRIVATE_KEY",
-    "BACKUP_S3_ACCESS_KEY", "BACKUP_S3_SECRET_KEY", "DEPLOYER_PRIVATE_KEY", "POSTGRES_PASSWORD", "MINIO_ROOT_USER", "MINIO_ROOT_PASSWORD",
+    "BACKUP_S3_ACCESS_KEY", "BACKUP_S3_SECRET_KEY", "SPEC_ASSISTANT_AI_API_KEY", "DEPLOYER_PRIVATE_KEY", "POSTGRES_PASSWORD", "MINIO_ROOT_USER", "MINIO_ROOT_PASSWORD",
   ];
   for (const [name, service] of Object.entries(config.services)) {
     for (const key of forbiddenDirect) assert(!(key in (service.environment ?? {})), `PLAINTEXT_SECRET_ENV_${name}_${key}`);
@@ -43,7 +43,7 @@ async function main() {
   }
 
   const requiredMounts: Record<string, string[]> = {
-    web: ["s3_access_key", "s3_secret_key", "artifact_master_key", "admin_api_key", "alert_webhook_secret", "trusted_proxy_shared_secret"],
+    web: ["s3_access_key", "s3_secret_key", "artifact_master_key", "admin_api_key", "alert_webhook_secret", "trusted_proxy_shared_secret", "spec_assistant_ai_api_key"],
     monitor: ["alert_webhook_secret"],
     coordinator: ["protocol_operator_private_key"],
     "team-formation": ["protocol_operator_private_key"],
@@ -64,6 +64,7 @@ async function main() {
   assert(config.services.minio.environment?.MINIO_ROOT_PASSWORD_FILE === "/run/secrets/s3_secret_key", "MINIO_ROOT_PASSWORD_FILE_MISSING");
   assert(config.services.web.environment?.ARTIFACT_MASTER_KEY_FILE === "/run/secrets/artifact_master_key", "ARTIFACT_MASTER_KEY_FILE_MISSING");
   assert(config.services.web.environment?.TRUSTED_PROXY_SHARED_SECRET_FILE === "/run/secrets/trusted_proxy_shared_secret", "TRUSTED_PROXY_SHARED_SECRET_FILE_MISSING");
+  assert(config.services.web.environment?.SPEC_ASSISTANT_AI_API_KEY_FILE === "/run/secrets/spec_assistant_ai_api_key", "SPEC_ASSISTANT_AI_API_KEY_FILE_MISSING");
   assert(config.services.monitor.environment?.ALERT_WEBHOOK_SECRET_FILE === "/run/secrets/alert_webhook_secret", "MONITOR_ALERT_SECRET_FILE_MISSING");
   assert(config.services["task-evaluator"].environment?.AGENT_WALLET_PRIVATE_KEY_FILE === "/run/secrets/evaluator_agent_wallet_private_key", "EVALUATOR_WALLET_FILE_MISSING");
   assert(config.services.backup.environment?.BACKUP_S3_ACCESS_KEY_FILE === "/run/secrets/backup_s3_access_key", "BACKUP_S3_ACCESS_KEY_FILE_MISSING");

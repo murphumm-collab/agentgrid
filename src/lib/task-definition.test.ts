@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assessTaskDefinition, definitionFromReview, reviewReportHash, taskDefinitionHash, taskDefinitionSchema } from "./task-definition";
+import { assessTaskDefinition, definitionFromReview, reviewReportHash, taskDefinitionHash, taskDefinitionReviewBindingHash, taskDefinitionSchema } from "./task-definition";
 
 const review = {
   role: "REQUIREMENTS_WRITER" as const,
@@ -23,6 +23,14 @@ describe("task completion definition", () => {
     const definition = definitionFromReview(review, [{ role: "REQUIREMENTS_WRITER", provider: "test", model: "model-a", reportHash }]);
     expect(taskDefinitionHash(definition)).toMatch(/^0x[0-9a-f]{64}$/);
     expect(assessTaskDefinition(definition)).toEqual({ ready: true, score: 100, blockers: [], warnings: [] });
+  });
+
+  it("binds a server review to the exact business outcome and completion definition", () => {
+    const definition = definitionFromReview(review);
+    const reviewed = { title: "Build settlement monitor", businessOutcome: "Alert operations before failed settlement breaches the service-level objective.", category: "Automation", completionDefinition: definition };
+    expect(taskDefinitionReviewBindingHash(reviewed)).toMatch(/^0x[0-9a-f]{64}$/);
+    expect(taskDefinitionReviewBindingHash(reviewed)).toBe(taskDefinitionReviewBindingHash({ ...reviewed }));
+    expect(taskDefinitionReviewBindingHash({ ...reviewed, businessOutcome: `${reviewed.businessOutcome} Changed after review.` })).not.toBe(taskDefinitionReviewBindingHash(reviewed));
   });
 
   it("rejects reordered, duplicate and entirely optional criteria", () => {

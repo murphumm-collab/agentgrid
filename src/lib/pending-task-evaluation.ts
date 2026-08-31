@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { Hash, Hex } from "viem";
 
 export const pendingTaskEvaluationSchema = z.object({
+  commitmentId: z.string().uuid(),
   positionId: z.string().regex(/^\d+$/),
   specHash: z.string().regex(/^0x[0-9a-fA-F]{64}$/).transform((value) => value as Hex),
   requestedReward: z.string().regex(/^\d+(?:\.\d+)?$/),
@@ -9,6 +10,8 @@ export const pendingTaskEvaluationSchema = z.object({
   executionMode: z.enum(["COLLABORATION", "COMPETITION"]),
   requiredTesterCapabilities: z.number().int().min(2).max(255).refine((mask) => (mask & 7) === 2, "INVALID_TESTER_CAPABILITY_MASK"),
   transactionHash: z.string().regex(/^0x[0-9a-fA-F]{64}$/).transform((value) => value as Hash).optional(),
+  broadcastReady: z.boolean().optional(),
+  retryAfter: z.string().datetime().optional(),
 }).strict();
 
 export type PendingTaskEvaluation = z.infer<typeof pendingTaskEvaluationSchema>;

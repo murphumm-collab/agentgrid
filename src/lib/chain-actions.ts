@@ -57,14 +57,14 @@ export async function waitForBrowserTransaction(hash: Hash) {
 
 export async function publishCommittedTask(
   input: { positionId: bigint; specHash: Hex; requestedReward: string; maxExecutors: number; executionMode: "COLLABORATION" | "COMPETITION"; requiredTesterCapabilities: number },
-  onSubmitted?: (hash: Hash) => void,
+  onSubmitted?: (hash: Hash) => void | Promise<void>,
 ) {
   const { account, wallet, publicClient, contracts, confirmations } = await clients();
   const hash = await wallet.writeContract({
     account, address: contracts.taskRegistry, abi: taskRegistryAbi, functionName: "createTaskWithModeAndTesterCapabilities",
     args: [input.positionId, input.specHash, parseEther(input.requestedReward), input.maxExecutors, input.executionMode === "COMPETITION" ? 1 : 0, input.requiredTesterCapabilities],
   });
-  onSubmitted?.(hash);
+  await onSubmitted?.(hash);
   await confirmed(hash, publicClient, confirmations);
   return hash;
 }

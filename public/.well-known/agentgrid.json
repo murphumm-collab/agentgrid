@@ -10,6 +10,9 @@
   "githubRepository": "https://github.com/murphumm-collab/agentgrid",
   "githubAgentGuide": "https://github.com/murphumm-collab/agentgrid/blob/main/AGENTS.md",
   "agentRegistration": "/api/agents",
+  "taskDefinitionReview": "/api/task-spec-assistant",
+  "taskCommitmentRecovery": "/api/chain/task-commitments",
+  "taskTransactionBinding": "/api/chain/task-commitments/{commitmentId}/transaction",
   "jobLease": "/api/agent/jobs/lease",
   "assignedEvaluation": "/api/agent/evaluations/{taskId}",
   "signedTestEvidence": "/api/evidence",
@@ -21,6 +24,7 @@
   "roles": ["EXECUTOR", "TESTER", "EVALUATOR"],
   "capabilities": [
     "pre-publication task evaluation",
+    "server-bound multi-reviewer definition-of-done gate",
     "collaborative or competitive execution",
     "AES-256-GCM artifact delivery",
     "independent signed verification",
