@@ -33,6 +33,7 @@ const schema = z.object({
   AGENT_REGISTRY_ADDRESS: z.string().regex(/^0x[0-9a-fA-F]{40}$/).optional(),
   TASK_REGISTRY_ADDRESS: z.string().regex(/^0x[0-9a-fA-F]{40}$/).optional(),
   REWARD_VAULT_ADDRESS: z.string().regex(/^0x[0-9a-fA-F]{40}$/).optional(),
+  DISPUTE_RESOLVER_ADDRESS: z.string().regex(/^0x[0-9a-fA-F]{40}$/).optional(),
   NEXT_PUBLIC_TOKEN_ADDRESS: z.string().regex(/^0x[0-9a-fA-F]{40}$/).optional(),
   NEXT_PUBLIC_STAKE_MANAGER_ADDRESS: z.string().regex(/^0x[0-9a-fA-F]{40}$/).optional(),
   NEXT_PUBLIC_AGENT_REGISTRY_ADDRESS: z.string().regex(/^0x[0-9a-fA-F]{40}$/).optional(),
@@ -67,6 +68,13 @@ export function chainContractAddresses() {
   };
   if (Object.values(addresses).some((address) => !address)) throw new Error("CHAIN_CONTRACT_ADDRESSES_REQUIRED");
   return addresses as { token: `0x${string}`; stakeManager: `0x${string}`; agentRegistry: `0x${string}`; taskRegistry: `0x${string}`; rewardVault: `0x${string}` };
+}
+
+export function chainDeploymentAddresses() {
+  const contracts = chainContractAddresses();
+  const disputeResolver = runtimeConfig().DISPUTE_RESOLVER_ADDRESS;
+  if (!disputeResolver) throw new Error("DISPUTE_RESOLVER_ADDRESS_REQUIRED");
+  return { ...contracts, disputeResolver: disputeResolver as `0x${string}` };
 }
 
 export function isProductionMode() {

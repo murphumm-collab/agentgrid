@@ -7,7 +7,7 @@ real-user pilot.
 ## A. Reproducible local gates
 
 - [x] `pnpm lint`
-- [x] `pnpm test` — 181 tests across 45 files. The displayed 100% coverage applies
+- [x] `pnpm test` — 184 tests across 46 files. The displayed 100% coverage applies
   only to `src/lib/protocol.ts`; it is not evidence of full Worker/API coverage.
 - [x] `pnpm contracts:compile` — eight compiled deployable artifacts, including
   the six production deployment contracts
@@ -39,7 +39,9 @@ real-user pilot.
   crash, encrypted upload/finalization, duplicate-completion rejection, and
   application-level 400/413/415 enforcement for malformed, oversized chunked,
   and unsupported-media JSON requests, bounded chunked hidden-test uploads, and
-  runtime browser-chain configuration without build-time public contract values
+  runtime browser-chain configuration without build-time public contract values.
+  It loads all six current compiled runtimes, proves readiness opens, changes one
+  non-immutable opcode and proves readiness returns HTTP 503, then restores it.
 - [x] `pnpm production:secrets:smoke` — the expanded 13-service topology has no
   plaintext sensitive environment variables, enforces file-only policy, and
   verifies all 15 external role-specific Secret mounts, including dedicated
@@ -50,13 +52,14 @@ real-user pilot.
   absent from the 0600 report, symlink/mount-write paths are rejected, and the
   resulting `local-smoke` evidence cannot satisfy the production gate.
 - [x] One uninterrupted current `pnpm release:qa:run` passed all 22 fixed commands
-  and bound the unactivated candidate `0tCFYaVSMa3XoMJUWKw7M`. Report SHA-256 is
-  `9fabf0f8e8d2be41d058093e51273fca5b4a0e96dbb1110c9c69cf0d4400cc93`.
+  and bound the unactivated candidate `f1TFX2x3hw1vN5FhI4VWe`. Report SHA-256 is
+  `f84d2f3bd9ec7fdcee07e9b4227f9f853752d9212137feba90f7282f6a0f5b07`.
   The bound source SHA-256 is
-  `sha256:9b0584b15410e0a740186dfdc3a05bdaadffb0f1394da7efc04548a314dae266`.
+  `sha256:efaa16bf9e9eab43729c5c505bd07fe41fb7b9a29fd1018975f76b233742f730`.
   Its manifest SHA-256 is
-  `sha256:2bb5ab489ac55fb60d58636eefee7ea93ef7f39ef63e46f4ee6ba996ea8a4f7f`.
-  It includes acknowledged monitoring, trusted-proxy and KMS recovery smokes.
+  `sha256:4eaecfad4c9ab993613ee5e5859b1fa5eead4a29e66e9f56531d7fde5036d989`.
+  It includes exact six-contract readiness, acknowledged monitoring,
+  trusted-proxy and KMS recovery smokes.
   All earlier QA reports and candidates remain historical evidence only.
 
 ## B. BSC Testnet gates
@@ -88,7 +91,8 @@ real-user pilot.
   archives its mode-0600 resumable evidence file. This proves only the synthetic
   on-chain lifecycle and cannot close any real-business row in section C/F.
 - [ ] Production `/api/health/ready` returns HTTP 200 with
-  `contractsDeployed:true`.
+  `contractsDeployed:true` only after exact normalized runtime bytecode matches
+  all six current contracts, including the dispute resolver.
 
 ## C. Real end-to-end pilot gates
 
@@ -96,7 +100,9 @@ real-user pilot.
 - [ ] Publisher commits sealed hidden tests and publishes one real business task.
 - [ ] Three future-block-selected evaluators assess category, difficulty,
   duration, testability and recommended reward; two matching approvals are
-  required before publication and the publication fee is charged only then.
+  required before publication. The request immediately occupies its Task Credit
+  and charges the non-refundable 3 AGT evaluator fee; only approval charges the
+  separate publication fee. Rejection or expiry releases the Credit.
 - [ ] Independently owned executor wallet claims, builds, encrypts and commits the
   exact artifact without exposing its key to the publisher.
 - [ ] Future-block selection assigns an independently owned tester wallet.
@@ -192,7 +198,9 @@ real-user pilot.
 - [x] Browser wallet actions load BSC Testnet chain ID, five-confirmation policy,
   all five contract addresses and the optional WalletConnect project ID from the
   server at runtime. Production images no longer depend on build-time
-  `NEXT_PUBLIC_*` contract values.
+  `NEXT_PUBLIC_*` contract values. Server readiness separately verifies the
+  dispute resolver and all five browser-facing contracts against current compiler
+  output; the delivery smoke changes one opcode and proves readiness closes.
 - [x] A sealed task commitment and any broadcast transaction hash survive a page
   refresh. Re-entry resumes the same hash or retries only a never-broadcast or
   confirmed-reverted transaction, preventing duplicate task/evaluation fees.

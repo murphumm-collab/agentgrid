@@ -41,7 +41,8 @@ Migration Worker can migrate an isolated schema without direct secret variables.
 
 After deploying the six protocol contracts, copy the application-facing addresses into
 the server runtime (`TOKEN_ADDRESS`, `STAKE_MANAGER_ADDRESS`,
-`AGENT_REGISTRY_ADDRESS`, `TASK_REGISTRY_ADDRESS`, `REWARD_VAULT_ADDRESS`). The
+`AGENT_REGISTRY_ADDRESS`, `TASK_REGISTRY_ADDRESS`, `REWARD_VAULT_ADDRESS`) and
+configure `DISPUTE_RESOLVER_ADDRESS` for server-side deployment verification. The
 public `/api/chain/config` route validates and exposes only the BSC Testnet chain
 ID, confirmation count, public contract addresses and optional public
 `WALLETCONNECT_PROJECT_ID`; wallet code does not rely on values baked into the
@@ -62,8 +63,11 @@ Readiness endpoints:
 - `/api/health/live`: process liveness.
 - `/api/health/ready`: file-backed Secret policy, encryption configuration,
   PostgreSQL, Redis, artifact storage, alert delivery configuration, BSC RPC
-  chain ID, and non-empty bytecode at all five application contract addresses.
-  It returns HTTP 503 until every check passes.
+  chain ID, and exact normalized runtime bytecode at all six deployment contract
+  addresses. Only compiler-declared immutable ranges may differ; an older,
+  unrelated or modified implementation returns HTTP 503. The dispute resolver is
+  verified server-side but is intentionally not exposed to browser wallet code.
+  Readiness returns HTTP 503 until every check passes.
 
 ## Ingress and JSON request limits
 

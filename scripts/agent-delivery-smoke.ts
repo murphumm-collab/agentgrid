@@ -19,7 +19,15 @@ const apiKey = `amp_smoke_${randomBytes(24).toString("base64url")}`;
 const agentId = `delivery-smoke-${randomUUID()}`;
 const owner = "0x1111111111111111111111111111111111111111";
 const publisher = "0x9999999999999999999999999999999999999999";
-const contractAddress = "0x2222222222222222222222222222222222222222";
+const contractAddresses = {
+  token: "0x2222222222222222222222222222222222222221",
+  stakeManager: "0x2222222222222222222222222222222222222222",
+  agentRegistry: "0x2222222222222222222222222222222222222223",
+  rewardVault: "0x2222222222222222222222222222222222222224",
+  taskRegistry: "0x2222222222222222222222222222222222222225",
+  disputeResolver: "0x2222222222222222222222222222222222222226",
+} as const;
+const contractAddress = contractAddresses.taskRegistry;
 const taskId = "42";
 const positionId = "1";
 const smokeSuffix = randomBytes(8).toString("hex");
@@ -37,10 +45,10 @@ function quantity(value: bigint) {
   return `0x${value.toString(16).padStart(64, "0")}`;
 }
 
-function jsonRpcResult(request: { id?: string | number | null; method?: string; params?: unknown[] }) {
+function jsonRpcResult(request: { id?: string | number | null; method?: string; params?: unknown[] }, runtimeCodes: Record<string, string>) {
   if (request.method === "eth_chainId") return "0x61";
   if (request.method === "eth_blockNumber") return "0x1";
-  if (request.method === "eth_getCode") return "0x6000";
+  if (request.method === "eth_getCode") return runtimeCodes[String(request.params?.[0] ?? "").toLowerCase()] ?? "0x";
   if (request.method === "eth_getLogs") return [];
   if (request.method === "eth_getTransactionReceipt") return {
     transactionHash: String(request.params?.[0]), transactionIndex: "0x0", blockHash: `0x${"55".repeat(32)}`, blockNumber: "0x1",
@@ -57,7 +65,7 @@ function jsonRpcResult(request: { id?: string | number | null; method?: string; 
   throw new Error(`UNSUPPORTED_ETH_CALL_${selector}`);
 }
 
-async function rpcServer() {
+async function rpcServer(runtimeCodes: Record<string, string>) {
   const server = createServer((request, response) => {
     let body = "";
     request.setEncoding("utf8");
@@ -66,7 +74,7 @@ async function rpcServer() {
       try {
         const parsed = JSON.parse(body) as { id?: string | number | null; method?: string; params?: unknown[] };
         response.writeHead(200, { "content-type": "application/json" });
-        response.end(JSON.stringify({ jsonrpc: "2.0", id: parsed.id ?? null, result: jsonRpcResult(parsed) }));
+        response.end(JSON.stringify({ jsonrpc: "2.0", id: parsed.id ?? null, result: jsonRpcResult(parsed, runtimeCodes) }));
       } catch (error) {
         response.writeHead(200, { "content-type": "application/json" });
         response.end(JSON.stringify({ jsonrpc: "2.0", id: null, error: { code: -32603, message: error instanceof Error ? error.message : "RPC_ERROR" } }));
@@ -229,9 +237,19 @@ async function publisherHeaders(baseUrl: string, authSecret: string) {
 }
 
 async function main() {
+  const { compileContracts } = await import("../contracts/scripts/compiler");
+  const artifacts = compileContracts();
+  const runtimeCodes: Record<string, string> = {
+    [contractAddresses.token.toLowerCase()]: artifacts.TestToken.deployedBytecode,
+    [contractAddresses.stakeManager.toLowerCase()]: artifacts.StakeCreditManager.deployedBytecode,
+    [contractAddresses.agentRegistry.toLowerCase()]: artifacts.AgentRegistry.deployedBytecode,
+    [contractAddresses.rewardVault.toLowerCase()]: artifacts.RewardVault.deployedBytecode,
+    [contractAddresses.taskRegistry.toLowerCase()]: artifacts.TaskRegistry.deployedBytecode,
+    [contractAddresses.disputeResolver.toLowerCase()]: artifacts.DisputeResolver.deployedBytecode,
+  };
   const admin = new Pool({ connectionString: baseDatabaseUrl, max: 1 });
   const redis = createClient({ url: redisUrl });
-  const rpc = await rpcServer();
+  const rpc = await rpcServer(runtimeCodes);
   const specAi = await specAssistantAiServer();
   const port = await freePort();
   const baseUrl = `http://127.0.0.1:${port}`;
@@ -283,11 +301,12 @@ async function main() {
     BSC_CHAIN_ID: "97",
     CHAIN_CONFIRMATIONS: "5",
     WALLETCONNECT_PROJECT_ID: "delivery-smoke-walletconnect-project",
-    TOKEN_ADDRESS: contractAddress,
-    STAKE_MANAGER_ADDRESS: contractAddress,
-    AGENT_REGISTRY_ADDRESS: contractAddress,
-    TASK_REGISTRY_ADDRESS: contractAddress,
-    REWARD_VAULT_ADDRESS: contractAddress,
+    TOKEN_ADDRESS: contractAddresses.token,
+    STAKE_MANAGER_ADDRESS: contractAddresses.stakeManager,
+    AGENT_REGISTRY_ADDRESS: contractAddresses.agentRegistry,
+    TASK_REGISTRY_ADDRESS: contractAddresses.taskRegistry,
+    REWARD_VAULT_ADDRESS: contractAddresses.rewardVault,
+    DISPUTE_RESOLVER_ADDRESS: contractAddresses.disputeResolver,
     PORT: String(port),
     HOSTNAME: "127.0.0.1",
   };
@@ -369,7 +388,19 @@ async function main() {
     web = await startWeb();
     const readinessResponse = await fetch(`${baseUrl}/api/health/ready`, { signal: AbortSignal.timeout(10_000) });
     const readiness = await readinessResponse.json() as { checks?: Record<string, boolean> };
-    if (!readinessResponse.ok || readiness.checks?.fileBackedSecrets !== true || readiness.checks?.taskDefinitionAi !== true) throw new Error("DELIVERY_SMOKE_FILE_SECRET_READINESS_FAILED");
+    if (!readinessResponse.ok || readiness.checks?.fileBackedSecrets !== true || readiness.checks?.taskDefinitionAi !== true
+      || readiness.checks?.contractsDeployed !== true) throw new Error("DELIVERY_SMOKE_FILE_SECRET_READINESS_FAILED");
+    const tokenCodeKey = contractAddresses.token.toLowerCase();
+    const originalTokenCode = runtimeCodes[tokenCodeKey];
+    runtimeCodes[tokenCodeKey] = `0x${originalTokenCode[2] === "0" ? "1" : "0"}${originalTokenCode.slice(3)}`;
+    const mismatchedReadinessResponse = await fetch(`${baseUrl}/api/health/ready`, { signal: AbortSignal.timeout(10_000) });
+    const mismatchedReadiness = await mismatchedReadinessResponse.json() as { checks?: Record<string, boolean> };
+    if (mismatchedReadinessResponse.status !== 503 || mismatchedReadiness.checks?.bscRpc !== true
+      || mismatchedReadiness.checks?.contractsDeployed !== false) throw new Error("DELIVERY_SMOKE_WRONG_RUNTIME_BYTECODE_ACCEPTED");
+    runtimeCodes[tokenCodeKey] = originalTokenCode;
+    const restoredReadinessResponse = await fetch(`${baseUrl}/api/health/ready`, { signal: AbortSignal.timeout(10_000) });
+    const restoredReadiness = await restoredReadinessResponse.json() as { checks?: Record<string, boolean> };
+    if (!restoredReadinessResponse.ok || restoredReadiness.checks?.contractsDeployed !== true) throw new Error("DELIVERY_SMOKE_RUNTIME_BYTECODE_RECOVERY_FAILED");
     const authenticatedPublisherHeaders = await publisherHeaders(baseUrl, secretValues.AUTH_SECRET);
     const reviewedTitle = "Build a settlement monitoring service";
     const reviewedOutcome = "Alert settlement operations before a failed transfer breaches the committed service-level objective.";
@@ -453,7 +484,13 @@ async function main() {
       !chainConfigResponse.ok || chainConfig.chainId !== 97 || chainConfig.confirmations !== 5 ||
       chainConfig.walletConnectProjectId !== "delivery-smoke-walletconnect-project" ||
       Object.values(chainConfig.contracts ?? {}).length !== 5 ||
-      Object.values(chainConfig.contracts ?? {}).some((address) => address.toLowerCase() !== contractAddress)
+      Object.entries({
+        token: contractAddresses.token,
+        stakeManager: contractAddresses.stakeManager,
+        agentRegistry: contractAddresses.agentRegistry,
+        taskRegistry: contractAddresses.taskRegistry,
+        rewardVault: contractAddresses.rewardVault,
+      }).some(([key, address]) => chainConfig.contracts?.[key]?.toLowerCase() !== address.toLowerCase())
     ) throw new Error("DELIVERY_SMOKE_RUNTIME_BROWSER_CHAIN_CONFIG_FAILED");
     await verifyJsonBodyPolicy(baseUrl);
     await verifyBinaryBodyPolicy(baseUrl, binaryLimitManifestId, secretValues.AUTH_SECRET);
@@ -516,6 +553,9 @@ async function main() {
       encryptedArtifactVerifiedAndSealed: true,
       duplicateCompletionRejected: true,
       fileBackedReadiness: true,
+      exactRuntimeBytecodeReadiness: true,
+      wrongRuntimeBytecodeRejected: true,
+      disputeResolverRuntimeVerified: true,
       externalAiDefinitionReview: true,
       definitionReviewBoundAndConsumed: true,
       definitionReviewReplayRejected: true,

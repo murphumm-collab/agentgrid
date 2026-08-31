@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "compiler": "0.8.36+commit.8a079791.Emscripten.clang",
+  "contracts": {
+    "token": {
+      "name": "TestToken",
+      "normalizedRuntimeBytecodeHash": "0x3661d5747ff4611dd2a797eebda7270c84038c822c131270073522890135c88f",
+      "immutableReferences": []
+    },
+    "stakeManager": {
+      "name": "StakeCreditManager",
+      "normalizedRuntimeBytecodeHash": "0x32193af34d43042217444e28f520ae3cee6b774cc305a09af670bc1bc5904198",
+      "immutableReferences": [{ "length": 32, "start": 302 }, { "length": 32, "start": 1087 }, { "length": 32, "start": 1748 }, { "length": 32, "start": 2139 }, { "length": 32, "start": 2714 }]
+    },
+    "agentRegistry": {
+      "name": "AgentRegistry",
+      "normalizedRuntimeBytecodeHash": "0x9a00c87b74a21d8144c5e59d60cc9690cdd9e1617f84a15d1947ea6c90b98334",
+      "immutableReferences": [{ "length": 32, "start": 333 }, { "length": 32, "start": 1651 }, { "length": 32, "start": 1857 }, { "length": 32, "start": 2945 }]
+    },
+    "rewardVault": {
+      "name": "RewardVault",
+      "normalizedRuntimeBytecodeHash": "0x78320e33fc76202420cc69fcde80124a324fa92edae1893c6cfc92c704c714d4",
+      "immutableReferences": [{ "length": 32, "start": 343 }, { "length": 32, "start": 4442 }, { "length": 32, "start": 5756 }, { "length": 32, "start": 5808 }, { "length": 32, "start": 820 }, { "length": 32, "start": 4615 }, { "length": 32, "start": 5723 }, { "length": 32, "start": 890 }, { "length": 32, "start": 3107 }]
+    },
+    "taskRegistry": {
+      "name": "TaskRegistry",
+      "normalizedRuntimeBytecodeHash": "0xb1b32a1bc6ce8891111391f6221e7ca8ef1c981f3088269368f9dd55172e463d",
+      "immutableReferences": [{ "length": 32, "start": 4416 }, { "length": 32, "start": 7148 }, { "length": 32, "start": 7577 }, { "length": 32, "start": 9745 }, { "length": 32, "start": 15010 }, { "length": 32, "start": 15979 }, { "length": 32, "start": 16810 }, { "length": 32, "start": 17797 }, { "length": 32, "start": 21075 }, { "length": 32, "start": 21638 }, { "length": 32, "start": 6996 }, { "length": 32, "start": 10875 }, { "length": 32, "start": 15404 }, { "length": 32, "start": 16567 }, { "length": 32, "start": 19159 }, { "length": 32, "start": 20803 }, { "length": 32, "start": 22863 }, { "length": 32, "start": 912 }, { "length": 32, "start": 1841 }, { "length": 32, "start": 2747 }, { "length": 32, "start": 8074 }, { "length": 32, "start": 11441 }, { "length": 32, "start": 11599 }, { "length": 32, "start": 13087 }, { "length": 32, "start": 17929 }]
+    },
+    "disputeResolver": {
+      "name": "DisputeResolver",
+      "normalizedRuntimeBytecodeHash": "0x146dcfbf9090f11a11bc7fcb48710b5a5937d5739a7c73f281d7d640ac2abf43",
+      "immutableReferences": [{ "length": 32, "start": 877 }, { "length": 32, "start": 1836 }, { "length": 32, "start": 1504 }, { "length": 32, "start": 1774 }]
+    }
+  }
+}

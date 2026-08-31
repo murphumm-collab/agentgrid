@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { artifactStorageReady } from "@/lib/artifacts";
-import { chainContractAddresses, isProductionMode, runtimeConfig } from "@/lib/env";
+import { chainDeploymentAddresses, isProductionMode, runtimeConfig } from "@/lib/env";
 import { postgresReady } from "@/lib/store-postgres";
 import { redisReady } from "@/lib/agent-queue";
 import { enforceProductionFileSecrets, productionReadyFileSecrets } from "@/lib/secrets";
 import { taskSpecAiConfigurationReady } from "@/lib/task-spec-assistant";
+import { runtimeContractKeys, verifyRuntimeContractSet } from "@/lib/runtime-contract-verification";
 
 async function rpc(method: string, params: unknown[] = []) {
   const response = await fetch(runtimeConfig().BSC_TESTNET_RPC_URL, {
@@ -36,9 +37,10 @@ export async function GET() {
     checks.bscRpc = Number.parseInt(await rpc("eth_chainId"), 16) === runtimeConfig().BSC_CHAIN_ID;
     if (isProductionMode() && checks.bscRpc) {
       try {
-        const addresses = chainContractAddresses();
-        const code = await Promise.all(Object.values(addresses).map((address) => rpc("eth_getCode", [address, "latest"])));
-        checks.contractsDeployed = code.every((item) => Boolean(item && item !== "0x"));
+        const addresses = chainDeploymentAddresses();
+        const code = await Promise.all(runtimeContractKeys.map((key) => rpc("eth_getCode", [addresses[key], "latest"])));
+        verifyRuntimeContractSet(Object.fromEntries(runtimeContractKeys.map((key, index) => [key, code[index]])) as Record<(typeof runtimeContractKeys)[number], string>);
+        checks.contractsDeployed = true;
       } catch { checks.contractsDeployed = false; }
     }
   } catch { checks.bscRpc = false; }

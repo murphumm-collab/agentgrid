@@ -2,7 +2,7 @@ import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { resetRuntimeConfigForTests, runtimeConfig } from "./env";
+import { chainDeploymentAddresses, resetRuntimeConfigForTests, runtimeConfig } from "./env";
 
 const previous = { ...process.env };
 const folders: string[] = [];
@@ -44,6 +44,22 @@ describe("production environment", () => {
     process.env.ARTIFACT_PREVIOUS_MASTER_KEYS = "not-a-key";
     resetRuntimeConfigForTests();
     expect(() => runtimeConfig()).toThrow();
+  });
+
+  it("requires the dispute resolver for six-contract deployment readiness", () => {
+    process.env.PROTOCOL_MODE = "demo";
+    process.env.TOKEN_ADDRESS = "0x1111111111111111111111111111111111111111";
+    process.env.STAKE_MANAGER_ADDRESS = "0x2222222222222222222222222222222222222222";
+    process.env.AGENT_REGISTRY_ADDRESS = "0x3333333333333333333333333333333333333333";
+    process.env.TASK_REGISTRY_ADDRESS = "0x4444444444444444444444444444444444444444";
+    process.env.REWARD_VAULT_ADDRESS = "0x5555555555555555555555555555555555555555";
+    delete process.env.DISPUTE_RESOLVER_ADDRESS;
+    resetRuntimeConfigForTests();
+    expect(() => chainDeploymentAddresses()).toThrow("DISPUTE_RESOLVER_ADDRESS_REQUIRED");
+
+    process.env.DISPUTE_RESOLVER_ADDRESS = "0x6666666666666666666666666666666666666666";
+    resetRuntimeConfigForTests();
+    expect(chainDeploymentAddresses().disputeResolver).toBe(process.env.DISPUTE_RESOLVER_ADDRESS);
   });
 
   it("loads core production values from read-only files without copying them into process.env", () => {

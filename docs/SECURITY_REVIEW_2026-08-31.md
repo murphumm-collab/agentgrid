@@ -275,14 +275,19 @@ wallets. The production Compose file binds the Web service only to
 - **Location:** `contracts/scripts/compiler.ts`,
   `contracts/scripts/bytecode-verification.ts`,
   `contracts/scripts/verify-deployment.ts`,
-  `contracts/scripts/pilot-preflight.ts`
+  `contracts/scripts/pilot-preflight.ts`,
+  `src/lib/runtime-contract-verification.ts`,
+  `src/app/api/health/ready/route.ts`
 - **Evidence:** The compiler now preserves every Solidity immutable reference.
   Deployment verification and pilot preflight normalize only those declared byte
   ranges, then require the remaining on-chain runtime bytecode to equal current
   compiler output exactly. Focused tests prove immutable values may differ while
   any other opcode change fails. Contract lifecycle setup verifies the five core
-  locally deployed runtimes through the same function. Future manifests include
-  solc version and normalized runtime hashes.
+  locally deployed runtimes through the same function. The production readiness
+  endpoint uses a build-time manifest to verify all six deployed contracts,
+  including the dispute resolver; the delivery smoke proves one changed opcode
+  closes readiness with HTTP 503 and restoration reopens it. Manifests include
+  solc version, immutable references and normalized runtime hashes.
 - **Impact before fix:** Any non-empty contract at a manifest address could pass
   the bytecode presence check, including an older or unrelated implementation
   with different authorization/economic behavior.
