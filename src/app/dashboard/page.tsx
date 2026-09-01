@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowUpRight, Bot, Braces, CheckCircle2, CircleDot, FileJson2, LockKeyhole, Radio, ShieldCheck, Workflow } from "lucide-react";
+import { ArrowUpRight, BadgeDollarSign, Bot, Braces, CheckCircle2, CircleDot, FileJson2, LockKeyhole, Radio, ShieldCheck, Workflow } from "lucide-react";
 import { buildAiDashboard } from "@/lib/ai-dashboard";
 import { isProductionMode } from "@/lib/env";
 import { getLocale } from "@/lib/i18n-server";
@@ -67,6 +67,9 @@ export default async function AiDashboardPage() {
         <p>{zh
           ? "未完成 DEX/Oracle 审计前不执行真实回购。广告与赞助对评估者、验证者、仲裁者选择、质量排名、完成规则和挑战窗口的影响均为 NONE。"
           : "No live buyback executes before DEX/oracle audit. Advertising and sponsorship influence over evaluator, validator and arbitrator selection, quality ranking, completion rules and challenge windows is NONE."}</p>
+        <p>{zh
+          ? `付费任务必须显示“赞助”，由 ${dashboard.promotionPolicy.signingVersion} 绑定支付回执，最长 ${dashboard.promotionPolicy.maximumDurationDays} 天；它只改变展示顺序，对协议的影响为 ${dashboard.promotionPolicy.protocolInfluence}。`
+          : `Paid tasks must show “Sponsored”, bind the payment receipt through ${dashboard.promotionPolicy.signingVersion}, and expire within ${dashboard.promotionPolicy.maximumDurationDays} days. The only effect is display order; protocol influence is ${dashboard.promotionPolicy.protocolInfluence}.`}</p>
       </div>
     </section>
 
@@ -81,7 +84,7 @@ export default async function AiDashboardPage() {
       <section className="card card-pad">
         <div className="section-head"><div><div className="eyebrow">WORK QUEUE</div><h2 className="section-title">{zh ? "Agent 可发现的公开工作" : "Public work discoverable by agents"}</h2></div><Link className="section-link" href="/tasks">{zh ? "完整市场" : "Full market"}</Link></div>
         <div className="task-list">
-          {dashboard.workQueue.slice(0, 8).map((task) => <Link className="task-row" href={task.humanUrl} key={task.id}><div><div className="header-pills"><span className="badge badge-green">{task.state}</span><span className="badge badge-blue">{task.executionMode}</span><span className="badge">{task.category}</span></div><h3 className="task-title ai-task-title">{task.title}</h3><div className="task-meta"><span>{zh ? "执行席位" : "executor slots"} {task.executorSlots.filled}/{task.executorSlots.maximum}</span><span>{zh ? "验证能力" : "verification"} {task.requiredVerificationCapabilities.join(", ") || "task-defined"}</span><span>ID {task.id}</span></div></div><ArrowUpRight size={18} color="var(--accent)" /></Link>)}
+          {dashboard.workQueue.slice(0, 8).map((task) => <Link className="task-row" href={task.humanUrl} key={task.id}><div><div className="header-pills"><span className="badge badge-green">{task.state}</span><span className="badge badge-blue">{task.executionMode}</span><span className="badge">{task.category}</span>{task.promotion ? <span className="badge sponsored-badge" title={zh ? "付费展示；不影响协议选择、质量、验证或仲裁" : "Paid display; no protocol selection, quality, verification or arbitration effect"}><BadgeDollarSign size={12} />{zh ? "赞助" : "Sponsored"}</span> : null}</div><h3 className="task-title ai-task-title">{task.title}</h3><div className="task-meta"><span>{zh ? "执行席位" : "executor slots"} {task.executorSlots.filled}/{task.executorSlots.maximum}</span><span>{zh ? "验证能力" : "verification"} {task.requiredVerificationCapabilities.join(", ") || "task-defined"}</span><span>ID {task.id}</span></div></div><ArrowUpRight size={18} color="var(--accent)" /></Link>)}
           {!dashboard.workQueue.length && <div className="category-empty"><CheckCircle2 size={24} /><strong>{zh ? "当前没有公开待处理工作" : "No public actionable work"}</strong><span>{zh ? "私有评估草稿和被拒绝任务不会出现在这里。" : "Private evaluation drafts and rejected tasks never appear here."}</span></div>}
         </div>
       </section>
