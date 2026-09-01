@@ -88,7 +88,7 @@ export function buildAiDashboard(source: AiDashboardSource, now = new Date(), mo
   const rewards = new Map(source.rewards.map((reward) => [reward.taskId, reward]));
 
   return {
-    schemaVersion: "2.3",
+    schemaVersion: "2.4",
     generatedAt: now.toISOString(),
     mode,
     network: { name: "BSC Testnet", chainId: 97, confirmations: 5 },
@@ -132,15 +132,15 @@ export function buildAiDashboard(source: AiDashboardSource, now = new Date(), mo
         status: "LOCAL_RELEASE_GATE_OPEN",
         frozenWeightEntrypoint: "AgentRegistry.frozenSelectionWeightAt(address,uint8,uint64,uint64)",
         liveSafetyWeightEntrypoint: "AgentRegistry.selectionWeightAt(address,uint8,uint64,uint64)",
-        currentSelectionComplexity: "TASK_PATH_LINEAR_POOL_PRIMITIVE_NOT_WIRED",
-        requiredReplacement: "PERMISSIONLESS_BOUNDED_ALL_CANDIDATE_WEIGHTED_CONSTRUCTION",
+        currentSelectionComplexity: "TASK_PATH_BOUNDED_PAGINATED_FENWICK",
+        requiredReplacement: "EXHAUSTED_POOL_RECOVERY_AND_GOVERNED_MAXIMUM_REGISTRY_BSC_GAS_EVIDENCE",
         randomWindowAccepted: false,
         poolPrimitive: {
           boundedBuildPageMax: 64,
-          boundedPrunesPerDrawMax: 16,
+          boundedPrunesPerTransactionMax: 16,
           entropyScheduledAfterCompleteBuild: true,
           frozenAuditWeightsPreserved: true,
-          taskRegistryIntegration: "OPEN",
+          taskRegistryIntegration: "INTEGRATED",
         },
       },
       liveness: {

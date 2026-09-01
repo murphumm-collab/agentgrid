@@ -112,6 +112,22 @@ async function main() {
     await queue.enqueueAgentJob(mismatched);
     if (await queue.leaseAgentJob("reorg-mismatched", "EVALUATOR", owners[6])) throw new Error("REORG_SMOKE_LOG_MISMATCH_ACCEPTED");
 
+    const selectionTransactionHash = `0x${randomBytes(32).toString("hex")}`;
+    const selectionBlockHash = `0x${randomBytes(32).toString("hex")}`;
+    const evaluatorPoolId = `0x${randomBytes(32).toString("hex")}`;
+    const testerPoolId = `0x${randomBytes(32).toString("hex")}`;
+    await store.persistChainBatch(cursorName, 101n, 102n, selectionBlockHash, [
+      { chainId: 97, transactionHash: selectionTransactionHash, logIndex: 0, blockNumber: 101n, blockHash: selectionBlockHash, blockTimestamp: "2026-01-01T00:05:30.000Z", address: contractAddress, topics: [], data: "0x", eventName: "SelectionPoolStarted", eventArgs: { poolId: evaluatorPoolId, taskId: "60", requester: contractAddress, candidateCount: "100", snapshotVersion: "9", snapshotTime: "1767229530", capability: 4, evaluatorPanel: true, candidateSetHash: `0x${randomBytes(32).toString("hex")}` } },
+      { chainId: 97, transactionHash: selectionTransactionHash, logIndex: 1, blockNumber: 101n, blockHash: selectionBlockHash, blockTimestamp: "2026-01-01T00:05:30.000Z", address: contractAddress, topics: [], data: "0x", eventName: "SelectionPoolSealed", eventArgs: { poolId: evaluatorPoolId, taskId: "60", selectionBlock: "106", eligibleCandidates: "80", totalWeight: "480000", evaluatorPanel: true } },
+      { chainId: 97, transactionHash: selectionTransactionHash, logIndex: 2, blockNumber: 101n, blockHash: selectionBlockHash, blockTimestamp: "2026-01-01T00:05:30.000Z", address: contractAddress, topics: [], data: "0x", eventName: "SelectionPoolSealed", eventArgs: { poolId: testerPoolId, taskId: "61", selectionBlock: "106", eligibleCandidates: "70", totalWeight: "420000", evaluatorPanel: false } },
+    ]);
+    const selectionJobs = await store.pendingJobOutbox();
+    if (selectionJobs.length !== 3) throw new Error("REORG_SMOKE_SELECTION_OUTBOX_NOT_CREATED");
+    const selectionKinds = new Set(selectionJobs.map((job) => job.kind));
+    if (!selectionKinds.has("BUILD_SELECTION_POOL") || !selectionKinds.has("FINALIZE_EVALUATION_PANEL") || !selectionKinds.has("FINALIZE_TESTER")) throw new Error("REORG_SMOKE_SELECTION_OUTBOX_KIND_DRIFT");
+    await store.rewindChain(cursorName, 101n);
+    if ((await store.pendingJobOutbox()).length !== 0) throw new Error("REORG_SMOKE_SELECTION_ORPHAN_OUTBOX_RETAINED");
+
     const capabilityTaskId = "77";
     const capabilitySpecHash = `0x${randomBytes(32).toString("hex")}`;
     const hiddenTestId = randomUUID();
@@ -199,6 +215,7 @@ async function main() {
       inFlightOrphanCancelled: true,
       canonicalReplacementExecuted: true,
       mismatchedLogRejected: true,
+      selectionPoolOutboxReorgSafe: true,
       changedDefinitionRejected: true,
       crossPublisherDefinitionReviewRejected: true,
       expiredDefinitionReviewRejected: true,

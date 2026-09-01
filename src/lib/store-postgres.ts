@@ -613,6 +613,13 @@ export async function persistChainBatch(name: string, fromBlock: bigint, nextBlo
           [String(event.eventArgs?.taskId), approved ? "APPROVED" : "REJECTED", approved],
         );
       }
+      if (event.eventName === "SelectionPoolSealed" && event.eventArgs?.evaluatorPanel === true) {
+        await client.query(
+          `UPDATE task_commitments SET evaluation_selection_block=$2
+           WHERE chain_task_id=$1 AND status='EVALUATING'`,
+          [String(event.eventArgs.taskId), String(event.eventArgs.selectionBlock)],
+        );
+      }
       if (event.eventName === "TaskCreated" && event.eventArgs?.specHash) {
         const candidate = await client.query<{ id: string; spec: Record<string, unknown> }>(
           `SELECT id,spec FROM task_commitments WHERE spec_hash=$1 AND publisher=$2 AND status IN ('APPROVED','ORPHANED') FOR UPDATE`,
@@ -769,10 +776,10 @@ export async function persistChainBatch(name: string, fromBlock: bigint, nextBlo
           ? { role: "EXECUTOR", kind: "EXECUTE_TASK" }
         : event.eventName === "WorkSubmitted"
           ? { role: "COORDINATOR", kind: "ASSIGN_TESTER" }
-          : event.eventName === "TesterRequested"
-            ? { role: "COORDINATOR", kind: "FINALIZE_TESTER" }
-          : event.eventName === "TaskEvaluationRequested"
-            ? { role: "COORDINATOR", kind: "FINALIZE_EVALUATION_PANEL" }
+          : event.eventName === "SelectionPoolStarted"
+            ? { role: "COORDINATOR", kind: "BUILD_SELECTION_POOL" }
+          : event.eventName === "SelectionPoolSealed"
+            ? { role: "COORDINATOR", kind: event.eventArgs?.evaluatorPanel === true ? "FINALIZE_EVALUATION_PANEL" : "FINALIZE_TESTER" }
             : null;
       if (queued) {
         const id = `${event.chainId}:${event.transactionHash}:${event.logIndex}:${queued.kind}`;
@@ -781,9 +788,13 @@ export async function persistChainBatch(name: string, fromBlock: bigint, nextBlo
           [id, queued.role, queued.kind, JSON.stringify(chainJobPayload(event, {
             ...(event.eventName === "TeamReady" ? { executor: event.eventArgs?.leadExecutor } : {}),
             ...(event.eventName === "ExecutorEvicted" ? { executor: undefined } : {}),
-            ...(event.eventName === "TaskEvaluationRequested" ? {
+            ...(event.eventName === "SelectionPoolStarted" ? {
+              poolId: String(event.eventArgs?.poolId ?? ""),
+              candidateCount: String(event.eventArgs?.candidateCount ?? ""),
+            } : {}),
+            ...(event.eventName === "SelectionPoolSealed" ? {
+              poolId: String(event.eventArgs?.poolId ?? ""),
               selectionBlock: String(event.eventArgs?.selectionBlock ?? ""),
-              deadline: String(event.eventArgs?.deadline ?? ""),
             } : {}),
           }))],
         );

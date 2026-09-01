@@ -133,7 +133,7 @@ contract AgentRegistry {
         uint8 capability, bool evaluatorPanel, bytes32 candidateSetHash
     );
     event SelectionPoolProgress(bytes32 indexed poolId, uint256 cursor, uint256 candidateCount, uint256 totalWeight);
-    event SelectionPoolSealed(bytes32 indexed poolId, uint256 indexed taskId, uint256 selectionBlock, uint256 eligibleCandidates, uint256 totalWeight);
+    event SelectionPoolSealed(bytes32 indexed poolId, uint256 indexed taskId, uint256 selectionBlock, uint256 eligibleCandidates, uint256 totalWeight, bool evaluatorPanel);
     event SelectionPoolCandidatePruned(bytes32 indexed poolId, address indexed candidate, uint64 drawNonce);
     event SelectionPoolCandidateSelected(bytes32 indexed poolId, uint256 indexed taskId, address indexed candidate, uint8 slot, bytes32 drawProof);
 
@@ -458,12 +458,11 @@ contract AgentRegistry {
         pool.cursor = end;
         emit SelectionPoolProgress(poolId, end, pool.candidateCount, pool.totalWeight);
         if (end == pool.candidateCount) {
-            if (selectionPoolCandidates[poolId].length < SELECTION_POOL_SIZE) revert InvalidSelectionPool();
             pool.complete = true;
             pool.selectionBlock = block.number + SELECTION_ENTROPY_DELAY;
             emit SelectionPoolSealed(
                 poolId, pool.taskId, pool.selectionBlock,
-                selectionPoolCandidates[poolId].length, pool.totalWeight
+                selectionPoolCandidates[poolId].length, pool.totalWeight, pool.evaluatorPanel
             );
         }
     }
@@ -474,7 +473,7 @@ contract AgentRegistry {
     function rescheduleSelectionPool(bytes32 poolId) external {
         SelectionPool storage pool = selectionPools[poolId];
         if (
-            !pool.complete || pool.selectedCount != 0 || pool.selectionBlock == 0 ||
+            !pool.complete || pool.selectedCount != 0 || pool.drawProof != bytes32(0) || pool.selectionBlock == 0 ||
             block.number <= pool.selectionBlock + 256
         ) revert InvalidSelectionPool();
         pool.selectionBlock = block.number + SELECTION_ENTROPY_DELAY;
@@ -482,20 +481,21 @@ contract AgentRegistry {
         pool.drawProof = bytes32(0);
         emit SelectionPoolSealed(
             poolId, pool.taskId, pool.selectionBlock,
-            selectionPoolCandidates[poolId].length, pool.totalWeight
+            selectionPoolCandidates[poolId].length, pool.totalWeight, pool.evaluatorPanel
         );
     }
 
-    /// @notice Draws one panel member in O(log n), pruning at most the caller-
-    /// bounded number of currently unsafe or task-conflicted candidates. Pruned
-    /// progress persists, allowing a permissionless TaskRegistry retry to make
-    /// bounded progress without changing the frozen pool or entropy.
-    function drawSelectionPool(bytes32 poolId, uint8 maxPrunes) external returns (address winner) {
+    /// @notice Draws toward a complete panel in O(log n) per member while
+    /// pruning at most maxPrunes unsafe/conflicted candidates in this transaction.
+    /// Partial progress persists across permissionless TaskRegistry retries.
+    function drawSelectionPanel(bytes32 poolId, uint8 maxPrunes) external returns (
+        address[3] memory winners, bool finalized, uint256 selectionBlock, bytes32 drawProof
+    ) {
         SelectionPool storage pool = selectionPools[poolId];
         if (
-            msg.sender != pool.requester || !pool.complete || pool.selectedCount >= SELECTION_POOL_SIZE ||
+            msg.sender != pool.requester || !pool.complete ||
             maxPrunes == 0 || maxPrunes > MAX_SELECTION_PRUNES || block.number <= pool.selectionBlock ||
-            block.number > pool.selectionBlock + 256
+            (pool.drawProof == bytes32(0) && block.number > pool.selectionBlock + 256)
         ) revert InvalidSelectionPool();
         if (pool.drawProof == bytes32(0)) {
             pool.drawProof = keccak256(abi.encode(
@@ -505,7 +505,7 @@ contract AgentRegistry {
             ));
         }
         uint8 pruned;
-        while (pool.totalWeight != 0) {
+        while (pool.selectedCount < SELECTION_POOL_SIZE && pool.totalWeight != 0) {
             uint256 ticket = uint256(keccak256(abi.encode(
                 pool.drawProof, pool.selectedCount, pool.drawNonce, "PAGINATED_WEIGHTED_SELECTION"
             ))) % pool.totalWeight;
@@ -525,14 +525,18 @@ contract AgentRegistry {
                 selectionPoolWinners[poolId][slot] = candidate;
                 pool.selectedCount = slot + 1;
                 emit SelectionPoolCandidateSelected(poolId, pool.taskId, candidate, slot, pool.drawProof);
-                return candidate;
+                continue;
             }
             _removeSelectionWeight(poolId, index, weight);
             pool.drawNonce += 1;
             emit SelectionPoolCandidatePruned(poolId, candidate, pool.drawNonce);
             pruned += 1;
-            if (pruned == maxPrunes) return address(0);
+            if (pruned == maxPrunes) break;
         }
+        winners = selectionPoolWinners[poolId];
+        finalized = pool.selectedCount == SELECTION_POOL_SIZE;
+        selectionBlock = pool.selectionBlock;
+        drawProof = pool.drawProof;
     }
 
     function selectionPoolCandidate(bytes32 poolId, uint256 index) external view returns (address candidate, uint256 frozenWeight) {
@@ -543,6 +547,14 @@ contract AgentRegistry {
     function selectionPoolWinner(bytes32 poolId, uint8 slot) external view returns (address) {
         if (slot >= SELECTION_POOL_SIZE) revert InvalidSelectionPool();
         return selectionPoolWinners[poolId][slot];
+    }
+
+    function selectionPoolStatus(bytes32 poolId) external view returns (
+        uint256 selectionBlock, uint256 remainingWeight, uint8 selectedCount,
+        bool complete, bytes32 drawProof
+    ) {
+        SelectionPool storage pool = selectionPools[poolId];
+        return (pool.selectionBlock, pool.totalWeight, pool.selectedCount, pool.complete, pool.drawProof);
     }
 
     function _appendSelectionWeight(bytes32 poolId, address candidate, uint256 weight) private {
@@ -594,37 +606,6 @@ contract AgentRegistry {
         }
         if (index >= count) revert InvalidSelectionPool();
         return index;
-    }
-
-    /// @notice Deterministic quality-weighted sampling with a fairness floor.
-    /// The calling TaskRegistry supplies a read-only conflict predicate so the
-    /// quality registry never needs task-specific storage.
-    function selectWeightedTaskCandidate(
-        uint256 taskId, bytes32 proof, uint8 slot, uint256 candidateCount,
-        uint8 capability, address[3] calldata selected, uint8 selectedCount,
-        bool evaluatorPanel, bytes32 snapshot
-    ) external view returns (address winner) {
-        if (candidateCount == 0 || candidateCount > registeredAgents.length) return address(0);
-        uint256 packedSnapshot = uint256(snapshot);
-        uint64 snapshotVersion = uint64(packedSnapshot >> 64);
-        uint64 snapshotTime = uint64(packedSnapshot);
-        uint256 totalWeight;
-        for (uint256 i; i < candidateCount; ++i) {
-            address candidate = registeredAgents[i];
-            if (_selected(candidate, selected, selectedCount)) continue;
-            if (IAgentSelectionConflicts(msg.sender).isAgentSelectionConflict(taskId, candidate, evaluatorPanel)) continue;
-            totalWeight += selectionWeightAt(candidate, capability, snapshotVersion, snapshotTime);
-        }
-        if (totalWeight == 0) return address(0);
-        uint256 ticket = uint256(keccak256(abi.encode(proof, slot, "QUALITY_WEIGHTED_SELECTION"))) % totalWeight;
-        uint256 cumulative;
-        for (uint256 i; i < candidateCount; ++i) {
-            address candidate = registeredAgents[i];
-            if (_selected(candidate, selected, selectedCount)) continue;
-            if (IAgentSelectionConflicts(msg.sender).isAgentSelectionConflict(taskId, candidate, evaluatorPanel)) continue;
-            cumulative += selectionWeightAt(candidate, capability, snapshotVersion, snapshotTime);
-            if (ticket < cumulative) return candidate;
-        }
     }
 
     function _advanceRegistry(bytes32 mutationHash) private {
@@ -688,11 +669,6 @@ contract AgentRegistry {
         // Fewer than three independent outcomes may reduce trust immediately,
         // but cannot enter the priority-selection or bonus-reward tier.
         if (independentPositiveOutcomeCount[agent][role] < 3 && score > INITIAL_QUALITY_BPS) score = INITIAL_QUALITY_BPS;
-    }
-
-    function _selected(address candidate, address[3] calldata selected, uint8 selectedCount) private pure returns (bool) {
-        for (uint8 i; i < selectedCount; ++i) if (selected[i] == candidate) return true;
-        return false;
     }
 
     function _roleForCapability(uint8 capability) private pure returns (uint8) {

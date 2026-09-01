@@ -28,15 +28,15 @@ describe("AI dashboard", () => {
   it("publishes deterministic action metadata without private task states", () => {
     const dashboard = buildAiDashboard(source(), new Date("2026-08-31T00:00:00.000Z"));
     const serialized = JSON.stringify(dashboard);
-    expect(dashboard.schemaVersion).toBe("2.3");
+    expect(dashboard.schemaVersion).toBe("2.4");
     expect(dashboard.selectionPolicy).toMatchObject({
       positiveChangesAfterRequest: "IGNORED_FOR_FROZEN_DRAW",
       mainnetRequirement: "VRF_REQUIRED",
       fairnessFloorTickets: 1_000,
       scalability: {
         status: "LOCAL_RELEASE_GATE_OPEN",
-        currentSelectionComplexity: "TASK_PATH_LINEAR_POOL_PRIMITIVE_NOT_WIRED",
-        poolPrimitive: { boundedBuildPageMax: 64, taskRegistryIntegration: "OPEN" },
+        currentSelectionComplexity: "TASK_PATH_BOUNDED_PAGINATED_FENWICK",
+        poolPrimitive: { boundedBuildPageMax: 64, taskRegistryIntegration: "INTEGRATED" },
         randomWindowAccepted: false,
       },
       liveness: {
@@ -73,7 +73,7 @@ describe("AI dashboard", () => {
     for (const id of ["evict-inactive-executor", "request-validator-draw", "finalize-validator-draw", "request-maintenance-panel"]) {
       expect(dashboard.onChainActions.find((action) => action.id === id)?.role).toBe("ANYONE");
     }
-    expect(dashboard.onChainActionExclusions).toHaveLength(56);
+    expect(dashboard.onChainActionExclusions).toHaveLength(55);
     expect(dashboard.onChainActions.find((action) => action.id === "open-verification-challenge")).toMatchObject({
       contract: "verificationArbitrationCourt", signature: "openChallenge(uint256,address,bytes32)", role: "ELIGIBLE_CHALLENGER",
     });
@@ -117,7 +117,7 @@ describe("AI dashboard", () => {
     const documentedMethods = openapi.components.schemas.AiDashboard.properties.actionContracts.items.properties.method.enum;
     expect(documentedMethods).toEqual(expect.arrayContaining([...new Set(dashboard.actionContracts.map((action) => action.method))]));
     expect(openapi.components.schemas.AiDashboard.properties.onChainActions).toMatchObject({ minItems: 46, maxItems: 46 });
-    expect(openapi.components.schemas.AiDashboard.properties.onChainActionExclusions).toMatchObject({ minItems: 56, maxItems: 56 });
+    expect(openapi.components.schemas.AiDashboard.properties.onChainActionExclusions).toMatchObject({ minItems: 55, maxItems: 55 });
     expect(openapi.components.schemas.AiDashboard.properties.onChainActionExclusions.items.properties.classification.enum).toEqual([
       "GOVERNANCE_ONLY", "PROTOCOL_INTERNAL", "TOKEN_TRANSFER_OUTSIDE_AGENTGRID_WORKFLOW",
     ]);

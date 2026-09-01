@@ -186,7 +186,7 @@ only the 2500-bps paid-pool floor; a rejected appeal slashes 5%, then 15%, then
 expire the appeal to unlock participants without restoring the role or counting
 a false appeal. Deployment verification must confirm the Court's
 `AgentRegistry.outcomeReporterRoles` mask equals `7`; the manifest therefore
-contains 29 transactions, including 13 explicit wiring calls.
+contains 30 transactions, including 14 explicit wiring calls.
 
 Quality monitoring must alert on `AgentQualityOutcomeIgnored` reasons
 `LOW_VALUE_TASK`, `SELF_DEALING_RELATIONSHIP` and `RELATIONSHIP_EPOCH_CAP`, and

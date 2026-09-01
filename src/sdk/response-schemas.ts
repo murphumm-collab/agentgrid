@@ -130,7 +130,7 @@ const protocolEconomicsSummarySchema = z.object({
 }).strict();
 
 export const publicDashboardResponseSchema = z.object({
-  schemaVersion: z.literal("2.3"),
+  schemaVersion: z.literal("2.4"),
   generatedAt: dateTime,
   mode: z.enum(["demo", "production"]),
   network: z.object({ name: z.literal("BSC Testnet"), chainId: z.literal(97), confirmations: z.literal(5) }).strict(),
@@ -206,15 +206,15 @@ export const publicDashboardResponseSchema = z.object({
       status: z.literal("LOCAL_RELEASE_GATE_OPEN"),
       frozenWeightEntrypoint: z.literal("AgentRegistry.frozenSelectionWeightAt(address,uint8,uint64,uint64)"),
       liveSafetyWeightEntrypoint: z.literal("AgentRegistry.selectionWeightAt(address,uint8,uint64,uint64)"),
-      currentSelectionComplexity: z.literal("TASK_PATH_LINEAR_POOL_PRIMITIVE_NOT_WIRED"),
-      requiredReplacement: z.literal("PERMISSIONLESS_BOUNDED_ALL_CANDIDATE_WEIGHTED_CONSTRUCTION"),
+      currentSelectionComplexity: z.literal("TASK_PATH_BOUNDED_PAGINATED_FENWICK"),
+      requiredReplacement: z.literal("EXHAUSTED_POOL_RECOVERY_AND_GOVERNED_MAXIMUM_REGISTRY_BSC_GAS_EVIDENCE"),
       randomWindowAccepted: z.literal(false),
       poolPrimitive: z.object({
         boundedBuildPageMax: z.literal(64),
-        boundedPrunesPerDrawMax: z.literal(16),
+        boundedPrunesPerTransactionMax: z.literal(16),
         entropyScheduledAfterCompleteBuild: z.literal(true),
         frozenAuditWeightsPreserved: z.literal(true),
-        taskRegistryIntegration: z.literal("OPEN"),
+        taskRegistryIntegration: z.literal("INTEGRATED"),
       }).strict(),
     }).strict(),
     liveness: z.object({
@@ -283,7 +283,7 @@ export const publicDashboardResponseSchema = z.object({
     signature: boundedText(3, 300),
     classification: z.enum(["GOVERNANCE_ONLY", "PROTOCOL_INTERNAL", "TOKEN_TRANSFER_OUTSIDE_AGENTGRID_WORKFLOW"]),
     reason: boundedText(1, 1_000),
-  }).strict()).length(56),
+  }).strict()).length(55),
   trustBoundary: z.object({
     authority: boundedText(1, 1_000),
     permissionRule: boundedText(1, 1_000),

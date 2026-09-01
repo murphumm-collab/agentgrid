@@ -20,10 +20,12 @@ const validJobs = [
     selectedArtifactHash: hash, executorWeightsBps: [10_000], salt: hash, passed: true, ...provenance,
   }, createdAt: now },
   { id: "job:evaluate", role: "EVALUATOR", kind: "EVALUATE_TASK", payload: { taskId: "7", tester: address, ...provenance }, createdAt: now },
-  { id: "job:panel", role: "COORDINATOR", kind: "FINALIZE_EVALUATION_PANEL", payload: { taskId: "8", selectionBlock: "100", deadline: "1800000000", ...provenance }, createdAt: now },
-  ...["FINALIZE_TASK_EVALUATION", "ASSIGN_TESTER", "FINALIZE_TESTER"].map((kind, index) => ({
+  { id: "job:build-selection", role: "COORDINATOR", kind: "BUILD_SELECTION_POOL", payload: { taskId: "8", poolId: hash, candidateCount: "100", ...provenance }, createdAt: now },
+  { id: "job:panel", role: "COORDINATOR", kind: "FINALIZE_EVALUATION_PANEL", payload: { taskId: "8", poolId: hash, selectionBlock: "100", deadline: "1800000000", ...provenance }, createdAt: now },
+  ...["FINALIZE_TASK_EVALUATION", "ASSIGN_TESTER"].map((kind, index) => ({
     id: `job:coordinator:${index}`, role: "COORDINATOR", kind, payload: { taskId: String(index + 9), ...provenance }, createdAt: now,
   })),
+  { id: "job:finalize-tester", role: "COORDINATOR", kind: "FINALIZE_TESTER", payload: { taskId: "11", poolId: hash, selectionBlock: "100", ...provenance }, createdAt: now },
   { id: "job:maintenance-panel", role: "COORDINATOR", kind: "START_MAINTENANCE_PANEL", payload: { taskId: "12", checkpoint: 1, dueAt: "1800000000" }, createdAt: now },
   { id: "job:finalize-verification", role: "COORDINATOR", kind: "FINALIZE_VERIFICATION_PANEL", payload: { taskId: "13", panelEpoch: 2, dueAt: "1800000000" }, createdAt: now },
   { id: "job:expire-verification", role: "COORDINATOR", kind: "EXPIRE_VERIFICATION_PANEL", payload: { taskId: "14", panelEpoch: 3, dueAt: "1800000000" }, createdAt: now },
@@ -38,6 +40,7 @@ const validCompletionResults = {
   TEST_TASK: { reportHash: hash, evidenceHash: hash, transactionHash: hash, passed: true },
   REVEAL_TEST_SHARD: { reportHash: hash, evidenceHash: hash, alreadyRevealed: true, passed: true },
   EVALUATE_TASK: { reportHash: hash, alreadySubmitted: true, approve: true },
+  BUILD_SELECTION_POOL: { phase: "buildSelectionPool", transactionHash: hash },
   FINALIZE_EVALUATION_PANEL: { phase: "finalizeEvaluationPanel", alreadyFinalized: true },
   FINALIZE_TASK_EVALUATION: { phase: "finalizeTaskEvaluation", transactionHash: hash },
   ASSIGN_TESTER: { phase: "requestTester", alreadyFinalized: true },
@@ -77,7 +80,7 @@ describe("Agent queue job contracts", () => {
 
   it("binds every runtime kind to an exact OpenAPI payload and role mapping", () => {
     const openapi = JSON.parse(readFileSync(new URL("../../public/openapi.json", import.meta.url), "utf8"));
-    expect(openapi.info.version).toBe("0.8.12");
+    expect(openapi.info.version).toBe("0.8.13");
     const job = openapi.components.schemas.AgentJob;
     expect(job.additionalProperties).toBe(false);
     expect(job.properties.kind.enum).toEqual(agentJobKinds);

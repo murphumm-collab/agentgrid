@@ -138,6 +138,7 @@ async function main() {
   const disputeResolver = await deploy("deploy.disputeResolver", "disputeResolver", "DisputeResolver", [taskRegistry, arbitrators, quorum, deployer]);
 
   await write("wire.stakeManager", stakeManager, "StakeCreditManager", "setTaskRegistry", [taskRegistry]);
+  await write("wire.agentSelectionRequester", agentRegistry, "AgentRegistry", "setSelectionRequester", [taskRegistry]);
   await write("wire.disputeResolver", taskRegistry, "TaskRegistry", "setDisputeResolver", [disputeResolver]);
   await write("wire.verificationPanel", taskRegistry, "TaskRegistry", "setVerificationPanel", [verificationPanel]);
   await write("wire.rewardVaultVerificationPanel", rewardVault, "RewardVault", "setVerificationPanel", [verificationPanel]);

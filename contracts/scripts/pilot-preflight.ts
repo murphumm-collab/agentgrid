@@ -139,7 +139,7 @@ export async function runPilotPreflight(options: { requirePristine?: boolean; si
     contractEntries.forEach(([name], index) => verifyRuntimeBytecode(name, codes[index], compiled[artifactNames[name]]));
     const runtimeBytecodeVerified = true;
     const taskAbi = parseAbi(["function nextTaskId() view returns(uint256)", "function coordinator() view returns(address)", "function disputeResolver() view returns(address)", "function agentRegistry() view returns(address)", "function verificationPanel() view returns(address)", "function protocolEconomics() view returns(address)"]);
-    const agentAbi = parseAbi(["function agentCount() view returns(uint256)", "function stakeManager() view returns(address)", "function outcomeReporterRoles(address) view returns(uint8)"]);
+    const agentAbi = parseAbi(["function agentCount() view returns(uint256)", "function stakeManager() view returns(address)", "function selectionRequester() view returns(address)", "function outcomeReporterRoles(address) view returns(uint8)"]);
     const registryAbi = parseAbi(["function taskRegistry() view returns(address)", "function protocolEconomics() view returns(address)", "function qualitySlasher() view returns(address)"]);
     const resolverAbi = parseAbi(["function registry() view returns(address)", "function quorum() view returns(uint256)", "function isArbitrator(address) view returns(bool)"]);
     const tokenAbi = parseAbi(["function balanceOf(address) view returns(uint256)"]);
@@ -149,7 +149,7 @@ export async function runPilotPreflight(options: { requirePristine?: boolean; si
     const courtAbi = parseAbi(["function token() view returns(address)", "function panel() view returns(address)", "function agentRegistry() view returns(address)", "function stakeManager() view returns(address)", "function reserve() view returns(address)", "function isArbitrator(address) view returns(bool)"]);
     const economicsAbi = parseAbi(["function taskRegistry() view returns(address)", "function stakeManager() view returns(address)", "function rewardVault() view returns(address)", "function daoTreasury() view returns(address)", "function securityReserve() view returns(address)", "function burnSink() view returns(address)", "function vestingDuration() view returns(uint32)"]);
     const [
-      nextTaskId, registeredAgents, onchainCoordinator, disputeResolver, taskAgentRegistry, taskPanel, taskEconomics, agentStakeManager, qualityReporterRoles,
+      nextTaskId, registeredAgents, onchainCoordinator, disputeResolver, taskAgentRegistry, taskPanel, taskEconomics, agentStakeManager, selectionRequester, qualityReporterRoles,
       stakeRegistry, stakeEconomics, stakeQualitySlasher, vaultRegistry, vaultPanel, vaultEconomics, resolverRegistry, resolverQuorum, reserveBalance, arbitratorChecks,
       panelRegistry, panelVault, panelQualityRegistry, panelCourt, courtToken, courtPanel, courtAgentRegistry, courtStakeManager, courtReserve, courtArbitrators, ownership,
       economicsRegistry, economicsStake, economicsVault, economicsDao, economicsSecurity, economicsBurn, economicsVesting,
@@ -162,6 +162,7 @@ export async function runPilotPreflight(options: { requirePristine?: boolean; si
       publicClient.readContract({ address: deployment.contracts.taskRegistry, abi: taskAbi, functionName: "verificationPanel" }),
       publicClient.readContract({ address: deployment.contracts.taskRegistry, abi: taskAbi, functionName: "protocolEconomics" }),
       publicClient.readContract({ address: deployment.contracts.agentRegistry, abi: agentAbi, functionName: "stakeManager" }),
+      publicClient.readContract({ address: deployment.contracts.agentRegistry, abi: agentAbi, functionName: "selectionRequester" }),
       publicClient.readContract({ address: deployment.contracts.agentRegistry, abi: agentAbi, functionName: "outcomeReporterRoles", args: [deployment.contracts.verificationPanel] }),
       publicClient.readContract({ address: deployment.contracts.stakeManager, abi: registryAbi, functionName: "taskRegistry" }),
       publicClient.readContract({ address: deployment.contracts.stakeManager, abi: registryAbi, functionName: "protocolEconomics" }),
@@ -196,7 +197,7 @@ export async function runPilotPreflight(options: { requirePristine?: boolean; si
     const equal = (left: string, right: string) => left.toLowerCase() === right.toLowerCase();
     const wiringVerified =
       equal(onchainCoordinator, deployment.coordinator) && equal(disputeResolver, deployment.contracts.disputeResolver) &&
-      equal(taskAgentRegistry, deployment.contracts.agentRegistry) && equal(agentStakeManager, deployment.contracts.stakeManager) &&
+      equal(taskAgentRegistry, deployment.contracts.agentRegistry) && equal(agentStakeManager, deployment.contracts.stakeManager) && equal(selectionRequester, deployment.contracts.taskRegistry) &&
       equal(taskPanel, deployment.contracts.verificationPanel) && equal(stakeRegistry, deployment.contracts.taskRegistry) &&
       equal(stakeQualitySlasher, deployment.contracts.verificationArbitrationCourt) &&
       equal(vaultRegistry, deployment.contracts.taskRegistry) && equal(vaultPanel, deployment.contracts.verificationPanel) &&

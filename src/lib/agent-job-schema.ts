@@ -67,8 +67,17 @@ export const revealTestShardJobPayloadSchema = chainPayload({
   passed: z.boolean(),
 });
 export const evaluationPanelJobPayloadSchema = chainPayload({
+  poolId: bytes32Schema,
   selectionBlock: uint256DecimalSchema,
-  deadline: positiveUnixSecondsSchema,
+  deadline: positiveUnixSecondsSchema.optional(),
+});
+export const selectionPoolBuildJobPayloadSchema = chainPayload({
+  poolId: bytes32Schema,
+  candidateCount: uint256DecimalSchema,
+});
+export const selectionPoolFinalizeJobPayloadSchema = chainPayload({
+  poolId: bytes32Schema,
+  selectionBlock: uint256DecimalSchema,
 });
 export const maintenancePanelJobPayloadSchema = z.object({
   taskId: onchainTaskIdPathParameterSchema,
@@ -103,10 +112,11 @@ export const agentJobSchemas = {
   TEST_TASK: job("TEST_TASK", "TESTER", testerTargetJobPayloadSchema),
   REVEAL_TEST_SHARD: job("REVEAL_TEST_SHARD", "TESTER", revealTestShardJobPayloadSchema),
   EVALUATE_TASK: job("EVALUATE_TASK", "EVALUATOR", evaluatorTargetJobPayloadSchema),
+  BUILD_SELECTION_POOL: job("BUILD_SELECTION_POOL", "COORDINATOR", selectionPoolBuildJobPayloadSchema),
   FINALIZE_EVALUATION_PANEL: job("FINALIZE_EVALUATION_PANEL", "COORDINATOR", evaluationPanelJobPayloadSchema),
   FINALIZE_TASK_EVALUATION: job("FINALIZE_TASK_EVALUATION", "COORDINATOR", chainAgentJobPayloadSchema),
   ASSIGN_TESTER: job("ASSIGN_TESTER", "COORDINATOR", chainAgentJobPayloadSchema),
-  FINALIZE_TESTER: job("FINALIZE_TESTER", "COORDINATOR", chainAgentJobPayloadSchema),
+  FINALIZE_TESTER: job("FINALIZE_TESTER", "COORDINATOR", selectionPoolFinalizeJobPayloadSchema),
   START_MAINTENANCE_PANEL: job("START_MAINTENANCE_PANEL", "COORDINATOR", maintenancePanelJobPayloadSchema),
   FINALIZE_VERIFICATION_PANEL: job("FINALIZE_VERIFICATION_PANEL", "COORDINATOR", verificationPanelLifecycleJobPayloadSchema),
   EXPIRE_VERIFICATION_PANEL: job("EXPIRE_VERIFICATION_PANEL", "COORDINATOR", verificationPanelLifecycleJobPayloadSchema),
@@ -178,8 +188,12 @@ export const agentJobCompletionSchemas = {
   TEST_TASK: testerCommitCompletionResultSchema,
   REVEAL_TEST_SHARD: testerRevealCompletionResultSchema,
   EVALUATE_TASK: evaluatorJobCompletionResultSchema,
+  BUILD_SELECTION_POOL: z.union([
+    coordinatorTransactionResult(["buildSelectionPool"]),
+    coordinatorAlreadyFinalizedResult("buildSelectionPool"),
+  ]),
   FINALIZE_EVALUATION_PANEL: z.union([
-    coordinatorTransactionResult(["finalizeEvaluationPanel"]),
+    coordinatorTransactionResult(["finalizeEvaluationPanel", "rescheduleSelectionPool"]),
     coordinatorAlreadyFinalizedResult("finalizeEvaluationPanel"),
   ]),
   FINALIZE_TASK_EVALUATION: z.union([
@@ -191,7 +205,7 @@ export const agentJobCompletionSchemas = {
     coordinatorAlreadyFinalizedResult("requestTester"),
   ]),
   FINALIZE_TESTER: z.union([
-    coordinatorTransactionResult(["finalizeTester", "requestTester"]),
+    coordinatorTransactionResult(["finalizeTester", "requestTester", "rescheduleSelectionPool"]),
     coordinatorAlreadyFinalizedResult("finalizeTester"),
   ]),
   START_MAINTENANCE_PANEL: z.union([

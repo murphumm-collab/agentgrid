@@ -139,4 +139,28 @@ describe("AgentRegistry paginated selection pool", () => {
       expect(candidate[1]).toBe(6_000n);
     }
   });
+
+  it("persists objective exhaustion instead of silently resampling a smaller live set", async () => {
+    const poolId = keccak256(stringToHex("task-44-exhausted-validator"));
+    await write(0, requester, "SelectionRequesterHarness", "start", [poolId, 44n, 2, false]);
+    await write(1, registry, "AgentRegistry", "buildSelectionPool", [poolId, 5]);
+    for (let index = 3; index <= 5; index += 1) {
+      await write(index, registry, "AgentRegistry", "setActive", [false]);
+    }
+    for (let index = 0; index < 6; index += 1) await publicClient.request({ method: "evm_mine" as never });
+
+    for (let attempts = 0; attempts < 8; attempts += 1) {
+      await write(6, requester, "SelectionRequesterHarness", "draw", [poolId, 1]);
+      const status = await read("selectionPoolStatus", [poolId]) as readonly [bigint, bigint, number, boolean, Hex];
+      if (status[1] === 0n) break;
+    }
+    const exhausted = await read("selectionPoolStatus", [poolId]) as readonly [bigint, bigint, number, boolean, Hex];
+    expect(exhausted[1]).toBe(0n);
+    expect(exhausted[2]).toBe(2);
+    for (let index = 0; index < 257; index += 1) await publicClient.request({ method: "evm_mine" as never });
+    await expect(write(6, requester, "SelectionRequesterHarness", "reschedule", [poolId])).rejects.toThrow();
+    await write(6, requester, "SelectionRequesterHarness", "draw", [poolId, 1]);
+    const unchanged = await read("selectionPoolStatus", [poolId]) as readonly [bigint, bigint, number, boolean, Hex];
+    expect(unchanged).toEqual(exhausted);
+  });
 });

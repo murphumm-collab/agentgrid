@@ -3,7 +3,8 @@ pragma solidity ^0.8.24;
 
 interface ISelectionRegistryHarness {
     function startSelectionPool(bytes32 poolId, uint256 taskId, uint8 capability, bool evaluatorPanel) external;
-    function drawSelectionPool(bytes32 poolId, uint8 maxPrunes) external returns (address);
+    function drawSelectionPanel(bytes32 poolId, uint8 maxPrunes) external returns (address[3] memory, bool, uint256, bytes32);
+    function rescheduleSelectionPool(bytes32 poolId) external;
 }
 
 contract SelectionRequesterHarness {
@@ -26,7 +27,11 @@ contract SelectionRequesterHarness {
         registry.startSelectionPool(poolId, taskId, capability, evaluatorPanel);
     }
 
-    function draw(bytes32 poolId, uint8 maxPrunes) external returns (address) {
-        return registry.drawSelectionPool(poolId, maxPrunes);
+    function draw(bytes32 poolId, uint8 maxPrunes) external returns (address[3] memory, bool, uint256, bytes32) {
+        return registry.drawSelectionPanel(poolId, maxPrunes);
+    }
+
+    function reschedule(bytes32 poolId) external {
+        registry.rescheduleSelectionPool(poolId);
     }
 }

@@ -113,12 +113,11 @@ export const onChainActionExclusions = [
   governance("agentRegistry", "setOutcomeReporter(address,uint8)"),
   governance("agentRegistry", "setSelectionRequester(address)"),
   internal("agentRegistry", "startSelectionPool(bytes32,uint256,uint8,bool)"),
-  internal("agentRegistry", "drawSelectionPool(bytes32,uint8)"),
+  internal("agentRegistry", "drawSelectionPanel(bytes32,uint8)"),
 
   internal("taskRegistry", "finalizeVerificationPanel(uint256,uint32,uint8,bool,address,bytes32,bytes32,uint16[],address[3],uint16[3])"),
   internal("taskRegistry", "resolveRejection(uint256,bool,bytes32)"),
   governance("taskRegistry", "renounceOwnership()"),
-  governance("taskRegistry", "setCoordinator(address)"),
   governance("taskRegistry", "setDisputeResolver(address)"),
   governance("taskRegistry", "setProtocolEconomics(address)"),
   governance("taskRegistry", "setVerificationPanel(address)"),

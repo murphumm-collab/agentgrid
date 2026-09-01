@@ -46,7 +46,7 @@ contract TaskRegistry is Ownable {
     StakeCreditManager public immutable stakeManager;
     RewardVault public immutable rewardVault;
     AgentRegistry public immutable agentRegistry;
-    address public coordinator;
+    address public immutable coordinator;
     address public disputeResolver;
     VerificationPanel public verificationPanel;
     ProtocolEconomics public protocolEconomics;
@@ -162,11 +162,6 @@ contract TaskRegistry is Ownable {
         disputeResolver = coordinator_;
     }
 
-    modifier onlyCoordinator() {
-        if (msg.sender != coordinator) revert Unauthorized();
-        _;
-    }
-
     modifier onlyDisputeResolver() {
         if (msg.sender != disputeResolver) revert Unauthorized();
         _;
@@ -184,11 +179,6 @@ contract TaskRegistry is Ownable {
             address(rewardVault.protocolEconomics()) != address(economics)
         ) revert InvalidState();
         protocolEconomics = economics;
-    }
-
-    function setCoordinator(address newCoordinator) external onlyOwner {
-        if (newCoordinator == address(0)) revert Unauthorized();
-        coordinator = newCoordinator;
     }
 
     function setDisputeResolver(address newResolver) external onlyOwner {
@@ -258,12 +248,6 @@ contract TaskRegistry is Ownable {
         taskRequiredTesterCapabilities[taskId] = requiredTesterCapabilities;
         uint256 count = agentRegistry.agentCount();
         if (count < EVALUATOR_COUNT) revert InvalidEvaluation();
-        uint256 eligibleEvaluatorCount;
-        for (uint256 i; i < count && eligibleEvaluatorCount < EVALUATOR_COUNT; ++i) {
-            address candidate = agentRegistry.agentAt(i);
-            if (candidate != msg.sender && agentRegistry.isEligibleFor(candidate, agentRegistry.CAPABILITY_EVALUATE())) eligibleEvaluatorCount += 1;
-        }
-        if (eligibleEvaluatorCount < EVALUATOR_COUNT) revert InvalidEvaluation();
         publisherStakeBasis[taskId] = stakeManager.stakeOf(positionId);
         stakeManager.consumeCredit(positionId, taskId, msg.sender);
         protocolEconomics.freezeTaskSource(taskId, msg.sender);
@@ -278,19 +262,18 @@ contract TaskRegistry is Ownable {
         rewardVault.registerEvaluationFee(taskId, evaluatorPool);
         emit TaskEvaluationFeeCharged(taskId, positionId, evaluationCharge, address(protocolEconomics));
         EvaluationSelection storage selection = evaluationSelections[taskId];
-        selection.selectionBlock = block.number + EVALUATION_SELECTION_DELAY;
+        bytes32 poolId = _evaluationPoolId(taskId);
         selection.candidateCount = count;
         selection.deadline = block.timestamp + EVALUATION_WINDOW;
         selection.candidateSetHash = agentRegistry.registryHash();
-        selection.selectionProof = bytes32(
-            (uint256(agentRegistry.registryVersion()) << 64) | uint64(block.timestamp)
-        );
+        selection.selectionProof = poolId;
+        agentRegistry.startSelectionPool(poolId, taskId, agentRegistry.CAPABILITY_EVALUATE(), true);
         emit TaskEvaluationRequested(
             taskId,
             msg.sender,
             positionId,
             specHash,
-            selection.selectionBlock,
+            0,
             selection.candidateSetHash,
             count,
             selection.deadline
@@ -299,34 +282,26 @@ contract TaskRegistry is Ownable {
         emit TaskTesterCapabilitiesSet(taskId, requiredTesterCapabilities);
     }
 
-    /// @dev Selects a stable three-agent panel from a candidate snapshot committed
-    /// before the future block entropy exists. BSC mainnet should use VRF.
+    /// @dev Each call performs at most three logarithmic draws and 16 persistent
+    /// live-safety/conflict prunes in total. A caller may retry without rebuilding
+    /// the frozen all-candidate pool.
     function finalizeEvaluationPanel(uint256 taskId) external {
         Task storage task = tasks[taskId];
         EvaluationSelection storage selection = evaluationSelections[taskId];
         if (
             task.state != State.Evaluating || selection.panelFinalized ||
-            block.timestamp > selection.deadline || block.number <= selection.selectionBlock ||
-            block.number > selection.selectionBlock + 256
+            block.timestamp > selection.deadline
         ) revert InvalidEvaluation();
-        bytes32 snapshot = selection.selectionProof;
-        bytes32 proof = keccak256(
-            abi.encode(
-                blockhash(selection.selectionBlock), taskId, selection.candidateSetHash, selection.candidateCount,
-                snapshot, uint8(1)
-            )
-        );
-        address[3] memory selected;
+        bytes32 poolId = _evaluationPoolId(taskId);
+        if (selection.selectionProof != poolId) revert InvalidEvaluation();
+        (address[3] memory selected, bool finalized, uint256 selectionBlock, bytes32 proof) =
+            agentRegistry.drawSelectionPanel(poolId, 16);
+        if (!finalized) return;
         for (uint8 slot; slot < EVALUATOR_COUNT; ++slot) {
-            selected[slot] = _qualityWeightedCandidate(
-                taskId, proof, slot, selection.candidateCount,
-                agentRegistry.CAPABILITY_EVALUATE(), selected, slot, true,
-                snapshot
-            );
-            if (selected[slot] == address(0)) revert InvalidEvaluation();
             taskEvaluators[taskId][slot] = selected[slot];
             isTaskEvaluator[taskId][selected[slot]] = true;
         }
+        selection.selectionBlock = selectionBlock;
         selection.selectionProof = proof;
         selection.panelFinalized = true;
         emit TaskEvaluatorsAssigned(taskId, selected[0], selected[1], selected[2], proof);
@@ -587,39 +562,35 @@ contract TaskRegistry is Ownable {
 
     function _requestTester(uint256 taskId, Task storage task) private {
         if (task.state != State.Submitted) revert InvalidState();
-        if (task.testerSelectionBlock != 0 && block.number <= task.testerSelectionBlock + 256) revert InvalidState();
+        bytes32 poolId = _testerPoolId(taskId, task.workRound, maintenanceRepairCheckpoint[taskId]);
+        if (task.selectionProof != bytes32(0)) {
+            (uint256 selectionBlock, , uint8 selectedCount, bool complete, bytes32 drawProof) = agentRegistry.selectionPoolStatus(poolId);
+            if (
+                task.selectionProof != poolId || !complete || selectedCount != 0 ||
+                drawProof != bytes32(0) || block.number <= selectionBlock + 256
+            ) revert InvalidState();
+            agentRegistry.rescheduleSelectionPool(poolId);
+            return;
+        }
         uint256 count = agentRegistry.agentCount();
-        if (count == 0) revert InvalidTesterSet();
-        task.testerSelectionBlock = block.number + 5;
+        if (count < 3) revert InvalidTesterSet();
         task.testerCandidateCount = count;
         task.candidateSetHash = agentRegistry.registryHash();
-        task.selectionProof = bytes32(
-            (uint256(agentRegistry.registryVersion()) << 64) | uint64(block.timestamp)
-        );
-        emit TesterRequested(taskId, task.testerSelectionBlock, task.candidateSetHash, count);
+        task.selectionProof = poolId;
+        agentRegistry.startSelectionPool(poolId, taskId, taskRequiredTesterCapabilities[taskId], false);
     }
 
     /// @notice Permissionless finalization prevents a coordinator outage from
     /// stranding a valid future-block draw.
     function finalizeTester(uint256 taskId) external {
         Task storage task = tasks[taskId];
-        uint256 selectionBlock = task.testerSelectionBlock;
-        if (task.state != State.Submitted || selectionBlock == 0 || block.number <= selectionBlock || block.number > selectionBlock + 256) revert InvalidState();
-        bytes32 snapshot = task.selectionProof;
-        bytes32 proof = keccak256(abi.encode(
-            blockhash(selectionBlock), taskId, task.candidateSetHash, task.testerCandidateCount,
-            snapshot
-        ));
+        bytes32 poolId = _testerPoolId(taskId, task.workRound, maintenanceRepairCheckpoint[taskId]);
+        if (task.selectionProof != poolId) revert InvalidState();
         if (address(verificationPanel) == address(0)) revert InvalidState();
-        address[3] memory testers;
-        for (uint8 slot; slot < 3; ++slot) {
-            testers[slot] = _qualityWeightedCandidate(
-                taskId, proof, slot, task.testerCandidateCount,
-                taskRequiredTesterCapabilities[taskId], testers, slot, false,
-                snapshot
-            );
-        }
-        if (testers[2] == address(0)) revert InvalidTesterSet();
+        (address[3] memory testers, bool finalized, uint256 selectionBlock, bytes32 proof) =
+            agentRegistry.drawSelectionPanel(poolId, 16);
+        if (!finalized) return;
+        task.testerSelectionBlock = selectionBlock;
         taskTesters[taskId] = testers;
         task.tester = testers[0];
         task.selectionProof = proof;
@@ -793,17 +764,12 @@ contract TaskRegistry is Ownable {
         verificationPanel.startPanel(taskId, task.workRound, checkpoint, task.executorCount, testers, 7, masks, scopes);
     }
 
-    /// @dev Deterministic weighted sampling without replacement. The snapshot
-    /// prevents post-request positive changes from improving draw probability.
-    function _qualityWeightedCandidate(
-        uint256 taskId, bytes32 proof, uint8 slot, uint256 candidateCount,
-        uint8 capability, address[3] memory selected, uint8 selectedCount, bool evaluatorPanel,
-        bytes32 snapshot
-    ) private view returns (address winner) {
-        return agentRegistry.selectWeightedTaskCandidate(
-            taskId, proof, slot, candidateCount, capability, selected, selectedCount,
-            evaluatorPanel, snapshot
-        );
+    function _evaluationPoolId(uint256 taskId) private view returns (bytes32) {
+        return keccak256(abi.encode(address(this), taskId, uint8(1)));
+    }
+
+    function _testerPoolId(uint256 taskId, uint32 workRound, uint8 checkpoint) private view returns (bytes32) {
+        return keccak256(abi.encode(address(this), taskId, workRound, checkpoint, uint8(2)));
     }
 
     function isAgentSelectionConflict(uint256 taskId, address candidate, bool evaluatorPanel) external view returns (bool) {

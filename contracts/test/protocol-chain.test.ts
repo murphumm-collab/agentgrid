@@ -95,6 +95,7 @@ describe("AgentGrid Solidity protocol", () => {
     await write(owner, stakeManager, "StakeCreditManager", "setProtocolEconomics", [protocolEconomics]);
     await write(owner, rewardVault, "RewardVault", "setProtocolEconomics", [protocolEconomics]);
     await write(owner, taskRegistry, "TaskRegistry", "setProtocolEconomics", [protocolEconomics]);
+    await write(owner, agentRegistry, "AgentRegistry", "setSelectionRequester", [taskRegistry]);
     await write(owner, agentRegistry, "AgentRegistry", "setOutcomeReporter", [verificationPanel, 7]);
     await write(owner, token, "TestToken", "mintRewardReserve", [rewardVault, parseEther("100000")]);
   });
@@ -177,8 +178,7 @@ describe("AgentGrid Solidity protocol", () => {
   }
 
   async function approveEvaluation(taskId: bigint, evaluators: Wallet[]) {
-    for (let index = 0; index < 6; index += 1) await provider.request({ method: "evm_mine", params: [] });
-    await write(owner, addresses.taskRegistry, "TaskRegistry", "finalizeEvaluationPanel", [taskId]);
+    await finalizeEvaluationSelection(taskId);
     const categories = ["development", "development", "automation"];
     const difficulties = [5_000, 6_000, 7_000];
     const hours = [10, 20, 30];
@@ -199,6 +199,13 @@ describe("AgentGrid Solidity protocol", () => {
     await write(owner, addresses.taskRegistry, "TaskRegistry", "finalizeTaskEvaluation", [taskId]);
   }
 
+  async function finalizeEvaluationSelection(taskId: bigint) {
+    const selection = await read(addresses.taskRegistry, "TaskRegistry", "evaluationSelections", [taskId]) as readonly unknown[];
+    await write(owner, addresses.agentRegistry, "AgentRegistry", "buildSelectionPool", [selection[4], 64]);
+    for (let index = 0; index < 6; index += 1) await provider.request({ method: "evm_mine", params: [] });
+    await write(owner, addresses.taskRegistry, "TaskRegistry", "finalizeEvaluationPanel", [taskId]);
+  }
+
   async function createEvaluatingTask(spec = "evaluation-spec", requestedReward = parseEther("1000")) {
     const evaluators = await registerEvaluationAgents();
     await write(publisher, addresses.token, "TestToken", "faucet");
@@ -217,6 +224,8 @@ describe("AgentGrid Solidity protocol", () => {
   }
 
   async function finalizeRequestedTester(taskId: bigint) {
+    const task = await read(addresses.taskRegistry, "TaskRegistry", "tasks", [taskId]) as readonly unknown[];
+    await write(owner, addresses.agentRegistry, "AgentRegistry", "buildSelectionPool", [task[10], 64]);
     for (let index = 0; index < 6; index += 1) await provider.request({ method: "evm_mine", params: [] });
     const receipt = await write(executor, addresses.taskRegistry, "TaskRegistry", "finalizeTester", [taskId]);
     const panelStartedLog = receipt.logs.find((log) => {
@@ -357,7 +366,7 @@ describe("AgentGrid Solidity protocol", () => {
     expect(await read(addresses.stakeManager, "StakeCreditManager", "stakeOf", [4n])).toBe(parseEther("998"));
 
     for (let index = 0; index < 6; index += 1) await provider.request({ method: "evm_mine", params: [] });
-    await write(owner, addresses.taskRegistry, "TaskRegistry", "finalizeEvaluationPanel", [1n]);
+    await finalizeEvaluationSelection(1n);
     const selected = (await read(addresses.taskRegistry, "TaskRegistry", "getTaskEvaluators", [1n])) as Address[];
     expect(new Set(selected.map((address) => address.toLowerCase())).size).toBe(3);
     expect(selected.map((address) => address.toLowerCase())).not.toContain(publisher.account!.address.toLowerCase());
@@ -395,7 +404,7 @@ describe("AgentGrid Solidity protocol", () => {
   it("releases a rejected evaluation without charging the publication fee and pays only reporters", async () => {
     const { evaluators } = await createEvaluatingTask("rejected-before-publication");
     for (let index = 0; index < 6; index += 1) await provider.request({ method: "evm_mine", params: [] });
-    await write(owner, addresses.taskRegistry, "TaskRegistry", "finalizeEvaluationPanel", [1n]);
+    await finalizeEvaluationSelection(1n);
     for (let index = 0; index < 2; index += 1) {
       await write(evaluators[index], addresses.taskRegistry, "TaskRegistry", "submitEvaluation", [
         1n, keccak256(stringToHex("spam")), 9_000, 100, 1_000, parseEther("10"), false,

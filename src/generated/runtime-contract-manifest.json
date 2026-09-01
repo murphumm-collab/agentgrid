@@ -39,7 +39,7 @@
     },
     "agentRegistry": {
       "name": "AgentRegistry",
-      "normalizedRuntimeBytecodeHash": "0x711bb2197124667db7dbcedf0a25edad465cabd65bfac3a327f48a8f317c7206",
+      "normalizedRuntimeBytecodeHash": "0x4a96c336d351c136b0c3333645df39080883167e4c0a5c3cbf12f6d0f97d640d",
       "immutableReferences": [
         {
           "length": 32,
@@ -47,27 +47,27 @@
         },
         {
           "length": 32,
-          "start": 3131
+          "start": 4556
         },
         {
           "length": 32,
-          "start": 5117
+          "start": 6572
         },
         {
           "length": 32,
-          "start": 8973
+          "start": 8373
         },
         {
           "length": 32,
-          "start": 9882
+          "start": 9337
         },
         {
           "length": 32,
-          "start": 11555
+          "start": 10761
         },
         {
           "length": 32,
-          "start": 12477
+          "start": 11683
         }
       ]
     },
@@ -119,111 +119,123 @@
     },
     "taskRegistry": {
       "name": "TaskRegistry",
-      "normalizedRuntimeBytecodeHash": "0x1ad1ce10286678377b62d71910ae4ee3a57dbcdc9214ceb7a08bb11837caa0bf",
+      "normalizedRuntimeBytecodeHash": "0xc5458416e77e1c4166102b51f0b7d1ce7133411eb1a281036933cadf80ce99f7",
       "immutableReferences": [
         {
           "length": 32,
-          "start": 3988
+          "start": 1843
         },
         {
           "length": 32,
-          "start": 6703
+          "start": 4630
         },
         {
           "length": 32,
-          "start": 7128
+          "start": 5055
         },
         {
           "length": 32,
-          "start": 9009
+          "start": 6913
         },
         {
           "length": 32,
-          "start": 9300
+          "start": 7220
         },
         {
           "length": 32,
-          "start": 17211
+          "start": 15237
         },
         {
           "length": 32,
-          "start": 18141
+          "start": 17726
         },
         {
           "length": 32,
-          "start": 21138
+          "start": 20566
         },
         {
           "length": 32,
-          "start": 22151
+          "start": 21908
         },
         {
           "length": 32,
-          "start": 22516
+          "start": 22273
         },
         {
           "length": 32,
-          "start": 6536
+          "start": 4463
         },
         {
           "length": 32,
-          "start": 9173
+          "start": 7077
         },
         {
           "length": 32,
-          "start": 9672
+          "start": 7592
         },
         {
           "length": 32,
-          "start": 11979
+          "start": 9899
         },
         {
           "length": 32,
-          "start": 16645
+          "start": 14671
         },
         {
           "length": 32,
-          "start": 19760
+          "start": 19010
         },
         {
           "length": 32,
-          "start": 20860
+          "start": 20288
         },
         {
           "length": 32,
-          "start": 23741
+          "start": 23498
         },
         {
           "length": 32,
-          "start": 1273
+          "start": 5482
         },
         {
           "length": 32,
-          "start": 2635
+          "start": 10577
         },
         {
           "length": 32,
-          "start": 7625
+          "start": 10770
         },
         {
           "length": 32,
-          "start": 12656
+          "start": 12426
         },
         {
           "length": 32,
-          "start": 12814
+          "start": 15968
         },
         {
           "length": 32,
-          "start": 14442
+          "start": 16496
         },
         {
           "length": 32,
-          "start": 18266
+          "start": 17851
         },
         {
           "length": 32,
-          "start": 21408
+          "start": 20867
+        },
+        {
+          "length": 32,
+          "start": 21252
+        },
+        {
+          "length": 32,
+          "start": 1568
+        },
+        {
+          "length": 32,
+          "start": 11089
         }
       ]
     },

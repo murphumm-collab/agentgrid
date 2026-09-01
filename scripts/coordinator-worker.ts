@@ -2,7 +2,7 @@ import { createPublicClient, createWalletClient, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { bscTestnet } from "viem/chains";
 import { completeAgentJob, heartbeatAgentJob, leaseAgentJob } from "../src/lib/agent-queue";
-import { taskRegistryAbi, verificationArbitrationCourtAbi, verificationPanelAbi } from "../src/lib/contracts";
+import { agentRegistryAbi, taskRegistryAbi, verificationArbitrationCourtAbi, verificationPanelAbi } from "../src/lib/contracts";
 import { chainContractAddresses, chainDeploymentAddresses, runtimeConfig } from "../src/lib/env";
 import { requiredSecret } from "../src/lib/secrets";
 import { bscRpcTransport } from "../src/lib/bsc-rpc";
@@ -15,6 +15,8 @@ const transport = bscRpcTransport(config.BSC_TESTNET_RPC_URL);
 const publicClient = createPublicClient({ chain: bscTestnet, transport });
 const wallet = createWalletClient({ account, chain: bscTestnet, transport });
 const registry = chainContractAddresses().taskRegistry;
+const deployment = chainDeploymentAddresses();
+const selectionRegistry = deployment.agentRegistry;
 const evaluationCoordinatorAbi = [
   { type: "function", name: "finalizeEvaluationPanel", stateMutability: "nonpayable", inputs: [{ name: "taskId", type: "uint256" }], outputs: [] },
   { type: "function", name: "finalizeTaskEvaluation", stateMutability: "nonpayable", inputs: [{ name: "taskId", type: "uint256" }], outputs: [] },
@@ -44,6 +46,25 @@ async function coordinate() {
   try {
     const taskId = String(leased.job.payload.taskId ?? "");
     if (!/^\d+$/.test(taskId)) throw new Error("COORDINATOR_JOB_TASK_ID_INVALID");
+    if (leased.job.kind === "BUILD_SELECTION_POOL") {
+      const poolId = leased.job.payload.poolId;
+      let status = await publicClient.readContract({ address: selectionRegistry, abi: agentRegistryAbi, functionName: "selectionPoolStatus", args: [poolId] });
+      if (status[3]) {
+        await completeAgentJob(leased.job.id, "protocol-coordinator", { phase: "buildSelectionPool", alreadyFinalized: true });
+        return true;
+      }
+      let lastHash: Hex | undefined;
+      while (!status[3]) {
+        await heartbeatAgentJob(leased.job.id, "protocol-coordinator");
+        lastHash = await wallet.writeContract({ address: selectionRegistry, abi: agentRegistryAbi, functionName: "buildSelectionPool", args: [poolId, 64] });
+        const receipt = await publicClient.waitForTransactionReceipt({ hash: lastHash, confirmations: config.CHAIN_CONFIRMATIONS });
+        if (receipt.status !== "success") throw new Error("BUILD_SELECTION_POOL_TRANSACTION_REVERTED");
+        status = await publicClient.readContract({ address: selectionRegistry, abi: agentRegistryAbi, functionName: "selectionPoolStatus", args: [poolId] });
+      }
+      if (!lastHash) throw new Error("BUILD_SELECTION_POOL_NO_PROGRESS");
+      await completeAgentJob(leased.job.id, "protocol-coordinator", { phase: "buildSelectionPool", transactionHash: lastHash });
+      return true;
+    }
     if (leased.job.kind === "FINALIZE_VERIFICATION_PANEL" || leased.job.kind === "EXPIRE_VERIFICATION_PANEL") {
       const deployment = chainDeploymentAddresses();
       const panel = await publicClient.readContract({ address: deployment.verificationPanel, abi: verificationPanelAbi, functionName: "getPanel", args: [BigInt(taskId)] });
@@ -104,10 +125,25 @@ async function coordinate() {
           return true;
         }
         const selectionBlock = BigInt(String(leased.job.payload.selectionBlock ?? "0"));
-        const deadline = Number(leased.job.payload.deadline ?? 0);
+        const deadline = BigInt(selection[2]);
         while (await publicClient.getBlockNumber() <= selectionBlock) {
-          if (stopping || (deadline && Date.now() >= deadline * 1_000)) throw new Error("EVALUATION_PANEL_SELECTION_WINDOW_EXPIRED");
+          if (stopping) throw new Error("EVALUATION_PANEL_SELECTION_STOPPED");
+          await heartbeatAgentJob(leased.job.id, "protocol-coordinator");
+          if ((await publicClient.getBlock()).timestamp > deadline) {
+            await completeAgentJob(leased.job.id, "protocol-coordinator", { phase: functionName, alreadyFinalized: true });
+            return true;
+          }
           await new Promise((resolve) => setTimeout(resolve, 3_000));
+        }
+        if (await publicClient.getBlockNumber() > selectionBlock + 256n) {
+          const pool = await publicClient.readContract({ address: selectionRegistry, abi: agentRegistryAbi, functionName: "selectionPoolStatus", args: [leased.job.payload.poolId] });
+          if (pool[4] === `0x${"0".repeat(64)}`) {
+            const hash = await wallet.writeContract({ address: selectionRegistry, abi: agentRegistryAbi, functionName: "rescheduleSelectionPool", args: [leased.job.payload.poolId] });
+            const receipt = await publicClient.waitForTransactionReceipt({ hash, confirmations: config.CHAIN_CONFIRMATIONS });
+            if (receipt.status !== "success") throw new Error("RESCHEDULE_EVALUATION_SELECTION_TRANSACTION_REVERTED");
+            await completeAgentJob(leased.job.id, "protocol-coordinator", { phase: "rescheduleSelectionPool", transactionHash: hash });
+            return true;
+          }
         }
       } else {
         const task = await publicClient.readContract({ address: registry, abi: evaluationCoordinatorAbi, functionName: "tasks", args: [BigInt(taskId)] });
@@ -123,10 +159,19 @@ async function coordinate() {
           return true;
         }
       }
-      await heartbeatAgentJob(leased.job.id, "protocol-coordinator");
-      const hash = await wallet.writeContract({ address: registry, abi: evaluationCoordinatorAbi, functionName, args: [BigInt(taskId)] });
-      const receipt = await publicClient.waitForTransactionReceipt({ hash, confirmations: config.CHAIN_CONFIRMATIONS });
-      if (receipt.status !== "success") throw new Error("FINALIZE_TASK_EVALUATION_TRANSACTION_REVERTED");
+      let hash: Hex;
+      while (true) {
+        await heartbeatAgentJob(leased.job.id, "protocol-coordinator");
+        hash = await wallet.writeContract({ address: registry, abi: evaluationCoordinatorAbi, functionName, args: [BigInt(taskId)] });
+        const receipt = await publicClient.waitForTransactionReceipt({ hash, confirmations: config.CHAIN_CONFIRMATIONS });
+        if (receipt.status !== "success") throw new Error("FINALIZE_TASK_EVALUATION_TRANSACTION_REVERTED");
+        if (leased.job.kind !== "FINALIZE_EVALUATION_PANEL") break;
+        const selection = await publicClient.readContract({ address: registry, abi: evaluationCoordinatorAbi, functionName: "evaluationSelections", args: [BigInt(taskId)] });
+        if (selection[7]) break;
+        const poolId = leased.job.payload.poolId;
+        const status = await publicClient.readContract({ address: selectionRegistry, abi: agentRegistryAbi, functionName: "selectionPoolStatus", args: [poolId] });
+        if (status[1] === 0n) throw new Error("EVALUATION_SELECTION_POOL_EXHAUSTED");
+      }
       if (functionName === "finalizeTaskEvaluation") {
         const panelAddress = chainDeploymentAddresses().verificationPanel;
         const qualityHash = await wallet.writeContract({ address: panelAddress, abi: verificationPanelAbi, functionName: "settleEvaluationOutcomes", args: [BigInt(taskId)] });
@@ -137,12 +182,48 @@ async function coordinate() {
       console.log(JSON.stringify({ taskId, transactionHash: hash, phase: functionName }));
       return true;
     }
+    if (leased.job.kind === "FINALIZE_TESTER") {
+      let task = await publicClient.readContract({ address: registry, abi: evaluationCoordinatorAbi, functionName: "tasks", args: [BigInt(taskId)] });
+      if (Number(task[19]) !== 4) {
+        await completeAgentJob(leased.job.id, "protocol-coordinator", { phase: "finalizeTester", alreadyFinalized: true });
+        return true;
+      }
+      const selectionBlock = BigInt(leased.job.payload.selectionBlock);
+      while (await publicClient.getBlockNumber() <= selectionBlock) {
+        if (stopping) throw new Error("TESTER_SELECTION_STOPPED");
+        await heartbeatAgentJob(leased.job.id, "protocol-coordinator");
+        await new Promise((resolve) => setTimeout(resolve, 3_000));
+      }
+      if (await publicClient.getBlockNumber() > selectionBlock + 256n) {
+        const pool = await publicClient.readContract({ address: selectionRegistry, abi: agentRegistryAbi, functionName: "selectionPoolStatus", args: [leased.job.payload.poolId] });
+        if (pool[4] === `0x${"0".repeat(64)}`) {
+          const hash = await wallet.writeContract({ address: selectionRegistry, abi: agentRegistryAbi, functionName: "rescheduleSelectionPool", args: [leased.job.payload.poolId] });
+          const receipt = await publicClient.waitForTransactionReceipt({ hash, confirmations: config.CHAIN_CONFIRMATIONS });
+          if (receipt.status !== "success") throw new Error("RESCHEDULE_SELECTION_POOL_TRANSACTION_REVERTED");
+          await completeAgentJob(leased.job.id, "protocol-coordinator", { phase: "rescheduleSelectionPool", transactionHash: hash });
+          return true;
+        }
+      }
+      let hash: Hex;
+      while (true) {
+        await heartbeatAgentJob(leased.job.id, "protocol-coordinator");
+        hash = await wallet.writeContract({ address: registry, abi: taskRegistryAbi, functionName: "finalizeTester", args: [BigInt(taskId)] });
+        const receipt = await publicClient.waitForTransactionReceipt({ hash, confirmations: config.CHAIN_CONFIRMATIONS });
+        if (receipt.status !== "success") throw new Error("FINALIZE_TESTER_TRANSACTION_REVERTED");
+        task = await publicClient.readContract({ address: registry, abi: evaluationCoordinatorAbi, functionName: "tasks", args: [BigInt(taskId)] });
+        if (Number(task[19]) === 5) break;
+        const status = await publicClient.readContract({ address: selectionRegistry, abi: agentRegistryAbi, functionName: "selectionPoolStatus", args: [leased.job.payload.poolId] });
+        if (status[1] === 0n) throw new Error("TESTER_SELECTION_POOL_EXHAUSTED");
+      }
+      await completeAgentJob(leased.job.id, "protocol-coordinator", { phase: "finalizeTester", transactionHash: hash });
+      return true;
+    }
     const task = await publicClient.readContract({ address: registry, abi: evaluationCoordinatorAbi, functionName: "tasks", args: [BigInt(taskId)] });
     const taskState = Number(task[19]);
     const requestedSelectionBlock = BigInt(task[11]);
     const currentBlock = await publicClient.getBlockNumber();
     const decision = decideTesterCoordinatorAction({
-      kind: leased.job.kind as "ASSIGN_TESTER" | "FINALIZE_TESTER",
+      kind: leased.job.kind as "ASSIGN_TESTER",
       taskState,
       selectionBlock: requestedSelectionBlock,
       currentBlock,
