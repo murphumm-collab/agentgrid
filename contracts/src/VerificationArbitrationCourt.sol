@@ -86,9 +86,17 @@ contract VerificationArbitrationCourt is ReentrancyGuard {
     error AlreadyVoted();
     event ArbitrationStakeDeposited(address indexed agent, uint256 amount, uint256 totalStake);
     event ArbitrationStakeWithdrawn(address indexed agent, uint256 amount);
-    event VerificationChallengeOpened(uint256 indexed taskId, bytes32 indexed caseId, address indexed challenger, address validator, bytes32 challengeHash, uint64 deadline);
+    event VerificationChallengeOpened(
+        uint256 indexed taskId, bytes32 indexed caseId, address indexed challenger,
+        address validator, bytes32 challengeHash, uint64 deadline,
+        uint256 challengerStakeSnapshot, uint256 validatorStakeLocked
+    );
     event VerificationChallengeVote(uint256 indexed taskId, bytes32 indexed caseId, address indexed arbitrator, bool upheld, bytes32 resolutionHash);
-    event VerificationChallengeResolved(uint256 indexed taskId, bytes32 indexed caseId, bool upheld, bytes32 resolutionHash, uint256 challengerSlash, uint256 validatorSlash, uint256 challengerReward);
+    event VerificationChallengeResolved(
+        uint256 indexed taskId, bytes32 indexed caseId, bool upheld, bytes32 resolutionHash,
+        uint256 challengerSlash, uint256 validatorSlash, uint256 challengerReward,
+        uint16 challengerPenaltyBps, uint8 challengerFalseChallengeCount
+    );
     event VerificationChallengeExpired(uint256 indexed taskId, bytes32 indexed caseId);
     event RehabilitationAppealOpened(
         address indexed appellant, uint8 indexed role, bytes32 indexed caseId,
@@ -157,7 +165,9 @@ contract VerificationArbitrationCourt is ReentrancyGuard {
         });
         activeCaseId[taskId] = caseId;
         panel.challenge(taskId, validator, challengeHash);
-        emit VerificationChallengeOpened(taskId, caseId, msg.sender, validator, challengeHash, deadline);
+        emit VerificationChallengeOpened(
+            taskId, caseId, msg.sender, validator, challengeHash, deadline, available, validatorLock
+        );
     }
 
     function vote(uint256 taskId, bool upheld, bytes32 resolutionHash) external {
@@ -261,6 +271,7 @@ contract VerificationArbitrationCourt is ReentrancyGuard {
         uint256 challengerSlash;
         uint256 validatorSlash;
         uint256 challengerReward;
+        uint16 challengerPenaltyBps;
         if (upheld) {
             validatorSlash = dispute.validatorStakeLocked;
             stake[dispute.validator] -= validatorSlash;
@@ -280,15 +291,18 @@ contract VerificationArbitrationCourt is ReentrancyGuard {
             token.safeTransfer(reserve, validatorSlash - challengerReward);
         } else {
             uint8 failures = falseChallengeCount[dispute.challenger];
-            uint16 slashBps = failures == 0 ? 500 : failures == 1 ? 1_500 : 3_000;
-            challengerSlash = (dispute.challengerStakeSnapshot * slashBps) / BPS;
+            challengerPenaltyBps = failures == 0 ? 500 : failures == 1 ? 1_500 : 3_000;
+            challengerSlash = (dispute.challengerStakeSnapshot * challengerPenaltyBps) / BPS;
             if (challengerSlash > stake[dispute.challenger]) challengerSlash = stake[dispute.challenger];
             stake[dispute.challenger] -= challengerSlash;
             falseChallengeCount[dispute.challenger] = failures == type(uint8).max ? failures : failures + 1;
             token.safeTransfer(reserve, challengerSlash);
         }
         panel.resolveChallenge(taskId, upheld, caseId, resolutionHash);
-        emit VerificationChallengeResolved(taskId, caseId, upheld, resolutionHash, challengerSlash, validatorSlash, challengerReward);
+        emit VerificationChallengeResolved(
+            taskId, caseId, upheld, resolutionHash, challengerSlash, validatorSlash, challengerReward,
+            challengerPenaltyBps, falseChallengeCount[dispute.challenger]
+        );
     }
 
     function _unlockParticipants(Challenge storage dispute) private {

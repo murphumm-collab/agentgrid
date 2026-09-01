@@ -98,7 +98,7 @@ contract VerificationPanel {
     error Unauthorized();
     error InvalidPanel();
     error InvalidState();
-    event PanelStarted(uint256 indexed taskId, uint32 indexed workRound, uint8 checkpoint, address[3] testers, uint16[3] criterionMasks, bytes32[3] scopeHashes);
+    event PanelStarted(uint256 indexed taskId, uint32 indexed workRound, uint32 indexed epoch, uint8 checkpoint, address[3] testers, uint16[3] criterionMasks, bytes32[3] scopeHashes);
     event ShardCommitted(uint256 indexed taskId, address indexed tester, uint8 indexed shard, uint32 epoch, uint32 workRound, uint8 commitOrder, bytes32 commitment);
     event PanelRevealReady(uint256 indexed taskId, uint32 indexed workRound, uint8 checkpoint, uint32 indexed epoch, address[3] testers);
     event ShardRevealed(uint256 indexed taskId, address indexed tester, uint8 indexed shard, uint32 epoch, uint32 workRound, bytes32 evidenceHash, uint16 criterionPassMask);
@@ -164,7 +164,7 @@ contract VerificationPanel {
         uint16[] storage frozenExecutorQuality = executorQualityMultipliersBps[taskId][epoch];
         for (uint256 i; i < executors.length; ++i) frozenExecutorQuality.push(qualityRegistry.qualityMultiplierBps(executors[i], 1));
         emit ExecutorQualityMultipliersFrozen(taskId, workRound, epoch, frozenExecutorQuality);
-        emit PanelStarted(taskId, workRound, checkpoint, testers, criterionMasks, scopeHashes);
+        emit PanelStarted(taskId, workRound, epoch, checkpoint, testers, criterionMasks, scopeHashes);
     }
 
     function commitShard(uint256 taskId, bytes32 commitment) external {

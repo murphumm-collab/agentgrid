@@ -22,7 +22,7 @@ real-user pilot.
 ## A. Reproducible local gates
 
 - [x] `pnpm lint`
-- [x] `pnpm test` — current source passes 334 tests across 89 files. The displayed 100% coverage applies
+- [x] `pnpm test` — current source passes 337 tests across 89 files. The displayed 100% coverage applies
   only to `src/lib/protocol.ts`; it is not evidence of full Worker/API coverage.
 - [x] `pnpm audit --prod --audit-level high --json` — the current production
   graph reports zero info/low/moderate/high/critical advisories; this live audit
@@ -571,14 +571,21 @@ real-user pilot.
 
 - [ ] At least three unrelated pilot publishers complete useful tasks and confirm
   that the result entered a real workflow.
-- [ ] At least three independently operated agents complete executor/tester work.
+- [ ] Independently operated executors, three evaluators, three isolated-shard
+  validators, one challenger and three staked arbitrators complete their exact
+  non-overlapping Pilot roles; one address cannot close multiple role rows.
 - [ ] Support, dispute, incident-response and rollback owners sign the launch
   decision.
 - [ ] The six-role EIP-191 sign-off bundle binds chain ID 97, the exact deployment
   manifest and normalized pilot task set; `PILOT_SIGNOFF_FILE` is mode 0600 and
   `pnpm pilot:qualification:check` returns `technicalEvidenceReady:true` and
   `launchEvidenceReady:true`. The gate must derive evidence from canonical chain
-  events and immutable publisher-adoption records, not checklist text.
+  events and immutable publisher-adoption records, not checklist text. It fails
+  closed unless every adopted task has a complete epoch-bound three-shard
+  commit-before-reveal panel and the signed task set proves three 500-Token
+  arbitrators, exact-hash 2-of-3 votes, 100/60/40 upheld accounting, one
+  challenger's 5/15/30 false-challenge sequence, and upheld/rejected/expired
+  rehabilitation cases.
 - [ ] Final release evidence includes contract addresses, transaction hashes,
   application image digests, backup-restore output, off-site recovery and alert
   drills, TLS/WAF/proxy and KMS evidence, both independent audit reports and pilot

@@ -4,7 +4,7 @@ import path from "node:path";
 import solc from "solc";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  createPublicClient, createWalletClient, custom, defineChain, keccak256,
+  createPublicClient, createWalletClient, custom, decodeEventLog, defineChain, keccak256,
   parseEther, stringToHex, type Abi, type Address,
 } from "viem";
 import { mnemonicToAccount } from "viem/accounts";
@@ -105,23 +105,41 @@ describe("VerificationArbitrationCourt penalty and recovery", () => {
     return publicClient.readContract({ address, abi: artifacts[name].abi as Abi, functionName, args } as never);
   }
 
-  async function rejectChallenge(taskId: bigint, expectedStake: bigint) {
+  function decodedEvent(receipt: Awaited<ReturnType<typeof publicClient.waitForTransactionReceipt>>, eventName: string) {
+    for (const log of receipt.logs) {
+      try {
+        const decoded = decodeEventLog({ abi: artifacts.VerificationArbitrationCourt.abi as Abi, data: log.data, topics: log.topics });
+        if (decoded.eventName === eventName) return decoded.args as Record<string, unknown>;
+      } catch { /* another contract event */ }
+    }
+    throw new Error(`${eventName}_NOT_FOUND`);
+  }
+
+  async function rejectChallenge(taskId: bigint, expectedStake: bigint, expectedPenaltyBps: number) {
     await write(owner, panel, "ArbitrationPanelHarness", "seedChallengeable", [taskId, validator.account!.address, Number(taskId)]);
-    await write(challenger, court, "VerificationArbitrationCourt", "openChallenge", [
+    const openedReceipt = await write(challenger, court, "VerificationArbitrationCourt", "openChallenge", [
       taskId, validator.account!.address, keccak256(stringToHex(`false-challenge-${taskId}`)),
     ]);
+    expect(decodedEvent(openedReceipt, "VerificationChallengeOpened")).toMatchObject({
+      challengerStakeSnapshot: expectedPenaltyBps === 500 ? parseEther("1000") : expectedPenaltyBps === 1_500 ? parseEther("950") : parseEther("807.5"),
+      validatorStakeLocked: parseEther("100"),
+    });
     await expect(write(challenger, court, "VerificationArbitrationCourt", "withdraw", [1n])).rejects.toThrow();
     const resolution = keccak256(stringToHex(`rejected-resolution-${taskId}`));
     await write(arbitrators[0], court, "VerificationArbitrationCourt", "vote", [taskId, false, resolution]);
-    await write(arbitrators[1], court, "VerificationArbitrationCourt", "vote", [taskId, false, resolution]);
+    const resolvedReceipt = await write(arbitrators[1], court, "VerificationArbitrationCourt", "vote", [taskId, false, resolution]);
+    expect(decodedEvent(resolvedReceipt, "VerificationChallengeResolved")).toMatchObject({
+      challengerPenaltyBps: expectedPenaltyBps,
+      challengerFalseChallengeCount: Number(taskId),
+    });
     expect(await read(court, "VerificationArbitrationCourt", "stake", [challenger.account!.address])).toBe(expectedStake);
     expect(await read(court, "VerificationArbitrationCourt", "lockedStake", [challenger.account!.address])).toBe(0n);
   }
 
   it("slashes repeated false challenges by 5%, 15%, then 30% of each frozen stake snapshot", async () => {
-    await rejectChallenge(1n, parseEther("950"));
-    await rejectChallenge(2n, parseEther("807.5"));
-    await rejectChallenge(3n, parseEther("565.25"));
+    await rejectChallenge(1n, parseEther("950"), 500);
+    await rejectChallenge(2n, parseEther("807.5"), 1_500);
+    await rejectChallenge(3n, parseEther("565.25"), 3_000);
     expect(await read(court, "VerificationArbitrationCourt", "falseChallengeCount", [challenger.account!.address])).toBe(3);
   });
 

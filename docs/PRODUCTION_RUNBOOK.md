@@ -521,8 +521,11 @@ pnpm pilot:qualification:check
 
 The command exits 2 until `launchEvidenceReady:true`. It also rejects invalid
 publisher-adoption signatures, fewer than three adopted tasks/publishers/Agent
-wallets, publisher-Agent overlap, missing collaboration or competition adoption,
-events outside the signed task set, absent dispute/maintenance/decay evidence,
+wallets, publisher-Agent or cross-Agent-role overlap, missing collaboration or
+competition adoption, incomplete epoch-bound shard commit/reveal evidence,
+fewer than three funded arbitrators, missing exact-hash quorum, incorrect
+100/60/40 accounting, an incomplete 5/15/30 false-challenge sequence, missing
+rehabilitation uphold/reject/expiry, events outside the signed task set, absent dispute/maintenance/decay evidence,
 deployment mismatch, incomplete independence coverage or missing owner roles.
 Operators may retrieve the same private, non-cacheable report from
 `GET /api/admin/pilot-readiness` using the Admin bearer credential. Store its

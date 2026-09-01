@@ -216,7 +216,15 @@ describe("AgentGrid Solidity protocol", () => {
 
   async function finalizeRequestedTester(taskId: bigint) {
     for (let index = 0; index < 6; index += 1) await provider.request({ method: "evm_mine", params: [] });
-    await write(owner, addresses.taskRegistry, "TaskRegistry", "finalizeTester", [taskId]);
+    const receipt = await write(owner, addresses.taskRegistry, "TaskRegistry", "finalizeTester", [taskId]);
+    const panelStartedLog = receipt.logs.find((log) => {
+      if (log.address.toLowerCase() !== addresses.verificationPanel.toLowerCase()) return false;
+      try { return decodeEventLog({ abi: artifacts.VerificationPanel.abi as Abi, data: log.data, topics: log.topics }).eventName === "PanelStarted"; }
+      catch { return false; }
+    });
+    if (!panelStartedLog) throw new Error("PANEL_STARTED_EVENT_MISSING");
+    const panelStarted = decodeEventLog({ abi: artifacts.VerificationPanel.abi as Abi, data: panelStartedLog.data, topics: panelStartedLog.topics });
+    expect(Number((panelStarted.args as { epoch: number }).epoch)).toBeGreaterThan(0);
   }
 
   async function revealVerificationPanel(taskId: bigint, passed: boolean, executorWeightsBps: number[], winner: Address = `0x${"0".repeat(40)}`, selectedArtifactHash: `0x${string}` = `0x${"0".repeat(64)}`) {

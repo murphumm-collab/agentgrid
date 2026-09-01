@@ -117,11 +117,24 @@ an RPC or write failure can no longer silently replace validators. OpenAPI 0.8.5
 publishes the matching idempotent coordinator completion results. This is
 current-source regression scope and does not revive the historical fixed QA.
 
-The current application suite passes 334/334 tests across 89 files; typecheck,
+The current application suite passes 337/337 tests across 89 files; typecheck,
 lint, all 15 Worker/Ops bundles and the production Web build pass. The Demo and
 homepage participant split now matches RewardVault's post-network Agent pool:
 80% executors, 20% three-validator panel and only rounding dust to reserve. This
 does not replace ProtocolEconomics' outer 95/3/2 Agent/DAO/source routing.
+
+The production Pilot gate now derives the anti-cheating proof from canonical
+events instead of accepting three generic Agent addresses. It requires a
+complete epoch-bound three-shard panel for every adopted task, three funded and
+role-isolated arbitrators, exact-hash quorum, exact upheld accounting, the
+5/15/30 false-challenge sequence, and uphold/reject/expiry rehabilitation
+coverage. Panel and Court events expose the epoch, frozen stake, locked target
+amount, applied penalty tier and resulting false-challenge count needed for an
+independent replay. The regenerated nine-contract runtime manifest matches the
+current bytecode and ABI; the uninterrupted current-source contract run passes
+26/26 cases across four files, including decoded event assertions. The refreshed
+337/337 application suite includes nine fail-closed Pilot qualification cases.
+Fixed release QA remains historical and must run again only after source freeze.
 
 The superseded application source froze after adding visible failure, busy state and duplicate-
 safe boundaries to language, clipboard and Demo mutations. Discovery

@@ -61,13 +61,19 @@ evidence.
   two reports; wallet address difference alone is insufficient proof of
   independence.
 - Three independently controlled arbitration identities must each deposit at
-  least 500 Token. The pilot must record a 50-Token challenge bond, matching
+  least 500 Token. The pilot must record the 50-Token protocol bond floor and
+  the challenger's full locked available-stake snapshot (which is at least 500
+  Token under the current eligibility rule), matching
   2-of-3 resolution hashes, a correct challenge with validator/reward/reserve
   accounting, and repeated false challenges at 5%/15%/30%. It must also exercise
   one role-rehabilitation appeal with an independently reviewed evidence hash,
   an exact matching 2-of-3 decision, restored 2500-bps floor, one rejected appeal
   penalty and one three-day no-quorum unlock; project-controlled wallets cannot
   stand in for independent appellants or arbitrators.
+- Archive the canonical `PanelStarted` epoch, all shard commit/reveal events,
+  arbitration stake totals, challenge stake snapshots and resolved penalty-bps
+  fields. A checklist assertion or transaction hash without the decoded fields
+  cannot satisfy `pilot:qualification:check`.
 - Complete both collaboration and competition tasks, structured rejection and
   quorum appeal, maintenance day 7/30/90 behavior, repeated-collaboration reward
   decay and signed business-adoption attestations.
