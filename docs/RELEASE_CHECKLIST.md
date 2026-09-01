@@ -517,7 +517,7 @@ real-user pilot.
   through 5/15/30% snapshot slashes, and unlocks without restoration or penalty
   after a three-day no-quorum expiry. Deployment verification requires the Court
   to hold replay-protected reporter authority for all three roles; Dashboard 1.5,
-  OpenAPI 0.8.2 and the shared ABI expose the policy and entrypoint. The row
+  OpenAPI 0.8.3 and the shared ABI expose the policy and entrypoint. The row
   remains open for common-control/self-dealing resistance and final frozen-source
   packaged evidence.
 - [ ] Indexer, OpenAPI, SDK and the human/AI dashboards expose source attribution,
@@ -530,7 +530,10 @@ real-user pilot.
 - [ ] Current-source contract/API/Worker evidence proves three unique validation Agents use criterion/test shards, commit before reveal, and require two independent votes per required criterion; no legacy single-Tester finalization entrypoint remains.
   The production job union and OpenAPI no longer admit the unused single-agent
   `MAINTENANCE_VALIDATION` kind; due maintenance starts a fresh panel and uses
-  only `TEST_TASK` plus `REVEAL_TEST_SHARD`. This row remains open for the
+  only `TEST_TASK` plus `REVEAL_TEST_SHARD`. The legacy Demo HTTP/SDK
+  `submitTest` entrypoint has also been removed, so no browser or Agent client
+  can directly write a single-validator terminal result. The internal pure
+  Demo service helper remains test-fixture-only. This row remains open for the
   frozen-source complete regression and packaged Worker evidence.
 - [ ] Chain regression proves 4000/3333/2667 commit-order aggregation, 24-hour challenge gating, matching-resolution-hash 2/3 staked arbitration, correct-challenge 100/60/40 slash/reward/reserve accounting, repeated false-challenge 5%/15%/30% slashing, three-day no-quorum recovery, and an upheld case entering a fresh correction/panel epoch.
   The focused upheld-challenge path now proves an unbonded target cannot evade

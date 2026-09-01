@@ -37,6 +37,7 @@ export function publicTaskView(task: Task, reward?: RewardGrant | null) {
       tester: task.testResult.testerId,
       testerIds: task.testResult.testerIds,
       reportHash: task.testResult.reportHash,
+      aggregateEvidenceHash: task.testResult.reportHash,
       reportHashes: task.testResult.reportHashes,
       testsPassed: task.testResult.testsPassed,
       hiddenTestsPassed: task.testResult.hiddenTestsPassed,

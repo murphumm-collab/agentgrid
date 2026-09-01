@@ -42,8 +42,8 @@ describe("OpenAPI JSON write contracts", () => {
   it("executes a runtime schema for every repository JSON route", () => {
     const source = routeSources(new URL("../app/api/", import.meta.url)).join("\n");
     expect(source).not.toMatch(/readJsonBody\s*</);
-    expect(source.match(/readJsonBody\(/g)).toHaveLength(29);
-    expect(source.match(/\.parse\(await readJsonBody\(/g)).toHaveLength(29);
+    expect(source.match(/readJsonBody\(/g)).toHaveLength(28);
+    expect(source.match(/\.parse\(await readJsonBody\(/g)).toHaveLength(28);
   });
 
   it("closes every advertised JSON request envelope and documents body-policy failures", () => {
@@ -63,7 +63,7 @@ describe("OpenAPI JSON write contracts", () => {
   });
 
   it("enumerates every runtime field needed to sign evaluation and test evidence", () => {
-    expect(openapi.info.version).toBe("0.8.2");
+    expect(openapi.info.version).toBe("0.8.3");
     const evaluation = openapi.components.schemas.TaskEvaluationReport;
     expect(Object.keys(evaluation.properties ?? {}).sort()).toEqual([...taskEvaluationReportSchema.keyof().options].sort());
     expect([...(evaluation.required ?? [])].sort()).toEqual([...taskEvaluationReportSchema.keyof().options].sort());

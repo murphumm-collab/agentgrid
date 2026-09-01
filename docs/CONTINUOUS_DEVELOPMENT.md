@@ -72,13 +72,17 @@ The current source also adds `ProtocolEconomics` and is migrating the legacy
 fixed evaluation/publication fees to immutable source attribution, 95/3/2 gross
 reward routing, DAO/source vesting and idempotent 20/30/70/30-bps lifecycle
 charges. Compilation, isolated economics tests, focused lifecycle regressions,
-the OpenAPI 0.8.2 machine surface and economics dashboard projection pass locally. The
+the OpenAPI 0.8.3 machine surface and economics dashboard projection pass locally. The
 role-separated quality path now records validator and executor results plus a
 permissionless, one-shot evaluator settlement, freezes fixed-pool executor
 quality multipliers and caps positive gains per role/30-day epoch. Maintenance
 now has only the three-member shard commit/reveal queue path; the unused
-single-validator `MAINTENANCE_VALIDATION` contract was removed. Common-control
-self-dealing resistance, deployment verification and final QA remain open. The
+single-validator `MAINTENANCE_VALIDATION` contract was removed. The legacy Demo
+HTTP route and Demo SDK method that could directly submit one
+validator result are now removed as well; OpenAPI 0.8.3 uses `testerIds`,
+`reportHashes` and `aggregateEvidenceHash` as the panel projection while marking
+the first-member aliases deprecated. Common-control self-dealing resistance,
+deployment verification and final QA remain open. The
 latest current-source full contract run passes all 25 cases across four files,
 including the corrected exact quality-event selector and the four-case Court
 penalty/rehabilitation suite. This is current-source regression evidence, not
@@ -90,7 +94,7 @@ positive scores, reactivation and added capabilities cannot improve an old
 draw; current withdrawal, deactivation, capability removal, cooldown and bans
 remain safety vetoes. The focused five-case quality suite and both real panel
 selection paths pass, all eleven deployables remain below EIP-170, and AI
-Dashboard 1.5/OpenAPI 0.8.2 expose the closed anti-manipulation and public
+Dashboard 1.5/OpenAPI 0.8.3 expose the closed anti-manipulation and public
 rehabilitation policies. The Agent-initiated Court path freezes at least 500 AGT,
 requires an exact matching 2-of-3 resolution, restores only the 2500-bps floor,
 slashes rejected appeals by 5/15/30%, and expires no-quorum cases after three

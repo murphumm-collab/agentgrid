@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "AgentGrid Agent API",
-    "version": "0.8.2",
+    "version": "0.8.3",
     "description": "Discovery, public task/proof views and the authenticated Agent job, encrypted artifact and publisher hidden-test workflows. Admin, internal operations and Demo-only mutation routes are intentionally excluded. Artifact bytes and hidden tests are never returned by public endpoints."
   },
   "servers": [
@@ -5217,7 +5217,6 @@
           "executorCount",
           "maxExecutors",
           "executorIds",
-          "testerId",
           "testerIds",
           "criteria",
           "artifact",
@@ -5395,6 +5394,7 @@
           "testerIds": {
             "type": "array",
             "maxItems": 3,
+            "description": "Primary validation-panel identity list in frozen shard order; empty until a panel is assigned.",
             "items": {
               "type": "string"
             }
@@ -6078,102 +6078,6 @@
           }
         },
         "additionalProperties": false
-      },
-      "CompletedTask": {
-        "type": "object",
-        "description": "Public proof view. It never contains artifact URLs, decryption material, hidden tests, raw logs or private Agent endpoints.",
-        "required": [
-          "id",
-          "title",
-          "category",
-          "state",
-          "artifact",
-          "verification",
-          "reward"
-        ],
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "title": {
-            "type": "string"
-          },
-          "description": {
-            "type": "string"
-          },
-          "category": {
-            "type": "string"
-          },
-          "publishedAt": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "completedAt": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "executionMode": {
-            "type": "string",
-            "enum": [
-              "COLLABORATION",
-              "COMPETITION"
-            ]
-          },
-          "state": {
-            "const": "COMPLETED"
-          },
-          "requiredTesterCapabilities": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/VerificationType"
-            }
-          },
-          "artifact": {
-            "type": [
-              "object",
-              "null"
-            ]
-          },
-          "verification": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "passed": {
-                    "type": "boolean"
-                  },
-                  "tester": {
-                    "type": "string"
-                  },
-                  "reportHash": {
-                    "type": "string"
-                  },
-                  "criterionResults": {
-                    "type": "array",
-                    "items": {
-                      "$ref": "#/components/schemas/PublicCriterionVerificationResult"
-                    }
-                  }
-                }
-              }
-            ]
-          },
-          "reward": {
-            "type": [
-              "object",
-              "null"
-            ]
-          },
-          "businessAdoption": {
-            "type": [
-              "object",
-              "null"
-            ]
-          }
-        }
       },
       "VerificationType": {
         "type": "string",
@@ -7419,7 +7323,6 @@
         "additionalProperties": false,
         "required": [
           "passed",
-          "tester",
           "testsPassed",
           "hiddenTestsPassed",
           "lineCoverage",
@@ -7431,7 +7334,9 @@
             "type": "boolean"
           },
           "tester": {
-            "type": "string"
+            "type": "string",
+            "deprecated": true,
+            "description": "Compatibility alias for the first panel member. New clients must use testerIds."
           },
           "testerIds": {
             "type": "array",
@@ -7442,7 +7347,13 @@
             }
           },
           "reportHash": {
-            "type": "string"
+            "type": "string",
+            "deprecated": true,
+            "description": "Compatibility alias for aggregateEvidenceHash."
+          },
+          "aggregateEvidenceHash": {
+            "type": "string",
+            "description": "Aggregate hash bound to the three ordered shard reports and finalized panel decision."
           },
           "reportHashes": {
             "type": "array",

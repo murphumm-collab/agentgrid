@@ -36,10 +36,4 @@ export class AgentGridDemoClient extends AgentProtocolClient {
     });
   }
 
-  submitTest(taskId: string, evidence: Record<string, unknown>, selectionProof: string) {
-    return this.request(`/api/tasks/${encodeURIComponent(taskId)}/test`, {
-      method: "POST",
-      body: JSON.stringify({ testerId: this.requireAgentId(), evidence, selectionProof }),
-    });
-  }
 }

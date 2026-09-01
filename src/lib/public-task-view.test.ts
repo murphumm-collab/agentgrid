@@ -22,6 +22,7 @@ describe("public completed task views", () => {
     expect(JSON.stringify(view)).not.toContain("private implementation detail");
     expect(view.verification?.criterionResults?.[0]).not.toHaveProperty("observation");
     expect(view.verification?.reportHash).toBe("0xreport");
+    expect(view.verification?.aggregateEvidenceHash).toBe("0xreport");
   });
 
   it("computes honest denominators and category totals", () => {

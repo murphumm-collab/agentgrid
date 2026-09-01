@@ -47,7 +47,6 @@ const intentionalExclusions = new Map<string, "admin" | "demo-only" | "operation
   ["POST /api/tasks/[id]/review", "demo-only"],
   ["POST /api/tasks/[id]/rewards/[trancheId]/claim", "demo-only"],
   ["POST /api/tasks/[id]/submit", "demo-only"],
-  ["POST /api/tasks/[id]/test", "demo-only"],
   ["POST /api/tasks", "demo-only"],
 ]);
 
@@ -94,7 +93,7 @@ describe("production route machine-contract inventory", () => {
     }).concat([...intentionalExclusions.keys()]));
     expect(accounted).toEqual(actual);
     expect(advertised.size).toBe(37);
-    expect(intentionalExclusions.size).toBe(18);
+    expect(intentionalExclusions.size).toBe(17);
   });
 
   it("requires every production success response to name a closed JSON envelope", () => {
