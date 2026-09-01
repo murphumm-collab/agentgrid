@@ -145,6 +145,17 @@ future timestamps, excessive TWAP deviation and per-period cap overflow. It is
 explicitly simulation-only and does not activate or pretend to execute a DEX
 route, oracle, buyback or burn.
 
+The current full 26-case contract run now also proves the economics router
+through the real TaskRegistry lifecycle rather than only through an isolated
+router fixture. A valid source is frozen before publication and remains
+unchanged after source reconfiguration or another publisher commitment; the
+200-AGT gross grant routes exactly 190/6/4 to Agents/DAO/source. Decoded events
+prove the frozen 1000-AGT stake basis is charged exactly 2/3/7/3 AGT at
+evaluation/publication/acceptance/maintenance and each amount splits
+35/20/20/15/10. A second self-referring source falls back to DAO and, while the
+task remains in evaluation, has consumed only the 0.2% evaluation stage. This
+is current-source regression evidence, not final frozen-source QA.
+
 The superseded application source froze after adding visible failure, busy state and duplicate-
 safe boundaries to language, clipboard and Demo mutations. Discovery
 schema 1.1 and OpenAPI 0.6.9 exposed explicit single-task,

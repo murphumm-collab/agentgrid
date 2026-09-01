@@ -43,6 +43,8 @@ describe("AgentGrid Solidity protocol", () => {
   let testerB: Wallet;
   let testerC: Wallet;
   let reserveAccount: ReturnType<typeof mnemonicToAccount>;
+  let daoTreasury: Address;
+  let securityReserve: Address;
   let addresses: Record<"token" | "stakeManager" | "agentRegistry" | "rewardVault" | "taskRegistry" | "verificationPanel" | "protocolEconomics", Address>;
 
   beforeAll(() => {
@@ -72,8 +74,8 @@ describe("AgentGrid Solidity protocol", () => {
     const rewardVault = await deploy(owner, "RewardVault", [token, reserveAccount.address, parseEther("100000"), ownerAddress]);
     const taskRegistry = await deploy(owner, "TaskRegistry", [stakeManager, rewardVault, agentRegistry, ownerAddress, ownerAddress]);
     const verificationPanel = await deploy(owner, "VerificationPanel", [taskRegistry, rewardVault, agentRegistry, ownerAddress]);
-    const daoTreasury = mnemonicToAccount(mnemonic, { addressIndex: 12 }).address;
-    const securityReserve = mnemonicToAccount(mnemonic, { addressIndex: 13 }).address;
+    daoTreasury = mnemonicToAccount(mnemonic, { addressIndex: 12 }).address;
+    securityReserve = mnemonicToAccount(mnemonic, { addressIndex: 13 }).address;
     const protocolEconomics = await deploy(owner, "ProtocolEconomics", [
       token, rewardVault, daoTreasury, securityReserve,
       "0x000000000000000000000000000000000000dEaD", 365 * 24 * 60 * 60, ownerAddress,
@@ -415,7 +417,77 @@ describe("AgentGrid Solidity protocol", () => {
   });
 
   it("executes stake, task, random tester, acceptance, capped grant, and delivery payout", async () => {
+    const source = mnemonicToAccount(mnemonic, { addressIndex: 14 });
+    const sourceId = keccak256(stringToHex("independent-task-source"));
+    await write(owner, addresses.protocolEconomics, "ProtocolEconomics", "configureSource", [sourceId, source.address, true]);
+    await write(publisher, addresses.protocolEconomics, "ProtocolEconomics", "commitNextTaskSource", [sourceId]);
     await createAcceptedTask();
+
+    const frozenSource = (await read(addresses.protocolEconomics, "ProtocolEconomics", "taskSources", [1n])) as readonly [string, Address, bigint];
+    expect(frozenSource[0]).toBe(sourceId);
+    expect(frozenSource[1].toLowerCase()).toBe(source.address.toLowerCase());
+    expect(frozenSource[2]).toBeGreaterThan(0n);
+    expect(await read(addresses.protocolEconomics, "ProtocolEconomics", "consumedLifecycleStages", [1n])).toBe(15);
+    expect(await read(addresses.protocolEconomics, "ProtocolEconomics", "taskRewardRouted", [1n])).toBe(true);
+    expect(await read(addresses.stakeManager, "StakeCreditManager", "stakeOf", [4n])).toBe(parseEther("985"));
+
+    const economicsLogs = await publicClient.getLogs({ address: addresses.protocolEconomics, fromBlock: 0n });
+    const economicsEvents = economicsLogs.flatMap((log) => {
+      try {
+        return [decodeEventLog({ abi: artifacts.ProtocolEconomics.abi as Abi, data: log.data, topics: log.topics })];
+      } catch { return []; }
+    });
+    const lifecycleEvents = economicsEvents.filter((event) => event.eventName === "LifecycleChargeRouted")
+      .map((event) => event.args as unknown as {
+        taskId: bigint; stage: number; stakeBasis: bigint; amount: bigint; rewardVaultAmount: bigint;
+        burnAmount: bigint; daoAmount: bigint; sourceAmount: bigint; securityAmount: bigint;
+      }).filter((args) => args.taskId === 1n);
+    expect(lifecycleEvents.map(({ stage, amount }) => [Number(stage), amount])).toEqual([
+      [0, parseEther("2")], [1, parseEther("3")], [2, parseEther("7")], [3, parseEther("3")],
+    ]);
+    for (const event of lifecycleEvents) {
+      expect(event.stakeBasis).toBe(parseEther("1000"));
+      expect(event.rewardVaultAmount + event.burnAmount + event.daoAmount + event.sourceAmount + event.securityAmount).toBe(event.amount);
+      expect(event.rewardVaultAmount).toBe(event.amount * 3_500n / 10_000n);
+      expect(event.burnAmount).toBe(event.amount * 2_000n / 10_000n);
+      expect(event.daoAmount).toBe(event.amount * 2_000n / 10_000n);
+      expect(event.sourceAmount).toBe(event.amount * 1_500n / 10_000n);
+      expect(event.securityAmount).toBe(event.amount * 1_000n / 10_000n);
+    }
+    const rewardEvent = economicsEvents.find((event) => event.eventName === "TaskRewardRouted"
+      && (event.args as unknown as { taskId: bigint }).taskId === 1n)?.args as unknown as {
+        grossReward: bigint; agentPool: bigint; daoAmount: bigint; sourceAmount: bigint;
+      };
+    expect(rewardEvent).toMatchObject({
+      grossReward: parseEther("200"), agentPool: parseEther("190"),
+      daoAmount: parseEther("6"), sourceAmount: parseEther("4"),
+    });
+    expect(await read(addresses.token, "TestToken", "balanceOf", ["0x000000000000000000000000000000000000dEaD"])).toBe(parseEther("3"));
+    expect(await read(addresses.token, "TestToken", "balanceOf", [securityReserve])).toBe(parseEther("1.5"));
+    expect(await read(addresses.token, "TestToken", "balanceOf", [addresses.protocolEconomics])).toBe(parseEther("15.25"));
+
+    const replacementSource = mnemonicToAccount(mnemonic, { addressIndex: 15 }).address;
+    await write(owner, addresses.protocolEconomics, "ProtocolEconomics", "configureSource", [sourceId, replacementSource, true]);
+    await write(publisher, addresses.protocolEconomics, "ProtocolEconomics", "commitNextTaskSource", [sourceId]);
+    const stillFrozen = (await read(addresses.protocolEconomics, "ProtocolEconomics", "taskSources", [1n])) as readonly [string, Address, bigint];
+    expect(stillFrozen).toEqual(frozenSource);
+
+    const fallbackPublisher = createWalletClient({ account: source, chain: localChain, transport: custom(provider as never) });
+    const selfSourceId = keccak256(stringToHex("self-referring-source"));
+    await write(owner, addresses.protocolEconomics, "ProtocolEconomics", "configureSource", [selfSourceId, source.address, true]);
+    await write(fallbackPublisher, addresses.protocolEconomics, "ProtocolEconomics", "commitNextTaskSource", [selfSourceId]);
+    await write(fallbackPublisher, addresses.token, "TestToken", "faucet");
+    await write(fallbackPublisher, addresses.token, "TestToken", "approve", [addresses.stakeManager, parseEther("1000")]);
+    await write(fallbackPublisher, addresses.stakeManager, "StakeCreditManager", "createPosition", [parseEther("1000")]);
+    await write(fallbackPublisher, addresses.stakeManager, "StakeCreditManager", "issueCredit", [9n]);
+    await write(fallbackPublisher, addresses.taskRegistry, "TaskRegistry", "createTaskWithMode", [
+      9n, keccak256(stringToHex("self-source-task")), parseEther("1000"), 1, 0,
+    ]);
+    const fallbackSource = (await read(addresses.protocolEconomics, "ProtocolEconomics", "taskSources", [2n])) as readonly [string, Address, bigint];
+    expect(fallbackSource[0]).toBe(`0x${"0".repeat(64)}`);
+    expect(fallbackSource[1].toLowerCase()).toBe(daoTreasury.toLowerCase());
+    expect(await read(addresses.protocolEconomics, "ProtocolEconomics", "consumedLifecycleStages", [2n])).toBe(1);
+    expect(await read(addresses.stakeManager, "StakeCreditManager", "stakeOf", [9n])).toBe(parseEther("998"));
 
     const grant = (await read(addresses.rewardVault, "RewardVault", "getGrant", [1n])) as {
       total: bigint;

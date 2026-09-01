@@ -487,14 +487,19 @@ real-user pilot.
   distribution source before publication and splits gross reward exactly
   95% Agent pool / 3% DAO timelock / 2% source vesting, including rounding,
   invalid-source fallback and prevention of post-result recipient replacement.
-  The isolated economics suite currently proves these invariants; the full
-  TaskRegistry deployment/indexer surface remains open before this row closes.
+  The current full contract run now proves the real TaskRegistry path freezes a
+  valid source, routes a capped 200-AGT grant as 190/6/4, preserves the frozen
+  recipient after configuration/commit changes, and makes a self-referring
+  source fall back to DAO. The row remains open for final frozen-source QA and
+  packaged/indexed event evidence.
 - [ ] The staged publisher-stake charges execute at most once at the exact
   evaluation/publication/acceptance/maintenance events (20/30/70/30 bps of the
   frozen basis), never precharge a failed future stage, and atomically split
   each charge 35/20/20/15/10 across RewardVault/burn/DAO/source/security.
-  The four-stage router and focused evaluation/publication path pass locally;
-  the complete lifecycle regression has not yet been rerun on frozen source.
+  The current full contract run decodes the integrated TaskRegistry events and
+  proves a 1000-AGT basis charges exactly 2/3/7/3 AGT with the full split, while
+  a second evaluation-only task has consumed only its first-stage bit and keeps
+  998 AGT. The row remains open until unchanged frozen source passes fixed QA.
 - [ ] Official and third-party source fees use the governed 180–365-day vesting
   contract; DAO and security reserves are independently controlled, and no
   application/admin key can directly withdraw their balances.
