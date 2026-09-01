@@ -1,4 +1,4 @@
-import type { Agent, ProtocolConfig, RewardGrant, Task } from "./types";
+import type { Agent, ProtocolConfig, ProtocolEconomicsSummary, RewardGrant, Task } from "./types";
 import { isPublicTask } from "./public-task-view";
 
 export interface AiDashboardSource {
@@ -14,6 +14,7 @@ export interface AiDashboardSource {
   tasks: Task[];
   agents: Array<Omit<Agent, "apiKey" | "apiKeyHash" | "apiKeySalt">>;
   rewards: RewardGrant[];
+  economics: ProtocolEconomicsSummary;
 }
 
 type ActionContract = {
@@ -69,12 +70,12 @@ export const aiDashboardActionContracts: readonly ActionContract[] = [
 
   { id: "create-artifact-upload", operationId: "createArtifactUpload", phase: "DELIVERY", role: "ASSIGNED_EXECUTOR", method: "POST", endpoint: "/api/artifacts/uploads", authentication: agentCredential, effect: "creates an immutable encrypted artifact upload target" },
   { id: "finalize-artifact-upload", operationId: "finalizeArtifactUpload", phase: "DELIVERY", role: "ASSIGNED_EXECUTOR", method: "POST", endpoint: "/api/artifacts/{artifactId}/finalize", authentication: agentCredential, effect: "verifies ciphertext size/hash and seals the artifact manifest" },
-  { id: "download-tester-artifact", operationId: "getTesterArtifact", phase: "DELIVERY", role: "ASSIGNED_TESTER", method: "POST", endpoint: "/api/artifacts/tasks/{taskId}/download", authentication: agentCredential, effect: "returns a short-lived assigned-Tester download without exposing the key to the publisher" },
+  { id: "download-tester-artifact", operationId: "getTesterArtifact", phase: "DELIVERY", role: "ASSIGNED_PANEL_MEMBER", method: "POST", endpoint: "/api/artifacts/tasks/{taskId}/download", authentication: agentCredential, effect: "returns a short-lived download containing only the member's frozen verification shard; other panel shards and keys remain inaccessible" },
   { id: "download-team-contributions", operationId: "getTeamContributions", phase: "DELIVERY", role: "COLLABORATION_LEAD", method: "POST", endpoint: "/api/artifacts/tasks/{taskId}/contributions", authentication: agentCredential, effect: "returns only committed same-team contribution downloads for assembly" },
 
   { id: "inspect-assigned-evaluation", operationId: "getAssignedEvaluation", phase: "VERIFICATION", role: "ASSIGNED_EVALUATOR", method: "GET", endpoint: "/api/agent/evaluations/{taskId}", authentication: agentCredential, effect: "reads one assigned pre-publication evaluation envelope" },
   { id: "submit-assigned-evaluation", operationId: "submitAssignedEvaluation", phase: "VERIFICATION", role: "ASSIGNED_EVALUATOR", method: "POST", endpoint: "/api/agent/evaluations/{taskId}", authentication: agentCredential, effect: "stores one domain-separated signed evaluation or returns the canonical exact retry" },
-  { id: "submit-signed-test-evidence", operationId: "submitSignedEvidence", phase: "VERIFICATION", role: "ASSIGNED_TESTER", method: "POST", endpoint: "/api/evidence", authentication: agentCredential, effect: "stores domain-separated Tester evidence bound to the current work context and returns the canonical exact retry" },
+  { id: "submit-signed-test-evidence", operationId: "submitSignedEvidence", phase: "VERIFICATION", role: "ASSIGNED_PANEL_MEMBER", method: "POST", endpoint: "/api/evidence", authentication: agentCredential, effect: "stores one domain-separated shard report bound to task, work round, checkpoint and panel epoch for the commit/reveal lifecycle; cross-shard access is rejected" },
 ] as const;
 
 export function buildAiDashboard(source: AiDashboardSource, now = new Date(), mode: "demo" | "production" = "demo") {
@@ -85,7 +86,7 @@ export function buildAiDashboard(source: AiDashboardSource, now = new Date(), mo
   const rewards = new Map(source.rewards.map((reward) => [reward.taskId, reward]));
 
   return {
-    schemaVersion: "1.2",
+    schemaVersion: "1.3",
     generatedAt: now.toISOString(),
     mode,
     network: { name: "BSC Testnet", chainId: 97, confirmations: 5 },
@@ -104,6 +105,7 @@ export function buildAiDashboard(source: AiDashboardSource, now = new Date(), mo
       rewardReserveAgt: source.stats.rewardReserve,
       issuedRewardsAgt: source.stats.issuedRewards,
     },
+    economics: source.economics,
     workQueue: tasks.filter((task) => !["COMPLETED", "MAINTENANCE"].includes(task.state)).slice(0, 50).map((task) => ({
       id: task.id,
       title: task.title,
@@ -112,8 +114,18 @@ export function buildAiDashboard(source: AiDashboardSource, now = new Date(), mo
       executionMode: task.executionMode,
       deadlineAt: task.deadlineAt,
       executorSlots: { filled: task.executorIds.length, maximum: task.maxExecutors },
+      validatorPanel: {
+        members: task.testerIds ?? [],
+        executorQualityMultipliersBps: task.executorQualityMultipliersBps ?? [],
+      },
       requiredVerificationCapabilities: [...new Set(task.requiredTesterCapabilities ?? [])],
       rewardAgt: rewards.get(task.id)?.total ?? null,
+      source: task.economics ? {
+        sourceId: task.economics.sourceId,
+        recipient: task.economics.sourceRecipient,
+        fallbackToDao: task.economics.fallbackToDao,
+      } : null,
+      lifecycleCharges: task.economics?.lifecycleCharges.map((charge) => ({ stage: charge.stage, amountAgt: charge.amount })) ?? [],
       humanUrl: `/tasks/${encodeURIComponent(task.id)}`,
     })),
     actionContracts: aiDashboardActionContracts,

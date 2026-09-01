@@ -16,7 +16,7 @@ import { requiredConfigValue, requiredSecret } from "../../src/lib/secrets";
 import { publicBscRpcTransport } from "./pilot-policy";
 
 const ACKNOWLEDGEMENT = "I_UNDERSTAND_THIS_BROADCASTS_BSC_TESTNET_TRANSACTIONS";
-const contractKeys = ["token", "stakeManager", "agentRegistry", "rewardVault", "taskRegistry", "verificationPanel", "verificationArbitrationCourt", "disputeResolver"] as const;
+const contractKeys = ["token", "stakeManager", "agentRegistry", "rewardVault", "taskRegistry", "verificationPanel", "verificationArbitrationCourt", "disputeResolver", "protocolEconomics"] as const;
 type ContractKey = typeof contractKeys[number];
 
 async function main() {
@@ -44,6 +44,8 @@ async function main() {
   const deployer = account.address;
   const owner = getAddress(requiredConfigValue("PROTOCOL_OWNER_ADDRESS"));
   const reserve = getAddress(process.env.PROTOCOL_RESERVE_ADDRESS ?? deployer);
+  const daoTreasury = getAddress(requiredConfigValue("PROTOCOL_DAO_TREASURY_ADDRESS"));
+  const securityReserve = getAddress(requiredConfigValue("PROTOCOL_SECURITY_RESERVE_ADDRESS"));
   const coordinator = getAddress(requiredConfigValue("PROTOCOL_COORDINATOR_ADDRESS"));
   if (owner.toLowerCase() === coordinator.toLowerCase()) throw new Error("OWNER_AND_COORDINATOR_MUST_DIFFER");
   const arbitrators = (process.env.ARBITRATOR_ADDRESSES ?? "").split(",").map((value) => value.trim()).filter(Boolean).map((value) => getAddress(value));
@@ -56,7 +58,7 @@ async function main() {
   if (!Number.isInteger(quorum) || quorum < 2 || quorum > arbitrators.length) throw new Error("ARBITRATOR_QUORUM_INVALID");
 
   const runtimeBytecodeHashes = Object.fromEntries(
-    ["TestToken", "StakeCreditManager", "AgentRegistry", "RewardVault", "TaskRegistry", "VerificationPanel", "VerificationArbitrationCourt", "DisputeResolver"]
+    ["TestToken", "StakeCreditManager", "AgentRegistry", "RewardVault", "TaskRegistry", "VerificationPanel", "VerificationArbitrationCourt", "DisputeResolver", "ProtocolEconomics"]
       .map((name) => [name, runtimeBytecodeHash(artifacts[name])]),
   );
   const configuration = {
@@ -66,6 +68,8 @@ async function main() {
     owner,
     coordinator,
     reserve,
+    daoTreasury,
+    securityReserve,
     arbitrators,
     arbitratorQuorum: quorum,
     runtimeBytecodeHashes,
@@ -125,7 +129,11 @@ async function main() {
   const agentRegistry = await deploy("deploy.agentRegistry", "agentRegistry", "AgentRegistry", [stakeManager]);
   const rewardVault = await deploy("deploy.rewardVault", "rewardVault", "RewardVault", [token, reserve, parseEther("100000"), deployer]);
   const taskRegistry = await deploy("deploy.taskRegistry", "taskRegistry", "TaskRegistry", [stakeManager, rewardVault, agentRegistry, coordinator, deployer]);
-  const verificationPanel = await deploy("deploy.verificationPanel", "verificationPanel", "VerificationPanel", [taskRegistry, rewardVault, deployer]);
+  const protocolEconomics = await deploy("deploy.protocolEconomics", "protocolEconomics", "ProtocolEconomics", [
+    token, rewardVault, daoTreasury, securityReserve,
+    "0x000000000000000000000000000000000000dEaD", 365 * 24 * 60 * 60, deployer,
+  ]);
+  const verificationPanel = await deploy("deploy.verificationPanel", "verificationPanel", "VerificationPanel", [taskRegistry, rewardVault, agentRegistry, deployer]);
   const verificationArbitrationCourt = await deploy("deploy.verificationArbitrationCourt", "verificationArbitrationCourt", "VerificationArbitrationCourt", [token, verificationPanel, agentRegistry, reserve, arbitrators.slice(0, 3)]);
   const disputeResolver = await deploy("deploy.disputeResolver", "disputeResolver", "DisputeResolver", [taskRegistry, arbitrators, quorum, deployer]);
 
@@ -134,13 +142,19 @@ async function main() {
   await write("wire.verificationPanel", taskRegistry, "TaskRegistry", "setVerificationPanel", [verificationPanel]);
   await write("wire.rewardVaultVerificationPanel", rewardVault, "RewardVault", "setVerificationPanel", [verificationPanel]);
   await write("wire.verificationArbitrationCourt", verificationPanel, "VerificationPanel", "setArbitrationCourt", [verificationArbitrationCourt]);
+  await write("wire.qualitySlasher", stakeManager, "StakeCreditManager", "setQualitySlasher", [verificationArbitrationCourt]);
   await write("wire.rewardVault", rewardVault, "RewardVault", "setTaskRegistry", [taskRegistry]);
+  await write("wire.protocolEconomics", protocolEconomics, "ProtocolEconomics", "configureProtocol", [taskRegistry, stakeManager]);
+  await write("wire.stakeManagerEconomics", stakeManager, "StakeCreditManager", "setProtocolEconomics", [protocolEconomics]);
+  await write("wire.rewardVaultEconomics", rewardVault, "RewardVault", "setProtocolEconomics", [protocolEconomics]);
+  await write("wire.taskRegistryEconomics", taskRegistry, "TaskRegistry", "setProtocolEconomics", [protocolEconomics]);
+  await write("wire.agentQualityReporter", agentRegistry, "AgentRegistry", "setOutcomeReporter", [verificationPanel, 7]);
   await write("fund.rewardReserve", token, "TestToken", "mintRewardReserve", [rewardVault, parseEther("100000")]);
-  for (const [name, address] of Object.entries({ TestToken: token, StakeCreditManager: stakeManager, RewardVault: rewardVault, TaskRegistry: taskRegistry, DisputeResolver: disputeResolver })) {
+  for (const [name, address] of Object.entries({ TestToken: token, StakeCreditManager: stakeManager, RewardVault: rewardVault, TaskRegistry: taskRegistry, DisputeResolver: disputeResolver, ProtocolEconomics: protocolEconomics })) {
     await write(`ownership.${name}`, address as Address, name, "transferOwnership", [owner]);
   }
 
-  const contracts = { token, stakeManager, agentRegistry, rewardVault, taskRegistry, verificationPanel, verificationArbitrationCourt, disputeResolver };
+  const contracts = { token, stakeManager, agentRegistry, rewardVault, taskRegistry, verificationPanel, verificationArbitrationCourt, disputeResolver, protocolEconomics };
   if (contractKeys.some((key) => !state.contracts[key])) throw new Error("DEPLOYMENT_CONTRACT_SET_INCOMPLETE");
   const deployment = {
     ...configuration,

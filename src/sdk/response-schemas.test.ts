@@ -65,6 +65,12 @@ describe("production SDK successful response contracts", () => {
       tasks: [],
       agents: [],
       rewards: [],
+      economics: {
+        grossTaskRewards: 0, agentPool: 0, daoVested: 0, sourceVested: 0,
+        lifecycleConsumed: 0, rewardVaultRecycled: 0, burned: 0, securityReserved: 0,
+        netDemand30d: { status: "UNAVAILABLE", reason: "External receipts missing." },
+        netDemand90d: { status: "UNAVAILABLE", reason: "External receipts missing." },
+      },
     }, now, "production");
     expect(publicDashboardResponseSchema.parse(dashboard)).toEqual(dashboard);
   });
@@ -104,7 +110,7 @@ describe("production SDK successful response contracts", () => {
       paths: Record<string, Record<string, { responses: Record<string, { content?: { "application/json"?: { schema?: JsonSchema } } }> }>>;
       components: { schemas: Record<string, JsonSchema> };
     };
-    expect(openapi.info.version).toBe("0.7.0");
+    expect(openapi.info.version).toBe("0.8.0");
     expect(openapi.components.schemas.TaskDefinition.properties?.collaborationPlan?.$ref).toBe("#/components/schemas/CollaborationPlan");
     expect(openapi.components.schemas.CollaborationPlan.additionalProperties).toBe(false);
     expect(openapi.components.schemas.CollaborationPlan.required).toEqual(expect.arrayContaining(["workPackages", "sharedInterfaces", "assemblyStrategy", "underfilledStrategy", "integrationChecks"]));

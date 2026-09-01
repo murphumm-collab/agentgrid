@@ -1,5 +1,5 @@
 import { formatEther } from "viem";
-import type { RewardGrant, StakePosition, Task } from "./types";
+import type { AgentQuality, AgentRoleQuality, EconomicsVesting, ProtocolEconomicsSummary, RewardGrant, StakePosition, Task, TaskEconomics } from "./types";
 import { verificationTypes, type TaskDefinition } from "./task-definition";
 import { TESTER_VERIFICATION_CAPABILITY_MASK } from "./agent-roles";
 import type { ChainProjectionRow, CommitmentProjectionRow } from "./store-postgres";
@@ -23,10 +23,42 @@ export function projectAgentStatuses(events: ChainProjectionRow[]) {
   return statuses;
 }
 
+const initialRoleQuality = (): AgentRoleQuality => ({ scoreBps: 5_000, outcomeCount: 0, severeFaults: 0, cooldownUntil: null, banned: false });
+export const initialAgentQuality = (): AgentQuality => ({ executor: initialRoleQuality(), validator: initialRoleQuality(), evaluator: initialRoleQuality() });
+
+export function projectAgentQualities(events: ChainProjectionRow[]) {
+  const qualities = new Map<string, AgentQuality>();
+  const roleKey = (role: number): keyof AgentQuality | undefined => role === 1 ? "executor" : role === 2 ? "validator" : role === 4 ? "evaluator" : undefined;
+  for (const event of events) {
+    if (event.eventName !== "AgentQualityUpdated" && event.eventName !== "AgentRoleRehabilitated") continue;
+    const args = event.eventArgs ?? {};
+    const agent = id(args, "agent").toLowerCase();
+    const key = roleKey(Number(scalar(args.role)));
+    if (!agent || !key) continue;
+    const quality = qualities.get(agent) ?? initialAgentQuality();
+    if (event.eventName === "AgentQualityUpdated") {
+      const cooldown = Number(scalar(args.cooldownUntil) ?? 0);
+      quality[key] = {
+        scoreBps: Number(scalar(args.scoreBps) ?? 5_000),
+        outcomeCount: Number(scalar(args.outcomeCount) ?? 0),
+        severeFaults: Number(scalar(args.severeFaults) ?? 0),
+        cooldownUntil: cooldown > 0 ? new Date(cooldown * 1_000).toISOString() : null,
+        banned: scalar(args.banned) === true,
+      };
+    } else {
+      quality[key] = { ...quality[key], scoreBps: 2_500, severeFaults: Math.min(2, quality[key].severeFaults), cooldownUntil: null, banned: false };
+    }
+    qualities.set(agent, quality);
+  }
+  return qualities;
+}
+
 export function projectChainBusiness(rows: { events: ChainProjectionRow[]; commitments: CommitmentProjectionRow[] }) {
   const positions = new Map<string, StakePosition>();
   const tasks = new Map<string, Task>();
   const rewards = new Map<string, RewardGrant>();
+  const economicsByTask = new Map<string, TaskEconomics>();
+  const vestings = new Map<string, EconomicsVesting>();
   const commitmentByHash = new Map(rows.commitments.map((item) => [`${item.publisher.toLowerCase()}:${item.specHash.toLowerCase()}`, item]));
 
   const projectedTask = (taskId: string, publisher: string, positionId: string, specHash: string, state: Task["state"], chainCreatedAt?: string | null): Task | undefined => {
@@ -78,6 +110,61 @@ export function projectChainBusiness(rows: { events: ChainProjectionRow[]; commi
       case "EvaluationFeeCharged": {
         const position = positions.get(id(args, "positionId"));
         if (position) position.amount = Math.max(0, position.amount - tokens(args.amount));
+        break;
+      }
+      case "LifecycleFeeCharged": {
+        const position = positions.get(id(args, "positionId"));
+        if (position) position.amount = Math.max(0, position.amount - tokens(args.amount));
+        break;
+      }
+      case "TaskSourceFrozen": {
+        economicsByTask.set(id(args, "taskId"), {
+          sourceId: id(args, "effectiveSourceId"), sourceRecipient: id(args, "recipient"),
+          fallbackToDao: scalar(args.fallbackToDao) === true, lifecycleCharges: [], vestings: [],
+        });
+        break;
+      }
+      case "VestingCreated": {
+        const vestingId = id(args, "vestingId");
+        vestings.set(vestingId, {
+          id: vestingId, recipient: id(args, "recipient"), amount: tokens(args.amount),
+          unlockAt: new Date(Number(scalar(args.unlockAt)) * 1_000).toISOString(), claimed: false,
+        });
+        break;
+      }
+      case "VestingClaimed": {
+        const vesting = vestings.get(id(args, "vestingId"));
+        if (vesting) vesting.claimed = true;
+        break;
+      }
+      case "TaskRewardRouted": {
+        const economics = economicsByTask.get(id(args, "taskId"));
+        if (!economics) break;
+        economics.grossReward = tokens(args.grossReward);
+        economics.agentPool = tokens(args.agentPool);
+        economics.daoReward = tokens(args.daoAmount);
+        economics.sourceReward = tokens(args.sourceAmount);
+        for (const key of ["daoVestingId", "sourceVestingId"] as const) {
+          const vesting = vestings.get(id(args, key));
+          if (vesting) economics.vestings.push(vesting);
+        }
+        break;
+      }
+      case "LifecycleChargeRouted": {
+        const economics = economicsByTask.get(id(args, "taskId"));
+        if (!economics) break;
+        const stages = ["EVALUATION", "PUBLICATION", "ACCEPTANCE", "MAINTENANCE"] as const;
+        economics.lifecycleCharges.push({
+          stage: stages[Number(scalar(args.stage))] ?? "EVALUATION",
+          stakeBasis: tokens(args.stakeBasis), amount: tokens(args.amount),
+          rewardVault: tokens(args.rewardVaultAmount), burned: tokens(args.burnAmount),
+          dao: tokens(args.daoAmount), source: tokens(args.sourceAmount), security: tokens(args.securityAmount),
+          transactionHash: event.transactionHash,
+        });
+        for (const key of ["daoVestingId", "sourceVestingId"] as const) {
+          const vesting = vestings.get(id(args, key));
+          if (vesting) economics.vestings.push(vesting);
+        }
         break;
       }
       case "PositionWithdrawn": {
@@ -200,6 +287,11 @@ export function projectChainBusiness(rows: { events: ChainProjectionRow[]; commi
         }
         break;
       }
+      case "ExecutorQualityMultipliersFrozen": {
+        const task = tasks.get(id(args, "taskId"));
+        if (task && Array.isArray(args.multipliersBps)) task.executorQualityMultipliersBps = args.multipliersBps.map(Number);
+        break;
+      }
       case "TestSubmitted": {
         const task = tasks.get(id(args, "taskId"));
         if (task) {
@@ -277,7 +369,7 @@ export function projectChainBusiness(rows: { events: ChainProjectionRow[]; commi
         const taskId = id(args, "taskId");
         const task = tasks.get(taskId);
         if (!task) break;
-        const total = tokens(args.grossReward);
+        const total = economicsByTask.get(taskId)?.agentPool ?? tokens(args.grossReward);
         const grantId = `chain-grant-${taskId}`;
         const shares = [0.4, 0.2, 0.2, 0.2];
         const days = [0, 7, 30, 90];
@@ -304,5 +396,29 @@ export function projectChainBusiness(rows: { events: ChainProjectionRow[]; commi
       }
     }
   }
-  return { positions: [...positions.values()], tasks: [...tasks.values()], rewards: [...rewards.values()] };
+  for (const [taskId, economics] of economicsByTask) {
+    const task = tasks.get(taskId);
+    if (task) task.economics = economics;
+  }
+  const economics: ProtocolEconomicsSummary = {
+    grossTaskRewards: 0, agentPool: 0, daoVested: 0, sourceVested: 0,
+    lifecycleConsumed: 0, rewardVaultRecycled: 0, burned: 0, securityReserved: 0,
+    netDemand30d: { status: "UNAVAILABLE", reason: "External buyback execution and treasury-sale receipts are not yet indexed." },
+    netDemand90d: { status: "UNAVAILABLE", reason: "External buyback execution and treasury-sale receipts are not yet indexed." },
+  };
+  for (const task of economicsByTask.values()) {
+    economics.grossTaskRewards += task.grossReward ?? 0;
+    economics.agentPool += task.agentPool ?? 0;
+    economics.daoVested += task.daoReward ?? 0;
+    economics.sourceVested += task.sourceReward ?? 0;
+    for (const charge of task.lifecycleCharges) {
+      economics.lifecycleConsumed += charge.amount;
+      economics.rewardVaultRecycled += charge.rewardVault;
+      economics.burned += charge.burned;
+      economics.daoVested += charge.dao;
+      economics.sourceVested += charge.source;
+      economics.securityReserved += charge.security;
+    }
+  }
+  return { positions: [...positions.values()], tasks: [...tasks.values()], rewards: [...rewards.values()], economics };
 }

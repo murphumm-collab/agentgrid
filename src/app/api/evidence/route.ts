@@ -4,7 +4,8 @@ import { apiError } from "@/lib/http";
 import { authenticateAgent, protocolSnapshot } from "@/lib/service";
 import { storedEvidenceHash, testEvidenceSigningVersion, verifyEvidenceSignature } from "@/lib/signed-evidence";
 import { readyArtifactsForTask, storeSignedTestEvidence } from "@/lib/store-postgres";
-import { keccak256, stringToHex } from "viem";
+import { createPublicClient, keccak256, stringToHex } from "viem";
+import { bscTestnet } from "viem/chains";
 import { competitionScoreBps, competitionWeightsBps } from "@/lib/competition-scoring";
 import { contributionFormulaVersion } from "@/lib/contribution-weights";
 import { evidenceJsonBodyLimit, readJsonBody } from "@/lib/request-body";
@@ -12,6 +13,8 @@ import { roleCanLease } from "@/lib/agent-roles";
 import { validateCriterionEvidenceBindings, validateCriterionSubset } from "@/lib/criterion-verification";
 import { signedEvidenceSubmissionSchema } from "@/lib/test-evidence-schema";
 import { chainContractAddresses, runtimeConfig } from "@/lib/env";
+import { taskRegistryAbi, verificationPanelAbi } from "@/lib/contracts";
+import { bscRpcTransport } from "@/lib/bsc-rpc";
 
 export async function POST(request: NextRequest) {
   try {
@@ -19,15 +22,23 @@ export async function POST(request: NextRequest) {
     const agent = await authenticateAgent(input.testerAgentId, request.headers.get("x-agent-key"), "tests:submit");
     if (!roleCanLease(agent.role, "TESTER")) throw new Error("AGENT_ROLE_DENIED");
     const task = (await protocolSnapshot()).tasks.find((item) => item.id === input.taskId);
-    const testerIds = task?.testerIds?.length ? task.testerIds : task?.testerId ? [task.testerId] : [];
-    const assignedShard = testerIds.findIndex((tester) => tester.toLowerCase() === agent.owner.toLowerCase());
-    if (!task || assignedShard < 0) throw new Error("TESTER_NOT_ASSIGNED");
-    if (input.verificationShard !== assignedShard) throw new Error("VERIFICATION_SHARD_MISMATCH");
-    if (task.state !== "TESTING" && task.state !== "MAINTENANCE") throw new Error("TASK_NOT_ACCEPTING_EVIDENCE");
+    if (!task) throw new Error("TASK_NOT_FOUND");
+    const config = runtimeConfig();
+    const chainClient = createPublicClient({ chain: bscTestnet, transport: bscRpcTransport(config.BSC_TESTNET_RPC_URL) });
     const configuredRegistry = chainContractAddresses().taskRegistry;
-    if (input.chainId !== runtimeConfig().BSC_CHAIN_ID) throw new Error("SIGNING_CHAIN_MISMATCH");
+    const panelAddress = await chainClient.readContract({ address: configuredRegistry, abi: taskRegistryAbi, functionName: "verificationPanel" });
+    const panel = await chainClient.readContract({ address: panelAddress, abi: verificationPanelAbi, functionName: "getPanel", args: [BigInt(input.taskId)] });
+    const assignedShard = panel.testers.findIndex((tester) => tester.toLowerCase() === agent.owner.toLowerCase());
+    if (assignedShard < 0) throw new Error("TESTER_NOT_ASSIGNED");
+    if (![1, 2].includes(Number(panel.status))) throw new Error("VERIFICATION_PANEL_NOT_ACCEPTING_EVIDENCE");
+    if (input.verificationShard !== assignedShard) throw new Error("VERIFICATION_SHARD_MISMATCH");
+    if (input.workRound !== Number(panel.workRound)) throw new Error("EVIDENCE_WORK_ROUND_MISMATCH");
+    if (input.checkpoint !== Number(panel.checkpoint)) throw new Error("EVIDENCE_CHECKPOINT_MISMATCH");
+    if (input.panelEpoch !== Number(panel.epoch)) throw new Error("EVIDENCE_PANEL_EPOCH_MISMATCH");
+    if (task.state !== "TESTING") throw new Error("TASK_NOT_ACCEPTING_EVIDENCE");
+    if (input.chainId !== config.BSC_CHAIN_ID) throw new Error("SIGNING_CHAIN_MISMATCH");
     if (input.taskRegistry.toLowerCase() !== configuredRegistry.toLowerCase()) throw new Error("SIGNING_TASK_REGISTRY_MISMATCH");
-    if (input.workRound !== (task.workRound ?? 1)) throw new Error("EVIDENCE_WORK_ROUND_MISMATCH");
+    if (input.workRound !== (task.workRound ?? 1)) throw new Error("EVIDENCE_PROJECTED_WORK_ROUND_MISMATCH");
     if (input.executionMode !== task.executionMode) throw new Error("EVIDENCE_EXECUTION_MODE_MISMATCH");
     if (input.executorOrder.length !== task.executorIds.length || input.executorOrder.some((address, index) => address.toLowerCase() !== task.executorIds[index].toLowerCase())) throw new Error("EVIDENCE_EXECUTOR_ORDER_MISMATCH");
     const criterionResults = input.report.criterionResults ?? [];
@@ -39,7 +50,7 @@ export async function POST(request: NextRequest) {
     }
     else if (criterionResults.length) throw new Error("LEGACY_TASK_CRITERION_RESULTS_FORBIDDEN");
     const isCompetition = task.executionMode === "COMPETITION";
-    if ((task.maintenanceRepairCheckpoint ?? undefined) !== input.report.maintenanceRepairCheckpoint) throw new Error("MAINTENANCE_REPAIR_CHECKPOINT_MISMATCH");
+    if ((input.checkpoint || undefined) !== input.report.maintenanceRepairCheckpoint) throw new Error("MAINTENANCE_REPAIR_CHECKPOINT_MISMATCH");
     if (!isCompetition && input.report.competition) throw new Error("COMPETITION_REPORT_FOR_COLLABORATION_TASK");
     if (isCompetition && !input.report.competition) throw new Error("COMPETITION_REPORT_REQUIRED");
     const weightsTotal = input.report.executorWeightsBps.reduce((sum, item) => sum + item, 0);
@@ -71,7 +82,7 @@ export async function POST(request: NextRequest) {
     }
     const verified = await verifyEvidenceSignature({
       chainId: input.chainId, taskRegistry: input.taskRegistry, taskId: input.taskId, workRound: input.workRound,
-      verificationShard: input.verificationShard,
+      checkpoint: input.checkpoint, panelEpoch: input.panelEpoch, verificationShard: input.verificationShard,
       executionMode: input.executionMode, executorOrder: input.executorOrder, artifactHash: input.artifactHash,
       report: input.report, signature: input.signature as `0x${string}`, expectedAddress: agent.owner,
     });

@@ -5,6 +5,9 @@ import { randomUUID } from "node:crypto";
 import { rewrapArtifactKey } from "./artifact-crypto";
 import { taskDefinitionReviewBindingHash, taskDefinitionSchema } from "./task-definition";
 import { requiredTesterCapabilityMask } from "./agent-roles";
+import { keccak256, stringToHex } from "viem";
+import { storedEvidenceHash } from "./signed-evidence";
+import { testEvidenceReportSchema } from "./test-evidence-schema";
 
 let pool: Pool | undefined;
 let migrated = false;
@@ -167,15 +170,17 @@ export async function migratePostgres(initialState?: ProtocolDatabase) {
         tester_agent_id TEXT NOT NULL,
         tester_address TEXT NOT NULL,
         work_round INTEGER NOT NULL CHECK(work_round > 0),
+        checkpoint INTEGER NOT NULL CHECK(checkpoint BETWEEN 0 AND 3),
+        panel_epoch INTEGER NOT NULL CHECK(panel_epoch > 0),
         verification_shard INTEGER NOT NULL CHECK(verification_shard BETWEEN 0 AND 2),
         artifact_hash TEXT NOT NULL,
         report_hash TEXT NOT NULL,
         report JSONB NOT NULL,
         signature TEXT NOT NULL,
-        signing_version TEXT NOT NULL CHECK(signing_version='AgentGrid Test Evidence V3'),
-        signing_message TEXT NOT NULL CHECK(signing_message LIKE 'AgentGrid Test Evidence V3%'),
+        signing_version TEXT NOT NULL CHECK(signing_version='AgentGrid Test Evidence V4'),
+        signing_message TEXT NOT NULL CHECK(signing_message LIKE 'AgentGrid Test Evidence V4%'),
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        UNIQUE(task_id, work_round, tester_address)
+        UNIQUE(task_id, work_round, checkpoint, panel_epoch, tester_address)
       );
       CREATE TABLE IF NOT EXISTS signed_task_evaluations (
         id UUID PRIMARY KEY,
@@ -232,16 +237,23 @@ export async function migratePostgres(initialState?: ProtocolDatabase) {
       ALTER TABLE signed_test_evidence ADD COLUMN IF NOT EXISTS signing_version TEXT;
       ALTER TABLE signed_test_evidence ADD COLUMN IF NOT EXISTS signing_message TEXT;
       ALTER TABLE signed_test_evidence ADD COLUMN IF NOT EXISTS work_round INTEGER;
+      ALTER TABLE signed_test_evidence ADD COLUMN IF NOT EXISTS checkpoint INTEGER;
+      ALTER TABLE signed_test_evidence ADD COLUMN IF NOT EXISTS panel_epoch INTEGER;
       ALTER TABLE signed_test_evidence ADD COLUMN IF NOT EXISTS verification_shard INTEGER;
       ALTER TABLE signed_task_evaluations ADD COLUMN IF NOT EXISTS signing_version TEXT;
       ALTER TABLE signed_task_evaluations ADD COLUMN IF NOT EXISTS signing_message TEXT;
       ALTER TABLE signed_test_evidence DROP CONSTRAINT IF EXISTS signed_test_evidence_signing_preimage_check;
+      ALTER TABLE signed_test_evidence DROP CONSTRAINT IF EXISTS signed_test_evidence_signing_version_check;
+      ALTER TABLE signed_test_evidence DROP CONSTRAINT IF EXISTS signed_test_evidence_signing_message_check;
       ALTER TABLE signed_test_evidence ADD CONSTRAINT signed_test_evidence_signing_preimage_check CHECK(
         (signing_version IS NULL AND signing_message IS NULL) OR
-        (signing_version IN ('AgentGrid Test Evidence V2','AgentGrid Test Evidence V3') AND signing_message LIKE signing_version || '%')
+        (signing_version IN ('AgentGrid Test Evidence V2','AgentGrid Test Evidence V3','AgentGrid Test Evidence V4') AND signing_message LIKE signing_version || '%')
       );
       ALTER TABLE signed_test_evidence DROP CONSTRAINT IF EXISTS signed_test_evidence_task_id_report_hash_key;
-      CREATE UNIQUE INDEX IF NOT EXISTS signed_test_evidence_panel_member_idx ON signed_test_evidence(task_id,work_round,LOWER(tester_address)) WHERE work_round IS NOT NULL;
+      ALTER TABLE signed_test_evidence DROP CONSTRAINT IF EXISTS signed_test_evidence_task_id_work_round_tester_address_key;
+      ALTER TABLE signed_test_evidence DROP CONSTRAINT IF EXISTS signed_test_evidence_task_id_work_round_checkpoint_panel_epoch_tester_address_key;
+      DROP INDEX IF EXISTS signed_test_evidence_panel_member_idx;
+      CREATE UNIQUE INDEX signed_test_evidence_panel_member_idx ON signed_test_evidence(task_id,work_round,checkpoint,panel_epoch,LOWER(tester_address)) WHERE work_round IS NOT NULL AND checkpoint IS NOT NULL AND panel_epoch IS NOT NULL;
       ALTER TABLE signed_task_evaluations DROP CONSTRAINT IF EXISTS signed_task_evaluations_signing_preimage_check;
       ALTER TABLE signed_task_evaluations ADD CONSTRAINT signed_task_evaluations_signing_preimage_check CHECK(
         (signing_version IS NULL AND signing_message IS NULL) OR
@@ -645,6 +657,47 @@ export async function persistChainBatch(name: string, fromBlock: bigint, nextBlo
           await client.query(
             `INSERT INTO job_outbox(id,role,kind,payload) VALUES($1,'TESTER','TEST_TASK',$2::jsonb) ON CONFLICT(id) DO NOTHING`,
             [id, JSON.stringify(chainJobPayload(event, { tester, shard }))],
+          );
+        }
+      }
+      if (event.eventName === "PanelRevealReady") {
+        const taskId = String(event.eventArgs?.taskId);
+        const workRound = Number(event.eventArgs?.workRound);
+        const checkpoint = Number(event.eventArgs?.checkpoint);
+        const panelEpoch = Number(event.eventArgs?.epoch);
+        const testers = event.eventArgs?.testers;
+        if (!Array.isArray(testers) || testers.length !== 3) throw new Error("INVALID_PANEL_REVEAL_READY_EVENT");
+        for (let shard = 0; shard < testers.length; shard += 1) {
+          const tester = String(testers[shard]);
+          const evidence = await client.query<{
+            testerAddress: string; artifactHash: string; reportHash: string; report: unknown; signature: string;
+          }>(
+            `SELECT tester_address AS "testerAddress",artifact_hash AS "artifactHash",report_hash AS "reportHash",report,signature
+             FROM signed_test_evidence
+             WHERE task_id=$1 AND work_round=$2 AND checkpoint=$3 AND panel_epoch=$4 AND verification_shard=$5 AND LOWER(tester_address)=LOWER($6)
+             LIMIT 1`,
+            [taskId, workRound, checkpoint, panelEpoch, shard, tester],
+          );
+          const row = evidence.rows[0];
+          const parsed = testEvidenceReportSchema.safeParse(row?.report);
+          if (!row || !parsed.success) continue;
+          const report = parsed.data;
+          const criterionPassMask = (report.criterionResults ?? []).reduce((mask, result) => {
+            const criterionIndex = Number(result.criterionId.split("-")[1]) - 1;
+            return result.passed && criterionIndex >= 0 && criterionIndex < 16 ? mask | (1 << criterionIndex) : mask;
+          }, 0);
+          const winner = report.competition?.winner ?? `0x${"0".repeat(40)}`;
+          const selectedArtifactHash = report.competition?.selectedArtifactHash
+            ? keccak256(stringToHex(report.competition.selectedArtifactHash))
+            : `0x${"0".repeat(64)}`;
+          const id = `${event.chainId}:${event.transactionHash}:${event.logIndex}:REVEAL_TEST_SHARD:${shard}`;
+          await client.query(
+            `INSERT INTO job_outbox(id,role,kind,payload) VALUES($1,'TESTER','REVEAL_TEST_SHARD',$2::jsonb) ON CONFLICT(id) DO NOTHING`,
+            [id, JSON.stringify(chainJobPayload(event, {
+              tester, shard, workRound, checkpoint, panelEpoch, reportHash: row.reportHash,
+              evidenceHash: storedEvidenceHash(row), criterionPassMask, winner, selectedArtifactHash,
+              executorWeightsBps: report.passed ? report.executorWeightsBps : [], salt: keccak256(row.signature as `0x${string}`), passed: report.passed,
+            }))],
           );
         }
       }
@@ -1053,26 +1106,27 @@ export async function rotateArtifactMasterKeyEnvelopes() {
 }
 
 export async function storeSignedTestEvidence(input: {
-  id: string; taskId: string; workRound: number; verificationShard: number; testerAgentId: string; testerAddress: string; artifactHash: string; reportHash: string; report: unknown; signature: string;
-  signingVersion: "AgentGrid Test Evidence V3"; signingMessage: string;
+  id: string; taskId: string; workRound: number; checkpoint: number; panelEpoch: number; verificationShard: number; testerAgentId: string; testerAddress: string; artifactHash: string; reportHash: string; report: unknown; signature: string;
+  signingVersion: "AgentGrid Test Evidence V4"; signingMessage: string;
 }) {
   await migratePostgres();
   const result = await databasePool().query<{
-    id: string; taskId: string; testerAgentId: string; testerAddress: string; artifactHash: string; reportHash: string; signature: string; signingVersion: string; signingMessage: string;
+    id: string; taskId: string; workRound: number; checkpoint: number; panelEpoch: number; verificationShard: number; testerAgentId: string; testerAddress: string; artifactHash: string; reportHash: string; signature: string; signingVersion: string; signingMessage: string;
   }>(
-    `INSERT INTO signed_test_evidence(id,task_id,work_round,verification_shard,tester_agent_id,tester_address,artifact_hash,report_hash,report,signature,signing_version,signing_message)
-     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11,$12) ON CONFLICT DO NOTHING
-     RETURNING id,task_id AS "taskId",tester_agent_id AS "testerAgentId",tester_address AS "testerAddress",
+    `INSERT INTO signed_test_evidence(id,task_id,work_round,checkpoint,panel_epoch,verification_shard,tester_agent_id,tester_address,artifact_hash,report_hash,report,signature,signing_version,signing_message)
+     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12,$13,$14) ON CONFLICT DO NOTHING
+     RETURNING id,task_id AS "taskId",work_round AS "workRound",checkpoint,panel_epoch AS "panelEpoch",verification_shard AS "verificationShard",tester_agent_id AS "testerAgentId",tester_address AS "testerAddress",
        artifact_hash AS "artifactHash",report_hash AS "reportHash",signature,signing_version AS "signingVersion",signing_message AS "signingMessage"`,
-    [input.id, input.taskId, input.workRound, input.verificationShard, input.testerAgentId, input.testerAddress.toLowerCase(), input.artifactHash, input.reportHash, JSON.stringify(input.report), input.signature, input.signingVersion, input.signingMessage],
+    [input.id, input.taskId, input.workRound, input.checkpoint, input.panelEpoch, input.verificationShard, input.testerAgentId, input.testerAddress.toLowerCase(), input.artifactHash, input.reportHash, JSON.stringify(input.report), input.signature, input.signingVersion, input.signingMessage],
   );
   if (result.rows[0]) return result.rows[0];
   const existing = await databasePool().query<{
-    id: string; taskId: string; testerAgentId: string; testerAddress: string; artifactHash: string; reportHash: string; signature: string; signingVersion: string | null; signingMessage: string | null;
+    id: string; taskId: string; workRound: number; checkpoint: number; panelEpoch: number; verificationShard: number; testerAgentId: string; testerAddress: string; artifactHash: string; reportHash: string; signature: string; signingVersion: string | null; signingMessage: string | null;
   }>(
-    `SELECT id,task_id AS "taskId",tester_agent_id AS "testerAgentId",tester_address AS "testerAddress",
+    `SELECT id,task_id AS "taskId",work_round AS "workRound",checkpoint,panel_epoch AS "panelEpoch",verification_shard AS "verificationShard",tester_agent_id AS "testerAgentId",tester_address AS "testerAddress",
        artifact_hash AS "artifactHash",report_hash AS "reportHash",signature,signing_version AS "signingVersion",signing_message AS "signingMessage"
-     FROM signed_test_evidence WHERE task_id=$1 AND report_hash=$2`, [input.taskId, input.reportHash],
+     FROM signed_test_evidence WHERE task_id=$1 AND work_round=$2 AND checkpoint=$3 AND panel_epoch=$4 AND LOWER(tester_address)=LOWER($5)`,
+    [input.taskId, input.workRound, input.checkpoint, input.panelEpoch, input.testerAddress],
   );
   const row = existing.rows[0];
   if (row && row.testerAgentId === input.testerAgentId && row.testerAddress.toLowerCase() === input.testerAddress.toLowerCase()
@@ -1155,16 +1209,17 @@ export async function latestSignedTaskEvaluations() {
 }
 
 export interface SignedTestEvidenceRow {
-  taskId: string; workRound: number; verificationShard: number; testerAddress: string; artifactHash: string; reportHash: string;
+  taskId: string; workRound: number; checkpoint: number; panelEpoch: number; verificationShard: number; testerAddress: string; artifactHash: string; reportHash: string;
   report: Record<string, unknown>; signature: string; signingVersion: string | null; signingMessage: string | null; createdAt: string;
 }
 
 export async function latestSignedTestEvidence() {
   await migratePostgres();
   const result = await databasePool().query<SignedTestEvidenceRow>(
-    `SELECT DISTINCT ON (task_id,work_round,LOWER(tester_address)) task_id AS "taskId",work_round AS "workRound",verification_shard AS "verificationShard",tester_address AS "testerAddress",artifact_hash AS "artifactHash",
+    `SELECT DISTINCT ON (task_id,work_round,checkpoint,panel_epoch,LOWER(tester_address)) task_id AS "taskId",work_round AS "workRound",checkpoint,panel_epoch AS "panelEpoch",verification_shard AS "verificationShard",tester_address AS "testerAddress",artifact_hash AS "artifactHash",
        report_hash AS "reportHash",report,signature,signing_version AS "signingVersion",signing_message AS "signingMessage",created_at::text AS "createdAt"
-     FROM signed_test_evidence WHERE work_round IS NOT NULL AND verification_shard IS NOT NULL ORDER BY task_id,work_round,LOWER(tester_address),created_at DESC`,
+     FROM signed_test_evidence WHERE work_round IS NOT NULL AND checkpoint IS NOT NULL AND panel_epoch IS NOT NULL AND verification_shard IS NOT NULL
+     ORDER BY task_id,work_round,checkpoint,panel_epoch,LOWER(tester_address),created_at DESC`,
   );
   return result.rows;
 }

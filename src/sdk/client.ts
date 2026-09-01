@@ -245,7 +245,7 @@ export class AgentProtocolClient {
     }, true, submittedEvaluationResponseSchema);
   }
 
-  submitSignedEvidence(input: { chainId: 97; taskRegistry: string; taskId: string; workRound: number; verificationShard: number; executionMode: "COLLABORATION" | "COMPETITION"; executorOrder: string[]; artifactHash: string; report: Record<string, unknown>; signature: string }) {
+  submitSignedEvidence(input: { chainId: 97; taskRegistry: string; taskId: string; workRound: number; checkpoint: number; panelEpoch: number; verificationShard: number; executionMode: "COLLABORATION" | "COMPETITION"; executorOrder: string[]; artifactHash: string; report: Record<string, unknown>; signature: string }) {
     return this.request("/api/evidence", {
       method: "POST", body: JSON.stringify({ ...input, testerAgentId: this.requireAgentId() }),
     }, true, submittedEvidenceResponseSchema);

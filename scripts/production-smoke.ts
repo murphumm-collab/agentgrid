@@ -145,13 +145,13 @@ async function main() {
       contributionWork: [], executorWeightsBps: [10_000],
     };
     const evidenceDomain = {
-      chainId: 97 as const, taskRegistry, taskId: signedTaskId, workRound: 1, verificationShard: 0,
+      chainId: 97 as const, taskRegistry, taskId: signedTaskId, workRound: 1, checkpoint: 0, panelEpoch: 1, verificationShard: 0,
       executionMode: "COLLABORATION" as const, executorOrder: [`0x${"9".repeat(40)}`],
       artifactHash: `sha256:${"c".repeat(64)}`, report: evidenceReport,
     };
     const evidenceCommitment = evidenceMessage(evidenceDomain);
     const evidenceInput = {
-      id: randomUUID(), taskId: signedTaskId, workRound: 1, verificationShard: 0, testerAgentId: `tester-${randomUUID()}`, testerAddress,
+      id: randomUUID(), taskId: signedTaskId, workRound: 1, checkpoint: 0, panelEpoch: 1, verificationShard: 0, testerAgentId: `tester-${randomUUID()}`, testerAddress,
       artifactHash: evidenceDomain.artifactHash, reportHash: evidenceCommitment.reportHash, report: evidenceReport,
       signature: await account.signMessage({ message: evidenceCommitment.message }),
       signingVersion: testEvidenceSigningVersion, signingMessage: evidenceCommitment.message,
@@ -182,7 +182,8 @@ async function main() {
       taskId: persistedEvidence.taskId, testerAddress: persistedEvidence.signer, artifactHash: persistedEvidence.artifactHash,
       reportHash: persistedEvidence.reportHash, report: persistedEvidence.report, signature: persistedEvidence.signature,
       signingVersion: persistedEvidence.signingVersion, signingMessage: persistedEvidence.signingMessage, expectedTaskRegistry: taskRegistry,
-      expectedWorkRound: evidenceDomain.workRound, expectedVerificationShard: evidenceDomain.verificationShard, expectedExecutionMode: evidenceDomain.executionMode, expectedExecutorOrder: evidenceDomain.executorOrder,
+      expectedWorkRound: evidenceDomain.workRound, expectedCheckpoint: evidenceDomain.checkpoint, expectedPanelEpoch: evidenceDomain.panelEpoch,
+      expectedVerificationShard: evidenceDomain.verificationShard, expectedExecutionMode: evidenceDomain.executionMode, expectedExecutorOrder: evidenceDomain.executorOrder,
     };
     if (!await verifyStoredTaskEvaluation({
       taskId: persistedEvaluation.taskId, evaluatorAddress: persistedEvaluation.signer, reportHash: persistedEvaluation.reportHash,
@@ -191,6 +192,9 @@ async function main() {
     }) || !await verifyStoredTestEvidence(persistedEvidenceVerification)) throw new Error("SIGNED_REPORT_PREIMAGE_RECOVERY_FAILED");
     if (await verifyStoredTestEvidence({ ...persistedEvidenceVerification, expectedWorkRound: evidenceDomain.workRound + 1 })) {
       throw new Error("SIGNED_REPORT_STALE_WORK_ROUND_ACCEPTED");
+    }
+    if (await verifyStoredTestEvidence({ ...persistedEvidenceVerification, expectedPanelEpoch: evidenceDomain.panelEpoch + 1 })) {
+      throw new Error("SIGNED_REPORT_STALE_PANEL_EPOCH_ACCEPTED");
     }
     await canonicalClient.query("UPDATE signed_test_evidence SET report=jsonb_set(report,'{stdout}',to_jsonb('tampered'::text)) WHERE task_id=$1", [signedTaskId]);
     const corrupted = (await canonicalClient.query<{ report: Record<string, unknown> }>("SELECT report FROM signed_test_evidence WHERE task_id=$1", [signedTaskId])).rows[0];

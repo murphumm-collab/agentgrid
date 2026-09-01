@@ -8,7 +8,7 @@ describe("signed test evidence", () => {
     const executor = `0x${"3".repeat(40)}`;
     const input = {
       chainId: 97 as const, taskRegistry: `0x${"a".repeat(40)}`, taskId: "7", workRound: 2,
-      verificationShard: 1,
+      checkpoint: 2, panelEpoch: 4, verificationShard: 1,
       executionMode: "COLLABORATION" as const, executorOrder: [executor], artifactHash: `sha256:${"a".repeat(64)}`,
       report: {
         passed: true, exitCode: 0, timedOut: false, durationMs: 1200, testsPassed: true, hiddenTestsPassed: true,
@@ -28,11 +28,13 @@ describe("signed test evidence", () => {
       reportHash: commitment.reportHash, report: input.report, signature,
       signingVersion: testEvidenceSigningVersion, signingMessage: commitment.message, expectedTaskRegistry: input.taskRegistry,
       expectedWorkRound: input.workRound, expectedExecutionMode: input.executionMode, expectedExecutorOrder: input.executorOrder,
-      expectedVerificationShard: input.verificationShard,
+      expectedCheckpoint: input.checkpoint, expectedPanelEpoch: input.panelEpoch, expectedVerificationShard: input.verificationShard,
     };
     await expect(verifyStoredTestEvidence(stored)).resolves.toBe(true);
     await expect(verifyStoredTestEvidence({ ...stored, expectedTaskRegistry: `0x${"b".repeat(40)}` })).resolves.toBe(false);
     await expect(verifyStoredTestEvidence({ ...stored, expectedWorkRound: 3 })).resolves.toBe(false);
+    await expect(verifyStoredTestEvidence({ ...stored, expectedCheckpoint: 1 })).resolves.toBe(false);
+    await expect(verifyStoredTestEvidence({ ...stored, expectedPanelEpoch: 5 })).resolves.toBe(false);
     await expect(verifyStoredTestEvidence({ ...stored, expectedVerificationShard: 2 })).resolves.toBe(false);
     await expect(verifyStoredTestEvidence({ ...stored, expectedExecutionMode: "COMPETITION" })).resolves.toBe(false);
     await expect(verifyStoredTestEvidence({ ...stored, expectedExecutorOrder: [`0x${"4".repeat(40)}`] })).resolves.toBe(false);

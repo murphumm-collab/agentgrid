@@ -68,6 +68,16 @@ commit-order weighting and token-staked verification arbitration. Its QA evidenc
 historical and does not close the current-source release gate. A new fixed
 22-command QA and candidate binding are required after this source freezes.
 
+The current source also adds `ProtocolEconomics` and is migrating the legacy
+fixed evaluation/publication fees to immutable source attribution, 95/3/2 gross
+reward routing, DAO/source vesting and idempotent 20/30/70/30-bps lifecycle
+charges. Compilation, isolated economics tests, focused lifecycle regressions,
+the v0.8 machine surface and economics dashboard projection pass locally. The
+role-separated quality path now records validator and executor results plus a
+permissionless, one-shot evaluator settlement; anti-self-dealing/epoch caps,
+current-source full regression, deployment verification and final QA remain
+open. Therefore previous QA reports are historical evidence only.
+
 Governed source froze after adding visible failure, busy state and duplicate-
 safe boundaries to language, clipboard and Demo mutations. Discovery
 schema 1.1 and OpenAPI 0.6.9 expose explicit single-task,

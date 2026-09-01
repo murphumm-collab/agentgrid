@@ -6,6 +6,7 @@ import {StakeCreditManager} from "./StakeCreditManager.sol";
 import {RewardVault} from "./RewardVault.sol";
 import {AgentRegistry} from "./AgentRegistry.sol";
 import {VerificationPanel} from "./VerificationPanel.sol";
+import {ProtocolEconomics} from "./ProtocolEconomics.sol";
 
 contract TaskRegistry is Ownable {
     uint256 public constant ABUSIVE_REJECTION_SLASH_BPS = 500;
@@ -13,12 +14,8 @@ contract TaskRegistry is Ownable {
     uint256 public constant REJECTION_RESPONSE_WINDOW = 3 days;
     uint256 public constant TEAM_FORMATION_WINDOW = 1 days;
     uint256 public constant EXECUTOR_INACTIVITY_WINDOW = 6 hours;
-    uint256 public constant MIN_PUBLICATION_FEE = 10 ether;
-    uint256 public constant PUBLICATION_FEE_BPS = 200;
-    uint256 public constant MAX_STAKE_FEE_BPS = 1_000;
     uint256 public constant EVALUATION_SELECTION_DELAY = 5;
     uint256 public constant EVALUATION_WINDOW = 3 days;
-    uint256 public constant EVALUATION_FEE = 3 ether;
     uint8 public constant EVALUATOR_COUNT = 3;
     enum State { None, Evaluating, Open, Claimed, Submitted, Testing, Correction, UserReview, Maintenance, Completed, Rejected }
     enum ExecutionMode { Collaboration, Competition }
@@ -51,8 +48,8 @@ contract TaskRegistry is Ownable {
     AgentRegistry public immutable agentRegistry;
     address public coordinator;
     address public disputeResolver;
-    address public publicationFeeRecipient;
     VerificationPanel public verificationPanel;
+    ProtocolEconomics public protocolEconomics;
     uint256 public nextTaskId = 1;
     mapping(uint256 => Task) public tasks;
     mapping(uint256 => ExecutionMode) private taskExecutionMode;
@@ -163,7 +160,6 @@ contract TaskRegistry is Ownable {
         agentRegistry = agentRegistry_;
         coordinator = coordinator_;
         disputeResolver = coordinator_;
-        publicationFeeRecipient = address(rewardVault_);
     }
 
     modifier onlyCoordinator() {
@@ -181,6 +177,15 @@ contract TaskRegistry is Ownable {
         verificationPanel = panel;
     }
 
+    function setProtocolEconomics(ProtocolEconomics economics) external onlyOwner {
+        if (
+            address(economics) == address(0) || address(protocolEconomics) != address(0) ||
+            address(stakeManager.protocolEconomics()) != address(economics) ||
+            address(rewardVault.protocolEconomics()) != address(economics)
+        ) revert InvalidState();
+        protocolEconomics = economics;
+    }
+
     function setCoordinator(address newCoordinator) external onlyOwner {
         if (newCoordinator == address(0)) revert Unauthorized();
         coordinator = newCoordinator;
@@ -189,19 +194,6 @@ contract TaskRegistry is Ownable {
     function setDisputeResolver(address newResolver) external onlyOwner {
         if (newResolver == address(0)) revert Unauthorized();
         disputeResolver = newResolver;
-    }
-
-    function setPublicationFeeRecipient(address newRecipient) external onlyOwner {
-        if (newRecipient == address(0)) revert Unauthorized();
-        publicationFeeRecipient = newRecipient;
-    }
-
-    function publicationFeeFor(uint256 positionId, uint256 requestedReward) public view returns (uint256 fee) {
-        uint256 stake = stakeManager.stakeOf(positionId);
-        fee = (requestedReward * PUBLICATION_FEE_BPS) / BPS;
-        if (fee < MIN_PUBLICATION_FEE) fee = MIN_PUBLICATION_FEE;
-        uint256 cap = (stake * MAX_STAKE_FEE_BPS) / BPS;
-        if (fee > cap) fee = cap;
     }
 
     function createTaskWithMode(
@@ -233,6 +225,7 @@ contract TaskRegistry is Ownable {
         ExecutionMode mode,
         uint8 requiredTesterCapabilities
     ) private returns (uint256 taskId) {
+        if (address(protocolEconomics) == address(0)) revert InvalidState();
         if (stakeManager.ownerOf(positionId) != msg.sender) revert Unauthorized();
         if (specHash == bytes32(0) || requestedReward == 0 || maxExecutors == 0 || maxExecutors > 32) revert InvalidState();
         // A task may require one or more verification specialities, but it may
@@ -273,9 +266,17 @@ contract TaskRegistry is Ownable {
         if (eligibleEvaluatorCount < EVALUATOR_COUNT) revert InvalidEvaluation();
         publisherStakeBasis[taskId] = stakeManager.stakeOf(positionId);
         stakeManager.consumeCredit(positionId, taskId, msg.sender);
-        stakeManager.chargeEvaluationFee(positionId, taskId, EVALUATION_FEE, address(rewardVault));
-        rewardVault.registerEvaluationFee(taskId, EVALUATION_FEE);
-        emit TaskEvaluationFeeCharged(taskId, positionId, EVALUATION_FEE, address(rewardVault));
+        protocolEconomics.freezeTaskSource(taskId, msg.sender);
+        uint256 evaluationCharge = stakeManager.chargeLifecycleFee(
+            positionId, taskId, ProtocolEconomics.LifecycleStage.Evaluation, publisherStakeBasis[taskId]
+        );
+        uint256 evaluatorPool = evaluationCharge
+            - (evaluationCharge * 2_000) / BPS
+            - (evaluationCharge * 2_000) / BPS
+            - (evaluationCharge * 1_500) / BPS
+            - (evaluationCharge * 1_000) / BPS;
+        rewardVault.registerEvaluationFee(taskId, evaluatorPool);
+        emit TaskEvaluationFeeCharged(taskId, positionId, evaluationCharge, address(protocolEconomics));
         EvaluationSelection storage selection = evaluationSelections[taskId];
         selection.selectionBlock = block.number + EVALUATION_SELECTION_DELAY;
         selection.candidateCount = count;
@@ -309,19 +310,11 @@ contract TaskRegistry is Ownable {
             abi.encode(blockhash(selection.selectionBlock), taskId, selection.candidateSetHash, selection.candidateCount, "EVALUATOR_PANEL")
         );
         address[3] memory selected;
-        for (uint256 slot; slot < EVALUATOR_COUNT; ++slot) {
-            uint256 start = uint256(keccak256(abi.encode(proof, slot))) % selection.candidateCount;
-            for (uint256 offset; offset < selection.candidateCount; ++offset) {
-                address candidate = agentRegistry.agentAt((start + offset) % selection.candidateCount);
-                bool duplicate;
-                for (uint256 previous; previous < slot; ++previous) {
-                    if (selected[previous] == candidate) { duplicate = true; break; }
-                }
-                if (candidate != task.publisher && !duplicate && agentRegistry.isEligibleFor(candidate, agentRegistry.CAPABILITY_EVALUATE())) {
-                    selected[slot] = candidate;
-                    break;
-                }
-            }
+        for (uint8 slot; slot < EVALUATOR_COUNT; ++slot) {
+            selected[slot] = _qualityWeightedCandidate(
+                taskId, proof, slot, selection.candidateCount,
+                agentRegistry.CAPABILITY_EVALUATE(), selected, slot, true
+            );
             if (selected[slot] == address(0)) revert InvalidEvaluation();
             taskEvaluators[taskId][slot] = selected[slot];
             isTaskEvaluator[taskId][selected[slot]] = true;
@@ -389,13 +382,14 @@ contract TaskRegistry is Ownable {
         uint256 finalReward = task.requestedReward < result.recommendedReward ? task.requestedReward : result.recommendedReward;
         evaluationResults[taskId] = result;
         task.requestedReward = finalReward;
-        uint256 publicationFee = publicationFeeFor(task.positionId, finalReward);
+        uint256 publicationFee = stakeManager.chargeLifecycleFee(
+            task.positionId, taskId, ProtocolEconomics.LifecycleStage.Publication, publisherStakeBasis[taskId]
+        );
         if (publicationFee == 0) revert InvalidState();
         taskPublicationFee[taskId] = publicationFee;
-        stakeManager.chargePublicationFee(task.positionId, taskId, publicationFee, publicationFeeRecipient);
         _settleEvaluationFee(taskId);
         task.state = State.Open;
-        emit TaskPublicationFeeCharged(taskId, task.positionId, publicationFee, publicationFeeRecipient);
+        emit TaskPublicationFeeCharged(taskId, task.positionId, publicationFee, address(protocolEconomics));
         emit TaskEvaluationFinalized(taskId, true, result.categoryHash, result.difficultyBps, result.estimatedHours, result.testabilityBps, finalReward);
         emit TaskCreated(taskId, task.publisher, task.positionId, task.specHash);
     }
@@ -591,22 +585,15 @@ contract TaskRegistry is Ownable {
         uint256 selectionBlock = task.testerSelectionBlock;
         if (task.state != State.Submitted || selectionBlock == 0 || block.number <= selectionBlock || block.number > selectionBlock + 256) revert InvalidState();
         bytes32 proof = keccak256(abi.encode(blockhash(selectionBlock), taskId, task.candidateSetHash, task.testerCandidateCount));
-        uint256 start = uint256(proof) % task.testerCandidateCount;
         if (address(verificationPanel) == address(0)) revert InvalidState();
         address[3] memory testers;
-        uint8 found;
-        for (uint256 i; i < task.testerCandidateCount && found < 3; ++i) {
-            address candidate = agentRegistry.agentAt((start + i) % task.testerCandidateCount);
-            if (
-                candidate != task.publisher && !isTaskExecutor[taskId][candidate] && !isTaskEvaluator[taskId][candidate] &&
-                agentRegistry.isEligibleFor(candidate, taskRequiredTesterCapabilities[taskId])
-            ) {
-                bool duplicate;
-                for (uint8 j; j < found; ++j) if (testers[j] == candidate) duplicate = true;
-                if (!duplicate) testers[found++] = candidate;
-            }
+        for (uint8 slot; slot < 3; ++slot) {
+            testers[slot] = _qualityWeightedCandidate(
+                taskId, proof, slot, task.testerCandidateCount,
+                taskRequiredTesterCapabilities[taskId], testers, slot, false
+            );
         }
-        if (found != 3) revert InvalidTesterSet();
+        if (testers[2] == address(0)) revert InvalidTesterSet();
         taskTesters[taskId] = testers;
         task.tester = testers[0];
         task.selectionProof = proof;
@@ -697,6 +684,7 @@ contract TaskRegistry is Ownable {
             return;
         }
         task.state = State.Maintenance;
+        _chargeSuccessfulLifecycle(taskId, task);
         bytes32 collaborationKey = _collaborationKey(task);
         rewardVault.createGrant(
             taskId,
@@ -728,6 +716,7 @@ contract TaskRegistry is Ownable {
         if (dispute.responseHash == bytes32(0) && block.timestamp <= dispute.openedAt + REJECTION_RESPONSE_WINDOW) revert InvalidState();
         uint256 publisherSlash;
         if (executorWins) {
+            _chargeSuccessfulLifecycle(taskId, task);
             bytes32 collaborationKey = _collaborationKey(task);
             rewardVault.createGrant(taskId, taskExecutors[taskId], taskExecutorWeightsBps[taskId], task.tester, collaborationKey, task.requestedReward, publisherStakeBasis[taskId]);
             publisherSlash = (stakeManager.stakeOf(task.positionId) * ABUSIVE_REJECTION_SLASH_BPS) / BPS;
@@ -737,6 +726,15 @@ contract TaskRegistry is Ownable {
             stakeManager.releasePosition(task.positionId, taskId);
         }
         emit RejectionResolved(taskId, executorWins, resolutionHash, publisherSlash);
+    }
+
+    function _chargeSuccessfulLifecycle(uint256 taskId, Task storage task) private {
+        stakeManager.chargeLifecycleFee(
+            task.positionId, taskId, ProtocolEconomics.LifecycleStage.Acceptance, publisherStakeBasis[taskId]
+        );
+        stakeManager.chargeLifecycleFee(
+            task.positionId, taskId, ProtocolEconomics.LifecycleStage.Maintenance, publisherStakeBasis[taskId]
+        );
     }
 
     function requestMaintenancePanel(uint256 taskId, uint8 checkpoint) external onlyCoordinator {
@@ -760,6 +758,23 @@ contract TaskRegistry is Ownable {
         ];
         uint16[3] memory masks = [uint16(3), uint16(5), uint16(6)];
         verificationPanel.startPanel(taskId, task.workRound, checkpoint, task.executorCount, testers, 7, masks, scopes);
+    }
+
+    /// @dev Deterministic weighted sampling without replacement. Every eligible
+    /// Agent retains a 1,000-ticket fairness floor; quality adds up to 10,000
+    /// tickets. The future-block proof makes the draw unknowable at task creation.
+    function _qualityWeightedCandidate(
+        uint256 taskId, bytes32 proof, uint8 slot, uint256 candidateCount,
+        uint8 capability, address[3] memory selected, uint8 selectedCount, bool evaluatorPanel
+    ) private view returns (address winner) {
+        return agentRegistry.selectWeightedTaskCandidate(
+            taskId, proof, slot, candidateCount, capability, selected, selectedCount, evaluatorPanel
+        );
+    }
+
+    function isAgentSelectionConflict(uint256 taskId, address candidate, bool evaluatorPanel) external view returns (bool) {
+        Task storage task = tasks[taskId];
+        return candidate == task.publisher || (!evaluatorPanel && (isTaskExecutor[taskId][candidate] || isTaskEvaluator[taskId][candidate]));
     }
 
     function getTaskExecutors(uint256 taskId) external view returns (address[] memory) {

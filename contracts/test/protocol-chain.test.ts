@@ -4,6 +4,7 @@ import {
   createPublicClient,
   createWalletClient,
   custom,
+  decodeEventLog,
   defineChain,
   encodeAbiParameters,
   keccak256,
@@ -21,7 +22,7 @@ const mnemonic = "test test test test test test test test test test test junk";
 // lifecycle cases intentionally deploy the full protocol and can exceed one
 // minute there even though the same assertions finish much faster with native
 // bindings.
-vi.setConfig({ testTimeout: 120_000, hookTimeout: 120_000 });
+vi.setConfig({ testTimeout: 240_000, hookTimeout: 120_000 });
 const localChain = defineChain({
   id: 31_337,
   name: "AgentGrid Local",
@@ -42,7 +43,7 @@ describe("AgentGrid Solidity protocol", () => {
   let testerB: Wallet;
   let testerC: Wallet;
   let reserveAccount: ReturnType<typeof mnemonicToAccount>;
-  let addresses: Record<"token" | "stakeManager" | "agentRegistry" | "rewardVault" | "taskRegistry" | "verificationPanel", Address>;
+  let addresses: Record<"token" | "stakeManager" | "agentRegistry" | "rewardVault" | "taskRegistry" | "verificationPanel" | "protocolEconomics", Address>;
 
   beforeAll(() => {
     artifacts = compileContracts();
@@ -70,11 +71,17 @@ describe("AgentGrid Solidity protocol", () => {
     const agentRegistry = await deploy(owner, "AgentRegistry", [stakeManager]);
     const rewardVault = await deploy(owner, "RewardVault", [token, reserveAccount.address, parseEther("100000"), ownerAddress]);
     const taskRegistry = await deploy(owner, "TaskRegistry", [stakeManager, rewardVault, agentRegistry, ownerAddress, ownerAddress]);
-    const verificationPanel = await deploy(owner, "VerificationPanel", [taskRegistry, rewardVault, ownerAddress]);
-    addresses = { token, stakeManager, agentRegistry, rewardVault, taskRegistry, verificationPanel };
+    const verificationPanel = await deploy(owner, "VerificationPanel", [taskRegistry, rewardVault, agentRegistry, ownerAddress]);
+    const daoTreasury = mnemonicToAccount(mnemonic, { addressIndex: 12 }).address;
+    const securityReserve = mnemonicToAccount(mnemonic, { addressIndex: 13 }).address;
+    const protocolEconomics = await deploy(owner, "ProtocolEconomics", [
+      token, rewardVault, daoTreasury, securityReserve,
+      "0x000000000000000000000000000000000000dEaD", 365 * 24 * 60 * 60, ownerAddress,
+    ]);
+    addresses = { token, stakeManager, agentRegistry, rewardVault, taskRegistry, verificationPanel, protocolEconomics };
 
     for (const [name, address] of Object.entries(addresses)) {
-      const artifactName = ({ token: "TestToken", stakeManager: "StakeCreditManager", agentRegistry: "AgentRegistry", rewardVault: "RewardVault", taskRegistry: "TaskRegistry", verificationPanel: "VerificationPanel" } as const)[name as keyof typeof addresses];
+      const artifactName = ({ token: "TestToken", stakeManager: "StakeCreditManager", agentRegistry: "AgentRegistry", rewardVault: "RewardVault", taskRegistry: "TaskRegistry", verificationPanel: "VerificationPanel", protocolEconomics: "ProtocolEconomics" } as const)[name as keyof typeof addresses];
       verifyRuntimeBytecode(name, await publicClient.getCode({ address }), artifacts[artifactName]);
     }
 
@@ -82,6 +89,11 @@ describe("AgentGrid Solidity protocol", () => {
     await write(owner, rewardVault, "RewardVault", "setTaskRegistry", [taskRegistry]);
     await write(owner, taskRegistry, "TaskRegistry", "setVerificationPanel", [verificationPanel]);
     await write(owner, rewardVault, "RewardVault", "setVerificationPanel", [verificationPanel]);
+    await write(owner, protocolEconomics, "ProtocolEconomics", "configureProtocol", [taskRegistry, stakeManager]);
+    await write(owner, stakeManager, "StakeCreditManager", "setProtocolEconomics", [protocolEconomics]);
+    await write(owner, rewardVault, "RewardVault", "setProtocolEconomics", [protocolEconomics]);
+    await write(owner, taskRegistry, "TaskRegistry", "setProtocolEconomics", [protocolEconomics]);
+    await write(owner, agentRegistry, "AgentRegistry", "setOutcomeReporter", [verificationPanel, 7]);
     await write(owner, token, "TestToken", "mintRewardReserve", [rewardVault, parseEther("100000")]);
   });
 
@@ -205,9 +217,13 @@ describe("AgentGrid Solidity protocol", () => {
 
   async function revealVerificationPanel(taskId: bigint, passed: boolean, executorWeightsBps: number[], winner: Address = `0x${"0".repeat(40)}`, selectedArtifactHash: `0x${string}` = `0x${"0".repeat(64)}`) {
     const selected = (await read(addresses.taskRegistry, "TaskRegistry", "getTaskTesters", [taskId])) as Address[];
-    const task = (await read(addresses.taskRegistry, "TaskRegistry", "tasks", [taskId])) as readonly unknown[];
-    const workRound = Number(task[17]);
-    const wallets = [tester, testerB, testerC];
+    const panel = (await read(addresses.verificationPanel, "VerificationPanel", "getPanel", [taskId])) as { workRound: number; checkpoint: number };
+    const workRound = Number(panel.workRound);
+    const checkpoint = Number(panel.checkpoint);
+    const transport = custom(provider as never);
+    const wallets = Array.from({ length: 20 }, (_, addressIndex) => createWalletClient({
+      account: mnemonicToAccount(mnemonic, { addressIndex }), chain: localChain, transport,
+    }));
     const byAddress = new Map(wallets.map((wallet) => [wallet.account!.address.toLowerCase(), wallet]));
     const masks = [3, 5, 6];
     const reveals = selected.map((address, shard) => {
@@ -219,7 +235,7 @@ describe("AgentGrid Solidity protocol", () => {
       const weights = passed ? executorWeightsBps : [];
       const commitment = keccak256(encodeAbiParameters([
         { type: "uint256" }, { type: "uint32" }, { type: "uint8" }, { type: "uint8" }, { type: "uint16" }, { type: "address" }, { type: "bytes32" }, { type: "bytes32" }, { type: "uint16[]" }, { type: "bytes32" },
-      ], [taskId, workRound, 0, shard, criterionPassMask, winner, selectedArtifactHash, evidenceHash, weights, salt]));
+      ], [taskId, workRound, checkpoint, shard, criterionPassMask, winner, selectedArtifactHash, evidenceHash, weights, salt]));
       return { wallet, criterionPassMask, evidenceHash, salt, weights, commitment };
     });
     for (const reveal of reveals) await write(reveal.wallet, addresses.verificationPanel, "VerificationPanel", "commitShard", [taskId, reveal.commitment]);
@@ -245,6 +261,7 @@ describe("AgentGrid Solidity protocol", () => {
       arbitrators.map((wallet) => wallet.account!.address),
     ]);
     await write(owner, addresses.verificationPanel, "VerificationPanel", "setArbitrationCourt", [court]);
+    await write(owner, addresses.stakeManager, "StakeCreditManager", "setQualitySlasher", [court]);
 
     const evaluators = await registerEvaluationAgents();
     await write(publisher, addresses.token, "TestToken", "faucet");
@@ -257,12 +274,14 @@ describe("AgentGrid Solidity protocol", () => {
     await approveEvaluation(1n, evaluators);
     await registerAgent(executor, 5n);
     await registerTesterPool(6n);
-    await registerAgent(challenger, 9n);
     await write(executor, addresses.taskRegistry, "TaskRegistry", "claimTask", [1n]);
     await write(executor, addresses.taskRegistry, "TaskRegistry", "submitContribution", [1n, keccak256(stringToHex("challenged-artifact"))]);
     await write(executor, addresses.taskRegistry, "TaskRegistry", "submitWork", [1n, keccak256(stringToHex("challenged-artifact"))]);
     await assignTester(1n);
     const { selected } = await revealVerificationPanel(1n, true, [10_000]);
+    // Join only after the panel snapshot so the challenger cannot also be a
+    // validator in the case it opens.
+    await registerAgent(challenger, 9n);
 
     for (const wallet of arbitrators) {
       await write(wallet, addresses.token, "TestToken", "faucet");
@@ -271,10 +290,11 @@ describe("AgentGrid Solidity protocol", () => {
     }
     await write(challenger, addresses.token, "TestToken", "approve", [court, parseEther("500")]);
     await write(challenger, court, "VerificationArbitrationCourt", "deposit", [parseEther("500")]);
-    const targetWallet = [tester, testerB, testerC].find((wallet) => wallet.account!.address.toLowerCase() === selected[0].toLowerCase())!;
-    await write(targetWallet, addresses.token, "TestToken", "approve", [court, parseEther("500")]);
-    await write(targetWallet, court, "VerificationArbitrationCourt", "deposit", [parseEther("500")]);
-
+    expect(await read(addresses.agentRegistry, "AgentRegistry", "isEligible", [challenger.account!.address])).toBe(true);
+    expect(await read(addresses.verificationPanel, "VerificationPanel", "isPanelTester", [1n, challenger.account!.address])).toBe(false);
+    expect(await read(court, "VerificationArbitrationCourt", "isArbitrator", [challenger.account!.address])).toBe(false);
+    expect(await read(court, "VerificationArbitrationCourt", "activeCaseId", [1n])).toBe(`0x${"0".repeat(64)}`);
+    expect((await read(addresses.verificationPanel, "VerificationPanel", "getPanel", [1n]) as { status: number }).status).toBe(3);
     await expect(write(owner, court, "VerificationArbitrationCourt", "openChallenge", [1n, selected[0], keccak256(stringToHex("not-a-registered-agent"))])).rejects.toThrow();
     const challengeHash = keccak256(stringToHex("validator-used-copied-report"));
     await write(challenger, court, "VerificationArbitrationCourt", "openChallenge", [1n, selected[0], challengeHash]);
@@ -287,12 +307,25 @@ describe("AgentGrid Solidity protocol", () => {
     await write(arbitrators[1], court, "VerificationArbitrationCourt", "vote", [1n, true, conflictingResolution]);
     const caseId = await read(court, "VerificationArbitrationCourt", "activeCaseId", [1n]) as `0x${string}`;
     expect((await read(court, "VerificationArbitrationCourt", "cases", [caseId]) as readonly unknown[]).at(-1)).toBe(false);
-    await write(arbitrators[2], court, "VerificationArbitrationCourt", "vote", [1n, true, acceptedResolution]);
+    const targetReport = await read(addresses.verificationPanel, "VerificationPanel", "getReport", [1n, selected[0]]) as { evidenceHash: `0x${string}` };
+    const resolutionReceipt = await write(arbitrators[2], court, "VerificationArbitrationCourt", "vote", [1n, true, acceptedResolution]);
+    const qualityLog = resolutionReceipt.logs.find((log) => log.address.toLowerCase() === addresses.agentRegistry.toLowerCase());
+    if (!qualityLog) throw new Error("AGENT_QUALITY_LOG_MISSING");
+    const qualityEvent = decodeEventLog({ abi: artifacts.AgentRegistry.abi as Abi, data: qualityLog.data, topics: qualityLog.topics });
+    const expectedQualityEvidence = keccak256(encodeAbiParameters(
+      [{ type: "bytes32" }, { type: "bytes32" }, { type: "address" }, { type: "bytes32" }, { type: "bytes32" }],
+      [caseId, acceptedResolution, selected[0], targetReport.evidenceHash, challengeHash],
+    ));
+    expect(qualityEvent.eventName).toBe("AgentQualityUpdated");
+    expect((qualityEvent.args as { evidenceHash: string }).evidenceHash).toBe(expectedQualityEvidence);
 
     const dispute = await read(court, "VerificationArbitrationCourt", "cases", [caseId]) as readonly unknown[];
     expect(dispute.at(-1)).toBe(true);
-    expect(await read(court, "VerificationArbitrationCourt", "stake", [selected[0]])).toBe(parseEther("400"));
+    expect(await read(court, "VerificationArbitrationCourt", "stake", [selected[0]])).toBe(0n);
+    const targetPosition = await read(addresses.agentRegistry, "AgentRegistry", "agentPosition", [selected[0]]) as bigint;
+    expect(await read(addresses.stakeManager, "StakeCreditManager", "stakeOf", [targetPosition])).toBe(parseEther("900"));
     expect(await read(court, "VerificationArbitrationCourt", "stake", [challenger.account!.address])).toBe(parseEther("560"));
+    expect(await read(addresses.agentRegistry, "AgentRegistry", "qualityOf", [selected[0], 2])).toMatchObject({ scoreBps: 3_500, severeFaults: 1 });
     const corrected = await read(addresses.taskRegistry, "TaskRegistry", "tasks", [1n]) as readonly unknown[];
     expect(corrected[17]).toBe(2);
     expect(corrected[19]).toBe(6);
@@ -303,7 +336,7 @@ describe("AgentGrid Solidity protocol", () => {
     const taskCreatedTopic = keccak256(stringToHex("TaskCreated(uint256,address,uint256,bytes32)"));
     expect(receipt.logs.some((log) => log.topics[0] === taskCreatedTopic)).toBe(false);
     expect(await read(addresses.taskRegistry, "TaskRegistry", "taskPublicationFee", [1n])).toBe(0n);
-    expect(await read(addresses.stakeManager, "StakeCreditManager", "stakeOf", [4n])).toBe(parseEther("997"));
+    expect(await read(addresses.stakeManager, "StakeCreditManager", "stakeOf", [4n])).toBe(parseEther("998"));
 
     for (let index = 0; index < 6; index += 1) await provider.request({ method: "evm_mine", params: [] });
     await write(owner, addresses.taskRegistry, "TaskRegistry", "finalizeEvaluationPanel", [1n]);
@@ -322,15 +355,20 @@ describe("AgentGrid Solidity protocol", () => {
       1n, keccak256(stringToHex("other")), 1_000, 2, 9_000, parseEther("1200"), false, keccak256(stringToHex("report-2")),
     ]);
     const finalizeReceipt = await write(owner, addresses.taskRegistry, "TaskRegistry", "finalizeTaskEvaluation", [1n]);
+    await write(owner, addresses.verificationPanel, "VerificationPanel", "settleEvaluationOutcomes", [1n]);
+    await expect(write(owner, addresses.verificationPanel, "VerificationPanel", "settleEvaluationOutcomes", [1n])).rejects.toThrow();
     expect(finalizeReceipt.logs.some((log) => log.topics[0] === taskCreatedTopic)).toBe(true);
     const result = (await read(addresses.taskRegistry, "TaskRegistry", "evaluationResults", [1n])) as readonly unknown[];
     expect(result).toEqual([category, 7_000, 30, 6_000, parseEther("800")]);
     const task = (await read(addresses.taskRegistry, "TaskRegistry", "tasks", [1n])) as readonly unknown[];
     expect(task[4]).toBe(parseEther("800"));
-    expect(await read(addresses.taskRegistry, "TaskRegistry", "taskPublicationFee", [1n])).toBe(parseEther("16"));
-    expect(await read(addresses.stakeManager, "StakeCreditManager", "stakeOf", [4n])).toBe(parseEther("981"));
+    expect(await read(addresses.taskRegistry, "TaskRegistry", "taskPublicationFee", [1n])).toBe(parseEther("3"));
+    expect(await read(addresses.stakeManager, "StakeCreditManager", "stakeOf", [4n])).toBe(parseEther("995"));
+    expect(await read(addresses.agentRegistry, "AgentRegistry", "qualityOf", [evaluators[0].account!.address, 4])).toMatchObject({ scoreBps: 5_200, outcomeCount: 1 });
+    expect(await read(addresses.agentRegistry, "AgentRegistry", "qualityOf", [evaluators[1].account!.address, 4])).toMatchObject({ scoreBps: 5_200, outcomeCount: 1 });
+    expect(await read(addresses.agentRegistry, "AgentRegistry", "qualityOf", [evaluators[2].account!.address, 4])).toMatchObject({ scoreBps: 5_000, outcomeCount: 0 });
     for (const evaluator of evaluators) {
-      expect(await read(addresses.token, "TestToken", "balanceOf", [evaluator.account!.address])).toBe(parseEther("9001"));
+      expect(await read(addresses.token, "TestToken", "balanceOf", [evaluator.account!.address])).toBe(9_000n * 10n ** 18n + parseEther("0.7") / 3n);
     }
   });
 
@@ -345,12 +383,16 @@ describe("AgentGrid Solidity protocol", () => {
       ]);
     }
     await write(owner, addresses.taskRegistry, "TaskRegistry", "finalizeTaskEvaluation", [1n]);
+    await write(owner, addresses.verificationPanel, "VerificationPanel", "settleEvaluationOutcomes", [1n]);
     expect(await read(addresses.taskRegistry, "TaskRegistry", "taskPublicationFee", [1n])).toBe(0n);
-    expect(await read(addresses.stakeManager, "StakeCreditManager", "stakeOf", [4n])).toBe(parseEther("997"));
+    expect(await read(addresses.stakeManager, "StakeCreditManager", "stakeOf", [4n])).toBe(parseEther("998"));
     const position = (await read(addresses.stakeManager, "StakeCreditManager", "positions", [4n])) as readonly unknown[];
     expect(position[2]).toBe(0n);
-    expect(await read(addresses.token, "TestToken", "balanceOf", [evaluators[0].account!.address])).toBe(parseEther("9001.5"));
-    expect(await read(addresses.token, "TestToken", "balanceOf", [evaluators[1].account!.address])).toBe(parseEther("9001.5"));
+    expect(await read(addresses.token, "TestToken", "balanceOf", [evaluators[0].account!.address])).toBe(parseEther("9000.35"));
+    expect(await read(addresses.token, "TestToken", "balanceOf", [evaluators[1].account!.address])).toBe(parseEther("9000.35"));
+    expect(await read(addresses.agentRegistry, "AgentRegistry", "qualityOf", [evaluators[0].account!.address, 4])).toMatchObject({ scoreBps: 5_200, outcomeCount: 1 });
+    expect(await read(addresses.agentRegistry, "AgentRegistry", "qualityOf", [evaluators[1].account!.address, 4])).toMatchObject({ scoreBps: 5_200, outcomeCount: 1 });
+    expect(await read(addresses.agentRegistry, "AgentRegistry", "qualityOf", [evaluators[2].account!.address, 4])).toMatchObject({ scoreBps: 4_500, outcomeCount: 1 });
     expect(await read(addresses.token, "TestToken", "balanceOf", [evaluators[2].account!.address])).toBe(parseEther("9000"));
   });
 
@@ -361,19 +403,19 @@ describe("AgentGrid Solidity protocol", () => {
       total: bigint;
       amounts: readonly bigint[];
     };
-    expect(grant.total).toBe(parseEther("200"));
+    expect(grant.total).toBe(parseEther("190"));
     expect(grant.amounts).toEqual([
-      parseEther("80"),
-      parseEther("40"),
-      parseEther("40"),
-      parseEther("40"),
+      parseEther("76"),
+      parseEther("38"),
+      parseEther("38"),
+      parseEther("38"),
     ]);
 
     await write(owner, addresses.rewardVault, "RewardVault", "claim", [1n, 0]);
-    expect(await read(addresses.token, "TestToken", "balanceOf", [executor.account!.address])).toBe(parseEther("9052"));
+    expect(await read(addresses.token, "TestToken", "balanceOf", [executor.account!.address])).toBe(parseEther("9060.8"));
     const panelBalances = await Promise.all([tester, testerB, testerC].map((wallet) => read(addresses.token, "TestToken", "balanceOf", [wallet.account!.address]) as Promise<bigint>));
-    expect(panelBalances.reduce((sum, balance) => sum + balance - parseEther("9000"), 0n)).toBe(parseEther("12"));
-    expect(await read(addresses.token, "TestToken", "balanceOf", [reserveAccount.address])).toBe(parseEther("16"));
+    expect(panelBalances.reduce((sum, balance) => sum + balance - parseEther("9000"), 0n)).toBe(parseEther("15.2"));
+    expect(await read(addresses.token, "TestToken", "balanceOf", [reserveAccount.address])).toBe(1n);
   });
 
   it("selects a tester only when every task verification capability matches", async () => {
@@ -434,8 +476,10 @@ describe("AgentGrid Solidity protocol", () => {
       .sort((left, right) => BigInt(left) < BigInt(right) ? -1 : 1);
     expect(await read(addresses.taskRegistry, "TaskRegistry", "getTaskExecutors", [1n])).toEqual(expectedExecutors);
     expect(task[13]).toBe(keccak256(encodeAbiParameters([{ type: "address[]" }], [canonicalExecutors])));
-    await expect(write(tester, addresses.taskRegistry, "TaskRegistry", "submitTest", [1n, true, `0x${"0".repeat(64)}`, [6_000, 4_000]])).rejects.toThrow();
+    expect(await read(addresses.verificationPanel, "VerificationPanel", "getExecutorQualityMultipliers", [1n])).toEqual([10_000, 10_000]);
     await completeVerificationPanel(1n, true, [6_000, 4_000]);
+    expect(await read(addresses.agentRegistry, "AgentRegistry", "qualityOf", [executor.account!.address, 1])).toMatchObject({ scoreBps: 5_200, outcomeCount: 1 });
+    expect(await read(addresses.agentRegistry, "AgentRegistry", "qualityOf", [collaborator.account!.address, 1])).toMatchObject({ scoreBps: 5_200, outcomeCount: 1 });
     await write(publisher, addresses.taskRegistry, "TaskRegistry", "review", [1n, true, `0x${"0".repeat(64)}`]);
     expect(await read(addresses.taskRegistry, "TaskRegistry", "getTaskExecutorWeightsBps", [1n])).toEqual([6_000, 4_000]);
     const grant = (await read(addresses.rewardVault, "RewardVault", "getGrant", [1n])) as { executors: Address[]; executorWeightsBps: number[] };
@@ -443,8 +487,8 @@ describe("AgentGrid Solidity protocol", () => {
     expect(grant.executorWeightsBps).toEqual([6_000, 4_000]);
     await write(owner, addresses.rewardVault, "RewardVault", "claim", [1n, 0]);
     const expectedBalances = new Map([
-      [expectedExecutors[0].toLowerCase(), parseEther("9031.2")],
-      [expectedExecutors[1].toLowerCase(), parseEther("9020.8")],
+      [expectedExecutors[0].toLowerCase(), parseEther("9036.48")],
+      [expectedExecutors[1].toLowerCase(), parseEther("9024.32")],
     ]);
     expect(await read(addresses.token, "TestToken", "balanceOf", [executor.account!.address])).toBe(expectedBalances.get(executor.account!.address.toLowerCase()));
     expect(await read(addresses.token, "TestToken", "balanceOf", [collaborator.account!.address])).toBe(expectedBalances.get(collaborator.account!.address.toLowerCase()));
@@ -479,6 +523,8 @@ describe("AgentGrid Solidity protocol", () => {
       1n, true, executor.account!.address, candidateB, keccak256(stringToHex("invalid-selection")), [7_000, 3_000],
     ])).rejects.toThrow();
     await completeVerificationPanel(1n, true, [3_000, 7_000], competitor.account!.address, candidateB);
+    expect(await read(addresses.agentRegistry, "AgentRegistry", "qualityOf", [competitor.account!.address, 1])).toMatchObject({ scoreBps: 5_200, outcomeCount: 1 });
+    expect(await read(addresses.agentRegistry, "AgentRegistry", "qualityOf", [executor.account!.address, 1])).toMatchObject({ scoreBps: 5_000, outcomeCount: 0 });
     const reviewed = (await read(addresses.taskRegistry, "TaskRegistry", "tasks", [1n])) as readonly unknown[];
     expect(reviewed[7]).toBe(candidateB);
     expect(reviewed[19]).toBe(7);
@@ -517,20 +563,10 @@ describe("AgentGrid Solidity protocol", () => {
       write(publisher, addresses.stakeManager, "StakeCreditManager", "issueCredit", [4n]),
     ).rejects.toThrow();
     await expect(
-      write(tester, addresses.taskRegistry, "TaskRegistry", "validateMaintenance", [
-        1n,
-        1,
-        true,
-        keccak256(stringToHex("maintenance-too-early")),
-      ]),
+      write(owner, addresses.taskRegistry, "TaskRegistry", "requestMaintenancePanel", [1n, 1]),
     ).rejects.toThrow();
     await expect(
-      write(tester, addresses.taskRegistry, "TaskRegistry", "validateMaintenance", [
-        1n,
-        1,
-        false,
-        keccak256(stringToHex("maintenance-failure-too-early")),
-      ]),
+      write(owner, addresses.taskRegistry, "TaskRegistry", "requestMaintenancePanel", [1n, 1]),
     ).rejects.toThrow();
 
     await write(owner, addresses.rewardVault, "RewardVault", "claim", [1n, 0]);
@@ -542,30 +578,24 @@ describe("AgentGrid Solidity protocol", () => {
 
   it("unlocks maintenance only after due time and releases the stake after day 90", async () => {
     await createAcceptedTask();
+    const initialPanel = (await read(addresses.taskRegistry, "TaskRegistry", "getTaskTesters", [1n])) as Address[];
     const transport = custom(provider as never);
     const replacement = createWalletClient({ account: mnemonicToAccount(mnemonic, { addressIndex: 8 }), chain: localChain, transport });
     const repairTester = createWalletClient({ account: mnemonicToAccount(mnemonic, { addressIndex: 9 }), chain: localChain, transport });
-    await registerAgent(replacement, 7n);
-    await registerAgent(repairTester, 8n);
+    await registerAgent(replacement, 9n);
+    await registerAgent(repairTester, 10n);
 
     await provider.request({ method: "evm_increaseTime", params: [90 * 24 * 60 * 60] });
     await provider.request({ method: "evm_mine", params: [] });
     await expect(
-      write(tester, addresses.taskRegistry, "TaskRegistry", "validateMaintenance", [
-        1n,
-        3,
-        true,
-        keccak256(stringToHex("cannot-skip-checkpoints")),
-      ]),
+      write(owner, addresses.taskRegistry, "TaskRegistry", "requestMaintenancePanel", [1n, 3]),
     ).rejects.toThrow();
     await expect(
-      write(executor, addresses.taskRegistry, "TaskRegistry", "validateMaintenance", [
-        1n, 1, true, keccak256(stringToHex("executor-self-validation")),
-      ]),
+      write(executor, addresses.taskRegistry, "TaskRegistry", "requestMaintenancePanel", [1n, 1]),
     ).rejects.toThrow();
-    await write(tester, addresses.taskRegistry, "TaskRegistry", "validateMaintenance", [
-      1n, 1, false, keccak256(stringToHex("maintenance-unhealthy")),
-    ]);
+    await write(owner, addresses.taskRegistry, "TaskRegistry", "requestMaintenancePanel", [1n, 1]);
+    await completeVerificationPanel(1n, false, []);
+    expect(await read(addresses.agentRegistry, "AgentRegistry", "qualityOf", [executor.account!.address, 1])).toMatchObject({ scoreBps: 4_700, outcomeCount: 2 });
     await expect(write(owner, addresses.rewardVault, "RewardVault", "claim", [1n, 1])).rejects.toThrow();
     await expect(write(owner, addresses.taskRegistry, "TaskRegistry", "evictInactiveExecutor", [1n, executor.account!.address])).rejects.toThrow();
     await provider.request({ method: "evm_increaseTime", params: [6 * 60 * 60 + 1] });
@@ -579,38 +609,42 @@ describe("AgentGrid Solidity protocol", () => {
     await write(replacement, addresses.taskRegistry, "TaskRegistry", "submitContribution", [1n, repairedArtifact]);
     await write(replacement, addresses.taskRegistry, "TaskRegistry", "submitWork", [1n, repairedArtifact]);
     await assignTester(1n);
-    const testingTask = (await read(addresses.taskRegistry, "TaskRegistry", "tasks", [1n])) as readonly unknown[];
-    expect(String(testingTask[2]).toLowerCase()).toBe(repairTester.account!.address.toLowerCase());
-    await write(repairTester, addresses.taskRegistry, "TaskRegistry", "submitTest", [
-      1n, true, keccak256(stringToHex("maintenance-repair-tested")), [10_000],
-    ]);
+    const repairPanel = (await read(addresses.taskRegistry, "TaskRegistry", "getTaskTesters", [1n])) as Address[];
+    const frozenRepairPanel = (await read(addresses.verificationPanel, "VerificationPanel", "getPanel", [1n])) as { qualityMultipliersBps: number[] };
+    expect(repairPanel.map((address) => address.toLowerCase())).toContain(repairTester.account!.address.toLowerCase());
+    await completeVerificationPanel(1n, true, [10_000]);
     const repairedTask = (await read(addresses.taskRegistry, "TaskRegistry", "tasks", [1n])) as readonly unknown[];
     expect(repairedTask[7]).toBe(repairedArtifact);
     expect(repairedTask[19]).toBe(8);
-    const repairedCheckpoint = (await read(addresses.rewardVault, "RewardVault", "getCheckpointParticipants", [1n, 1])) as [Address[], number[], Address];
-    expect(repairedCheckpoint).toEqual([[replacement.account!.address], [10_000], repairTester.account!.address]);
+    const repairedCheckpoint = (await read(addresses.rewardVault, "RewardVault", "getCheckpointTesterPanel", [1n, 1])) as [Address[], number[]];
+    expect(repairedCheckpoint[0].map((address) => address.toLowerCase())).toEqual(repairPanel.map((address) => address.toLowerCase()));
+    const qualityAfter = await Promise.all(repairPanel.map((address) => read(addresses.agentRegistry, "AgentRegistry", "qualityOf", [address, 2]) as Promise<{ scoreBps: number; outcomeCount: number }>));
+    qualityAfter.forEach((quality) => {
+      expect(quality.outcomeCount).toBeGreaterThan(0);
+    });
+    const rawQualityWeights = frozenRepairPanel.qualityMultipliersBps.map((multiplier, index) => [4_000, 3_333, 2_667][index] * Number(multiplier));
+    const rawTotal = rawQualityWeights.reduce((sum, value) => sum + value, 0);
+    const expectedQualityWeights = rawQualityWeights.map((value) => Math.floor(value * 10_000 / rawTotal));
+    expectedQualityWeights[0] += 10_000 - expectedQualityWeights.reduce((sum, value) => sum + value, 0);
+    expect(repairedCheckpoint[1].map(Number)).toEqual(expectedQualityWeights);
     const originalCheckpoint = (await read(addresses.rewardVault, "RewardVault", "getCheckpointParticipants", [1n, 0])) as [Address[], number[], Address];
-    expect(originalCheckpoint).toEqual([[executor.account!.address], [10_000], tester.account!.address]);
+    expect(originalCheckpoint).toEqual([[executor.account!.address], [10_000], initialPanel[0]]);
     await write(owner, addresses.rewardVault, "RewardVault", "claim", [1n, 0]);
     await write(owner, addresses.rewardVault, "RewardVault", "claim", [1n, 1]);
     for (const checkpoint of [2, 3] as const) {
-      await write(repairTester, addresses.taskRegistry, "TaskRegistry", "validateMaintenance", [
-        1n,
-        checkpoint,
-        true,
-        keccak256(stringToHex(`maintenance-${checkpoint}`)),
-      ]);
+      await write(owner, addresses.taskRegistry, "TaskRegistry", "requestMaintenancePanel", [1n, checkpoint]);
+      await completeVerificationPanel(1n, true, [10_000]);
       await write(owner, addresses.rewardVault, "RewardVault", "claim", [1n, checkpoint]);
     }
 
     const position = (await read(addresses.stakeManager, "StakeCreditManager", "positions", [4n])) as readonly unknown[];
     expect(position[2]).toBe(0n);
     // The evicted executor receives no maintenance reward; all three future
-    // 40-token tranches use the replacement's independently tested weight.
-    expect(await read(addresses.token, "TestToken", "balanceOf", [executor.account!.address])).toBe(parseEther("9052"));
-    expect(await read(addresses.token, "TestToken", "balanceOf", [replacement.account!.address])).toBe(parseEther("9078"));
-    expect(await read(addresses.token, "TestToken", "balanceOf", [tester.account!.address])).toBe(parseEther("9012"));
-    expect(await read(addresses.token, "TestToken", "balanceOf", [repairTester.account!.address])).toBe(parseEther("9018"));
+    // 38-token Agent-pool tranches use the replacement's independently tested weight.
+    expect(await read(addresses.token, "TestToken", "balanceOf", [executor.account!.address])).toBe(parseEther("9060.8"));
+    expect(await read(addresses.token, "TestToken", "balanceOf", [replacement.account!.address])).toBe(parseEther("9091.2"));
+    const finalGrant = (await read(addresses.rewardVault, "RewardVault", "getGrant", [1n])) as { claimed: boolean[] };
+    expect(finalGrant.claimed).toEqual([true, true, true, true]);
   });
 
   it("resolves structured rejection without trapping the publishing slot", async () => {
@@ -663,14 +697,14 @@ describe("AgentGrid Solidity protocol", () => {
     const competingResolution = keccak256(stringToHex("different-executor-proof"));
     const publisherResolution = keccak256(stringToHex("publisher-proof"));
     await write(arbitratorA, resolver, "DisputeResolver", "vote", [1n, true, resolution]);
-    expect(await read(addresses.stakeManager, "StakeCreditManager", "stakeOf", [4n])).toBe(parseEther("977"));
+    expect(await read(addresses.stakeManager, "StakeCreditManager", "stakeOf", [4n])).toBe(parseEther("995"));
     await expect(write(arbitratorA, resolver, "DisputeResolver", "vote", [1n, true, resolution])).rejects.toThrow();
     await write(arbitratorB, resolver, "DisputeResolver", "vote", [1n, true, competingResolution]);
     await write(arbitratorC, resolver, "DisputeResolver", "vote", [1n, false, publisherResolution]);
     expect(await read(resolver, "DisputeResolver", "resolved", [1n])).toBe(false);
     await write(arbitratorC, resolver, "DisputeResolver", "changeVote", [1n, true, resolution]);
-    expect(await read(addresses.stakeManager, "StakeCreditManager", "stakeOf", [4n])).toBe(parseEther("928.15"));
-    expect(await read(addresses.token, "TestToken", "balanceOf", [addresses.rewardVault])).toBe(parseEther("100068.85"));
+    expect(await read(addresses.stakeManager, "StakeCreditManager", "stakeOf", [4n])).toBe(parseEther("935.75"));
+    expect(await read(addresses.token, "TestToken", "balanceOf", [addresses.rewardVault])).toBe(parseEther("100043.8"));
   });
 
   it("applies every repeated-collaboration decay step after the stake cap", async () => {

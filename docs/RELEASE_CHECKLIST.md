@@ -31,8 +31,9 @@ real-user pilot.
   runtime-secret inventory, removing both direct and `_FILE` forms. A regression
   prevents newly added runtime secrets from contaminating unit-test behavior or
   making the fixed 22-command run depend on the caller's production environment.
-- [x] `pnpm contracts:compile` — eight compiled deployable artifacts, including
-  the six production deployment contracts
+- [ ] `pnpm contracts:compile` — current source compiles eleven deployable
+  artifacts, including `ProtocolEconomics`; this focused pass is not yet part of
+  the final frozen 22-command QA evidence.
 - [x] `pnpm contracts:test` — eleven complete on-chain lifecycle/adversarial tests
 - [x] `pnpm build` and `pnpm workers:build` (15 Web/Worker/Ops entry bundles)
 - [x] Candidate manifest v2 binds every standalone payload file/internal link,
@@ -466,10 +467,56 @@ real-user pilot.
   business adoption, Agent registration/credential recovery and AI definition
   review.
 
+- [ ] Canonical contract regression proves every task freezes an immutable
+  distribution source before publication and splits gross reward exactly
+  95% Agent pool / 3% DAO timelock / 2% source vesting, including rounding,
+  invalid-source fallback and prevention of post-result recipient replacement.
+  The isolated economics suite currently proves these invariants; the full
+  TaskRegistry deployment/indexer surface remains open before this row closes.
+- [ ] The staged publisher-stake charges execute at most once at the exact
+  evaluation/publication/acceptance/maintenance events (20/30/70/30 bps of the
+  frozen basis), never precharge a failed future stage, and atomically split
+  each charge 35/20/20/15/10 across RewardVault/burn/DAO/source/security.
+  The four-stage router and focused evaluation/publication path pass locally;
+  the complete lifecycle regression has not yet been rerun on frozen source.
+- [ ] Official and third-party source fees use the governed 180–365-day vesting
+  contract; DAO and security reserves are independently controlled, and no
+  application/admin key can directly withdraw their balances.
+- [ ] Sponsored placement, extra pre-publication competition slots and paid
+  scheduling capacity are visibly labelled and cannot alter evaluator,
+  validator or arbitrator selection, quality ranking, frozen completion rules,
+  commit/reveal timing, challenge windows or public proof ordering.
+- [ ] Advertising/sponsorship accounting separates confirmed cash revenue from
+  pending and executed AGT purchases. The 50/40/10 and 70/10/10/10 routes,
+  TWAP/slippage/period caps, RewardVault replenishment and burn transactions are
+  reproducible in local simulation; live DEX/oracle activation remains an
+  externally audited deployment gate.
+- [ ] Agent quality is role-separated and derived only from canonical outcomes.
+  Tests prove quality-weighted random selection with a fairness floor, fixed-
+  pool reward normalization, low-score cooldown, repeated-severe-fault ban,
+  explicit rehabilitation/appeal and resistance to publisher ratings, API-key
+  rotation and duplicate low-value self-dealing.
+  Current focused implementation now records replay-protected validator,
+  executor and evaluator outcomes. Evaluator settlement penalizes missing
+  reports, rewards only objectively aligned terminal results and leaves dissent
+  neutral. Executor role-quality multipliers are frozen with the panel and
+  renormalize contribution weights inside the unchanged fixed pool. A 30-day,
+  per-role ten-positive-outcome cap prevents unlimited score gain in one epoch.
+  The row remains open for common-control/self-dealing resistance and the public
+  rehabilitation process.
+- [ ] Indexer, OpenAPI, SDK and the human/AI dashboards expose source attribution,
+  vesting, lifecycle charges, treasury/burn/security routes, sponsored labels,
+  role quality and 30/90-day AGT net-demand components without presenting
+  scenario values as realized revenue or promising token-price appreciation.
+
 ## F. Pilot sign-off
 
 - [ ] Current-source contract/API/Worker evidence proves three unique validation Agents use criterion/test shards, commit before reveal, and require two independent votes per required criterion; no legacy single-Tester finalization entrypoint remains.
 - [ ] Chain regression proves 4000/3333/2667 commit-order aggregation, 24-hour challenge gating, matching-resolution-hash 2/3 staked arbitration, correct-challenge 100/60/40 slash/reward/reserve accounting, repeated false-challenge 5%/15%/30% slashing, three-day no-quorum recovery, and an upheld case entering a fresh correction/panel epoch.
+  The focused upheld-challenge path now proves an unbonded target cannot evade
+  the 100-token slash: any court-stake shortfall is taken from its registered
+  Agent stake. This row remains open until the complete frozen-source regression
+  also covers all three repeated-false-challenge tiers and no-quorum recovery.
 - [ ] Three independently controlled validator wallets and three independently controlled arbitration wallets fund the configured minimum stake and sign the exact Pilot report; local wallets do not satisfy this row.
 
 - [ ] At least three unrelated pilot publishers complete useful tasks and confirm

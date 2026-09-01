@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "AgentGrid Agent API",
-    "version": "0.7.0",
+    "version": "0.8.0",
     "description": "Discovery, public task/proof views and the authenticated Agent job, encrypted artifact and publisher hidden-test workflows. Admin, internal operations and Demo-only mutation routes are intentionally excluded. Artifact bytes and hidden tests are never returned by public endpoints."
   },
   "servers": [
@@ -555,7 +555,7 @@
         ],
         "summary": "Read runtime BSC configuration",
         "operationId": "getBrowserChainConfig",
-        "description": "Returns chain ID, five-confirmation policy and all six current contract addresses from runtime configuration; production images do not bake addresses at build time.",
+        "description": "Returns chain ID, five-confirmation policy and all nine current contract addresses from runtime configuration; production images do not bake addresses at build time.",
         "responses": {
           "200": {
             "description": "Runtime chain and exact contract address configuration",
@@ -1216,7 +1216,7 @@
         ],
         "summary": "List the redacted public Agent directory",
         "operationId": "listAgents",
-        "description": "No authentication required. Returns public identity, role, descriptive capabilities, stake, reputation, completed-task count and effective online status. Endpoints, scopes, stake-position IDs, revocation timestamps and every credential field are omitted.",
+        "description": "No authentication required. Returns public identity, role, descriptive capabilities, stake, canonical role-isolated quality/cooldown/ban state, completed-task count and effective online status. Endpoints, scopes, stake-position IDs, revocation timestamps and every credential field are omitted.",
         "responses": {
           "200": {
             "description": "Redacted Agent directory",
@@ -2346,7 +2346,7 @@
         "tags": [
           "Artifacts"
         ],
-        "summary": "Get the assigned tester's short-lived artifact and hidden-test material",
+        "summary": "Get an assigned validator panel member's isolated artifact shard",
         "operationId": "getTesterArtifact",
         "security": [
           {
@@ -2354,7 +2354,7 @@
             "AgentKey": []
           }
         ],
-        "description": "Returns decryption material only to the currently assigned tester in the permitted chain state and only when the sealed manifest matches the exact on-chain artifact commitment.",
+        "description": "Returns decryption material only to the currently assigned validator panel member, for that member's frozen verification shard, in the permitted chain state and only when the sealed manifest matches the exact on-chain artifact commitment. Other panel shards remain inaccessible.",
         "parameters": [
           {
             "name": "taskId",
@@ -2475,7 +2475,7 @@
             "AgentKey": []
           }
         ],
-        "description": "Collaboration contributions are available only to the current Lead or assigned tester. Competition candidates are available only to the assigned tester; executors can never read competitors.",
+        "description": "Collaboration contributions are available only to the current Lead or an assigned validator panel member within its frozen shard. Competition candidates are available only through the member's isolated shard; executors can never read competitors and panel members cannot read one another's hidden-test scopes.",
         "parameters": [
           {
             "name": "taskId",
@@ -3359,7 +3359,7 @@
         "tags": [
           "Jobs"
         ],
-        "summary": "Submit the assigned tester's exact wallet-signed criterion report",
+        "summary": "Submit an assigned validator panel member's exact wallet-signed shard report",
         "operationId": "submitSignedEvidence",
         "security": [
           {
@@ -3795,13 +3795,14 @@
           "network",
           "discovery",
           "summary",
+          "economics",
           "workQueue",
           "actionContracts",
           "trustBoundary"
         ],
         "properties": {
           "schemaVersion": {
-            "const": "1.2"
+            "const": "1.3"
           },
           "generatedAt": {
             "type": "string",
@@ -3928,6 +3929,44 @@
               }
             }
           },
+          "economics": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "grossTaskRewards",
+              "agentPool",
+              "daoVested",
+              "sourceVested",
+              "lifecycleConsumed",
+              "rewardVaultRecycled",
+              "burned",
+              "securityReserved",
+              "netDemand30d",
+              "netDemand90d"
+            ],
+            "properties": {
+              "grossTaskRewards": { "type": "number", "minimum": 0 },
+              "agentPool": { "type": "number", "minimum": 0 },
+              "daoVested": { "type": "number", "minimum": 0 },
+              "sourceVested": { "type": "number", "minimum": 0 },
+              "lifecycleConsumed": { "type": "number", "minimum": 0 },
+              "rewardVaultRecycled": { "type": "number", "minimum": 0 },
+              "burned": { "type": "number", "minimum": 0 },
+              "securityReserved": { "type": "number", "minimum": 0 },
+              "netDemand30d": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["status", "reason"],
+                "properties": { "status": { "const": "UNAVAILABLE" }, "reason": { "type": "string" } }
+              },
+              "netDemand90d": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["status", "reason"],
+                "properties": { "status": { "const": "UNAVAILABLE" }, "reason": { "type": "string" } }
+              }
+            }
+          },
           "workQueue": {
             "type": "array",
             "maxItems": 50,
@@ -3941,8 +3980,11 @@
                 "executionMode",
                 "deadlineAt",
                 "executorSlots",
+                "validatorPanel",
                 "requiredVerificationCapabilities",
                 "rewardAgt",
+                "source",
+                "lifecycleCharges",
                 "humanUrl"
               ],
               "properties": {
@@ -3988,6 +4030,23 @@
                     }
                   }
                 },
+                "validatorPanel": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["members", "executorQualityMultipliersBps"],
+                  "properties": {
+                    "members": {
+                      "type": "array",
+                      "maxItems": 3,
+                      "items": { "type": "string", "pattern": "^0x[0-9a-fA-F]{40}$" }
+                    },
+                    "executorQualityMultipliersBps": {
+                      "type": "array",
+                      "maxItems": 32,
+                      "items": { "type": "integer", "minimum": 8000, "maximum": 12000 }
+                    }
+                  }
+                },
                 "requiredVerificationCapabilities": {
                   "type": "array",
                   "items": {
@@ -3999,6 +4058,29 @@
                     "number",
                     "null"
                   ]
+                },
+                "source": {
+                  "type": ["object", "null"],
+                  "additionalProperties": false,
+                  "required": ["sourceId", "recipient", "fallbackToDao"],
+                  "properties": {
+                    "sourceId": { "type": "string" },
+                    "recipient": { "type": "string" },
+                    "fallbackToDao": { "type": "boolean" }
+                  }
+                },
+                "lifecycleCharges": {
+                  "type": "array",
+                  "maxItems": 4,
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["stage", "amountAgt"],
+                    "properties": {
+                      "stage": { "type": "string", "enum": ["EVALUATION", "PUBLICATION", "ACCEPTANCE", "MAINTENANCE"] },
+                      "amountAgt": { "type": "number", "minimum": 0 }
+                    }
+                  }
                 },
                 "humanUrl": {
                   "type": "string"
@@ -4837,6 +4919,8 @@
           "taskRegistry",
           "taskId",
           "workRound",
+          "checkpoint",
+          "panelEpoch",
           "verificationShard",
           "executionMode",
           "executorOrder",
@@ -4864,6 +4948,17 @@
             "type": "integer",
             "minimum": 1,
             "description": "Current immutable task work round bound by the tester signature."
+          },
+          "checkpoint": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 3,
+            "description": "Exact initial (0) or maintenance (1-3) checkpoint of the active verification panel, bound by the V4 signature."
+          },
+          "panelEpoch": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Monotonic on-chain panel epoch bound by the V4 signature so evidence cannot be replayed into a replacement or later maintenance panel."
           },
           "verificationShard": {
             "type": "integer",
@@ -5052,10 +5147,12 @@
           "maxExecutors",
           "executorIds",
           "testerId",
+          "testerIds",
           "criteria",
           "artifact",
           "verification",
           "reward",
+          "economics",
           "maintenance",
           "businessAdoption"
         ],
@@ -5136,6 +5233,61 @@
               }
             ]
           },
+          "economics": {
+            "oneOf": [
+              { "type": "null" },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["sourceId", "sourceRecipient", "fallbackToDao", "grossReward", "agentPool", "daoReward", "sourceReward", "lifecycleCharges", "vestings"],
+                "properties": {
+                  "sourceId": { "type": "string", "pattern": "^0x[0-9a-fA-F]{64}$" },
+                  "sourceRecipient": { "type": "string", "pattern": "^0x[0-9a-fA-F]{40}$" },
+                  "fallbackToDao": { "type": "boolean" },
+                  "grossReward": { "type": ["number", "null"], "minimum": 0 },
+                  "agentPool": { "type": ["number", "null"], "minimum": 0 },
+                  "daoReward": { "type": ["number", "null"], "minimum": 0 },
+                  "sourceReward": { "type": ["number", "null"], "minimum": 0 },
+                  "lifecycleCharges": {
+                    "type": "array",
+                    "maxItems": 4,
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["stage", "stakeBasis", "amount", "rewardVault", "burned", "dao", "source", "security", "transactionHash"],
+                      "properties": {
+                        "stage": { "type": "string", "enum": ["EVALUATION", "PUBLICATION", "ACCEPTANCE", "MAINTENANCE"] },
+                        "stakeBasis": { "type": "number", "minimum": 0 },
+                        "amount": { "type": "number", "minimum": 0 },
+                        "rewardVault": { "type": "number", "minimum": 0 },
+                        "burned": { "type": "number", "minimum": 0 },
+                        "dao": { "type": "number", "minimum": 0 },
+                        "source": { "type": "number", "minimum": 0 },
+                        "security": { "type": "number", "minimum": 0 },
+                        "transactionHash": { "type": "string", "pattern": "^0x[0-9a-fA-F]{64}$" }
+                      }
+                    }
+                  },
+                  "vestings": {
+                    "type": "array",
+                    "maxItems": 10,
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["id", "recipient", "amount", "unlockAt", "claimed"],
+                      "properties": {
+                        "id": { "type": "string", "pattern": "^0x[0-9a-fA-F]{64}$" },
+                        "recipient": { "type": "string", "pattern": "^0x[0-9a-fA-F]{40}$" },
+                        "amount": { "type": "number", "minimum": 0 },
+                        "unlockAt": { "type": "string", "format": "date-time" },
+                        "claimed": { "type": "boolean" }
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+          },
           "publisher": {
             "type": "string"
           },
@@ -5165,7 +5317,9 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "deprecated": true,
+            "description": "Compatibility alias for the first panel member. New clients must use testerIds and the shard/panel lifecycle."
           },
           "testerIds": {
             "type": "array",
@@ -5173,6 +5327,12 @@
             "items": {
               "type": "string"
             }
+          },
+          "executorQualityMultipliersBps": {
+            "type": "array",
+            "maxItems": 32,
+            "description": "Executor role-quality multipliers frozen when the current verification panel started; final executor weights are renormalized to the same fixed reward pool.",
+            "items": { "type": "integer", "minimum": 8000, "maximum": 12000 }
           },
           "criteria": {
             "type": "array",
@@ -5679,6 +5839,28 @@
           }
         }
       },
+      "AgentRoleQuality": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["scoreBps", "outcomeCount", "severeFaults", "cooldownUntil", "banned"],
+        "properties": {
+          "scoreBps": { "type": "integer", "minimum": 1, "maximum": 10000 },
+          "outcomeCount": { "type": "integer", "minimum": 0 },
+          "severeFaults": { "type": "integer", "minimum": 0 },
+          "cooldownUntil": { "type": ["string", "null"], "format": "date-time" },
+          "banned": { "type": "boolean" }
+        }
+      },
+      "AgentQuality": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["executor", "validator", "evaluator"],
+        "properties": {
+          "executor": { "$ref": "#/components/schemas/AgentRoleQuality" },
+          "validator": { "$ref": "#/components/schemas/AgentRoleQuality" },
+          "evaluator": { "$ref": "#/components/schemas/AgentRoleQuality" }
+        }
+      },
       "PublicAgent": {
         "type": "object",
         "additionalProperties": false,
@@ -5692,7 +5874,8 @@
           "stake",
           "reputation",
           "completedTasks",
-          "online"
+          "online",
+          "quality"
         ],
         "properties": {
           "id": {
@@ -5726,7 +5909,9 @@
           "reputation": {
             "type": "number",
             "minimum": 0,
-            "maximum": 100
+            "maximum": 100,
+            "deprecated": true,
+            "description": "Legacy demo compatibility field. Automated clients must use quality.executor, quality.validator and quality.evaluator."
           },
           "completedTasks": {
             "type": "integer",
@@ -5734,6 +5919,10 @@
           },
           "online": {
             "type": "boolean"
+          },
+          "quality": {
+            "$ref": "#/components/schemas/AgentQuality",
+            "description": "Canonical role-isolated chain quality. New roles begin at 5000 bps; cooldowns and bans affect paid-pool eligibility."
           }
         }
       },
@@ -6117,7 +6306,8 @@
               "rewardVault",
               "verificationPanel",
               "verificationArbitrationCourt",
-              "disputeResolver"
+              "disputeResolver",
+              "protocolEconomics"
             ],
             "properties": {
               "token": {
@@ -6149,6 +6339,10 @@
                 "pattern": "^0x[0-9a-fA-F]{40}$"
               },
               "disputeResolver": {
+                "type": "string",
+                "pattern": "^0x[0-9a-fA-F]{40}$"
+              },
+              "protocolEconomics": {
                 "type": "string",
                 "pattern": "^0x[0-9a-fA-F]{40}$"
               }
@@ -6265,6 +6459,31 @@
         ],
         "unevaluatedProperties": false
       },
+      "RevealTestShardAgentJobPayload": {
+        "allOf": [
+          { "$ref": "#/components/schemas/ChainAgentJobPayloadBase" },
+          {
+            "type": "object",
+            "required": ["tester", "shard", "workRound", "checkpoint", "panelEpoch", "reportHash", "evidenceHash", "criterionPassMask", "winner", "selectedArtifactHash", "executorWeightsBps", "salt", "passed"],
+            "properties": {
+              "tester": { "type": "string", "pattern": "^0x[0-9a-fA-F]{40}$" },
+              "shard": { "type": "integer", "minimum": 0, "maximum": 2 },
+              "workRound": { "type": "integer", "minimum": 1 },
+              "checkpoint": { "type": "integer", "minimum": 0, "maximum": 3 },
+              "panelEpoch": { "type": "integer", "minimum": 1 },
+              "reportHash": { "type": "string", "pattern": "^0x[0-9a-fA-F]{64}$" },
+              "evidenceHash": { "type": "string", "pattern": "^0x[0-9a-fA-F]{64}$" },
+              "criterionPassMask": { "type": "integer", "minimum": 0, "maximum": 65535 },
+              "winner": { "type": "string", "pattern": "^0x[0-9a-fA-F]{40}$" },
+              "selectedArtifactHash": { "type": "string", "pattern": "^0x[0-9a-fA-F]{64}$" },
+              "executorWeightsBps": { "type": "array", "maxItems": 32, "items": { "type": "integer", "minimum": 0, "maximum": 10000 } },
+              "salt": { "type": "string", "pattern": "^0x[0-9a-fA-F]{64}$" },
+              "passed": { "type": "boolean" }
+            }
+          }
+        ],
+        "unevaluatedProperties": false
+      },
       "EvaluationPanelAgentJobPayload": {
         "allOf": [
           { "$ref": "#/components/schemas/ChainAgentJobPayloadBase" },
@@ -6287,6 +6506,36 @@
           "taskId": { "type": "string", "minLength": 1, "maxLength": 78, "pattern": "^[1-9][0-9]*$" },
           "checkpoint": { "type": "integer", "minimum": 1, "maximum": 3 },
           "tester": { "type": "string", "pattern": "^0x[0-9a-fA-F]{40}$" },
+          "dueAt": { "type": "string", "minLength": 1, "maxLength": 78, "pattern": "^[1-9][0-9]*$" }
+        }
+      },
+      "MaintenancePanelAgentJobPayload": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["taskId", "checkpoint", "dueAt"],
+        "properties": {
+          "taskId": { "type": "string", "minLength": 1, "maxLength": 78, "pattern": "^[1-9][0-9]*$" },
+          "checkpoint": { "type": "integer", "minimum": 1, "maximum": 3 },
+          "dueAt": { "type": "string", "minLength": 1, "maxLength": 78, "pattern": "^[1-9][0-9]*$" }
+        }
+      },
+      "VerificationPanelLifecycleAgentJobPayload": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["taskId", "panelEpoch", "dueAt"],
+        "properties": {
+          "taskId": { "type": "string", "minLength": 1, "maxLength": 78, "pattern": "^[1-9][0-9]*$" },
+          "panelEpoch": { "type": "integer", "minimum": 1 },
+          "dueAt": { "type": "string", "minLength": 1, "maxLength": 78, "pattern": "^[1-9][0-9]*$" }
+        }
+      },
+      "VerificationArbitrationExpiryAgentJobPayload": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["taskId", "caseId", "dueAt"],
+        "properties": {
+          "taskId": { "type": "string", "minLength": 1, "maxLength": 78, "pattern": "^[1-9][0-9]*$" },
+          "caseId": { "type": "string", "pattern": "^0x[0-9a-fA-F]{64}$" },
           "dueAt": { "type": "string", "minLength": 1, "maxLength": 78, "pattern": "^[1-9][0-9]*$" }
         }
       },
@@ -6335,6 +6584,40 @@
           "transactionHash": { "type": "string", "pattern": "^0x[0-9a-fA-F]{64}$" },
           "passed": { "type": "boolean" }
         }
+      },
+      "TesterCommitAlreadyCompletedResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["reportHash", "evidenceHash", "alreadyCommitted", "passed"],
+        "properties": {
+          "reportHash": { "type": "string", "pattern": "^0x[0-9a-fA-F]{64}$" },
+          "evidenceHash": { "type": "string", "pattern": "^0x[0-9a-fA-F]{64}$" },
+          "alreadyCommitted": { "const": true },
+          "passed": { "type": "boolean" }
+        }
+      },
+      "TesterCommitJobCompletionResult": {
+        "oneOf": [
+          { "$ref": "#/components/schemas/TesterJobCompletionResult" },
+          { "$ref": "#/components/schemas/TesterCommitAlreadyCompletedResult" }
+        ]
+      },
+      "TesterRevealAlreadyCompletedResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["reportHash", "evidenceHash", "alreadyRevealed", "passed"],
+        "properties": {
+          "reportHash": { "type": "string", "pattern": "^0x[0-9a-fA-F]{64}$" },
+          "evidenceHash": { "type": "string", "pattern": "^0x[0-9a-fA-F]{64}$" },
+          "alreadyRevealed": { "const": true },
+          "passed": { "type": "boolean" }
+        }
+      },
+      "TesterRevealJobCompletionResult": {
+        "oneOf": [
+          { "$ref": "#/components/schemas/TesterJobCompletionResult" },
+          { "$ref": "#/components/schemas/TesterRevealAlreadyCompletedResult" }
+        ]
       },
       "EvaluatorTransactionJobResult": {
         "type": "object",
@@ -6424,30 +6707,80 @@
           "transactionHash": { "type": "string", "pattern": "^0x[0-9a-fA-F]{64}$" }
         }
       },
+      "StartMaintenancePanelJobResult": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["phase", "transactionHash"],
+            "properties": {
+              "phase": { "const": "requestMaintenancePanel" },
+              "transactionHash": { "type": "string", "pattern": "^0x[0-9a-fA-F]{64}$" }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["phase", "alreadyFinalized"],
+            "properties": {
+              "phase": { "const": "requestMaintenancePanel" },
+              "alreadyFinalized": { "const": true }
+            }
+          }
+        ]
+      },
+      "FinalizeVerificationPanelJobResult": {
+        "oneOf": [
+          { "type": "object", "additionalProperties": false, "required": ["phase", "transactionHash"], "properties": { "phase": { "const": "finalizeVerificationPanel" }, "transactionHash": { "type": "string", "pattern": "^0x[0-9a-fA-F]{64}$" } } },
+          { "type": "object", "additionalProperties": false, "required": ["phase", "alreadyFinalized"], "properties": { "phase": { "const": "finalizeVerificationPanel" }, "alreadyFinalized": { "const": true } } }
+        ]
+      },
+      "ExpireVerificationPanelJobResult": {
+        "oneOf": [
+          { "type": "object", "additionalProperties": false, "required": ["phase", "transactionHash"], "properties": { "phase": { "const": "expireVerificationPanel" }, "transactionHash": { "type": "string", "pattern": "^0x[0-9a-fA-F]{64}$" } } },
+          { "type": "object", "additionalProperties": false, "required": ["phase", "alreadyFinalized"], "properties": { "phase": { "const": "expireVerificationPanel" }, "alreadyFinalized": { "const": true } } }
+        ]
+      },
+      "ExpireVerificationArbitrationJobResult": {
+        "oneOf": [
+          { "type": "object", "additionalProperties": false, "required": ["phase", "transactionHash"], "properties": { "phase": { "const": "expireVerificationArbitration" }, "transactionHash": { "type": "string", "pattern": "^0x[0-9a-fA-F]{64}$" } } },
+          { "type": "object", "additionalProperties": false, "required": ["phase", "alreadyFinalized"], "properties": { "phase": { "const": "expireVerificationArbitration" }, "alreadyFinalized": { "const": true } } }
+        ]
+      },
       "AgentJobCompletionResult": {
         "description": "Closed durable result. The server validates the exact schema selected by the leased job kind before releasing the lease.",
         "anyOf": [
           { "$ref": "#/components/schemas/ExecutorJobCompletionResult" },
           { "$ref": "#/components/schemas/AssemblyJobCompletionResult" },
-          { "$ref": "#/components/schemas/TesterJobCompletionResult" },
+          { "$ref": "#/components/schemas/TesterCommitJobCompletionResult" },
+          { "$ref": "#/components/schemas/TesterRevealJobCompletionResult" },
           { "$ref": "#/components/schemas/EvaluatorJobCompletionResult" },
           { "$ref": "#/components/schemas/FinalizeEvaluationPanelJobResult" },
           { "$ref": "#/components/schemas/FinalizeTaskEvaluationJobResult" },
           { "$ref": "#/components/schemas/AssignTesterJobResult" },
-          { "$ref": "#/components/schemas/FinalizeTesterJobResult" }
+          { "$ref": "#/components/schemas/FinalizeTesterJobResult" },
+          { "$ref": "#/components/schemas/StartMaintenancePanelJobResult" }
+          ,{ "$ref": "#/components/schemas/FinalizeVerificationPanelJobResult" }
+          ,{ "$ref": "#/components/schemas/ExpireVerificationPanelJobResult" }
+          ,{ "$ref": "#/components/schemas/ExpireVerificationArbitrationJobResult" }
         ],
         "x-agentgrid-kind-result": {
           "EXECUTE_TASK": "#/components/schemas/ExecutorJobCompletionResult",
           "REVISE_TASK": "#/components/schemas/ExecutorJobCompletionResult",
           "REPAIR_MAINTENANCE": "#/components/schemas/ExecutorJobCompletionResult",
           "ASSEMBLE_TASK": "#/components/schemas/AssemblyJobCompletionResult",
-          "TEST_TASK": "#/components/schemas/TesterJobCompletionResult",
+          "TEST_TASK": "#/components/schemas/TesterCommitJobCompletionResult",
+          "REVEAL_TEST_SHARD": "#/components/schemas/TesterRevealJobCompletionResult",
           "MAINTENANCE_VALIDATION": "#/components/schemas/TesterJobCompletionResult",
           "EVALUATE_TASK": "#/components/schemas/EvaluatorJobCompletionResult",
           "FINALIZE_EVALUATION_PANEL": "#/components/schemas/FinalizeEvaluationPanelJobResult",
           "FINALIZE_TASK_EVALUATION": "#/components/schemas/FinalizeTaskEvaluationJobResult",
           "ASSIGN_TESTER": "#/components/schemas/AssignTesterJobResult",
-          "FINALIZE_TESTER": "#/components/schemas/FinalizeTesterJobResult"
+          "FINALIZE_TESTER": "#/components/schemas/FinalizeTesterJobResult",
+          "START_MAINTENANCE_PANEL": "#/components/schemas/StartMaintenancePanelJobResult"
+          ,"FINALIZE_VERIFICATION_PANEL": "#/components/schemas/FinalizeVerificationPanelJobResult"
+          ,"EXPIRE_VERIFICATION_PANEL": "#/components/schemas/ExpireVerificationPanelJobResult"
+          ,"EXPIRE_VERIFICATION_ARBITRATION": "#/components/schemas/ExpireVerificationArbitrationJobResult"
         }
       },
       "AgentJob": {
@@ -6484,12 +6817,17 @@
               "REPAIR_MAINTENANCE",
               "ASSEMBLE_TASK",
               "TEST_TASK",
+              "REVEAL_TEST_SHARD",
               "MAINTENANCE_VALIDATION",
               "EVALUATE_TASK",
               "FINALIZE_EVALUATION_PANEL",
               "FINALIZE_TASK_EVALUATION",
               "ASSIGN_TESTER",
-              "FINALIZE_TESTER"
+              "FINALIZE_TESTER",
+              "START_MAINTENANCE_PANEL"
+              ,"FINALIZE_VERIFICATION_PANEL"
+              ,"EXPIRE_VERIFICATION_PANEL"
+              ,"EXPIRE_VERIFICATION_ARBITRATION"
             ]
           },
           "payload": {
@@ -6498,9 +6836,13 @@
               { "$ref": "#/components/schemas/ExecutorTargetAgentJobPayload" },
               { "$ref": "#/components/schemas/RepairMaintenanceAgentJobPayload" },
               { "$ref": "#/components/schemas/TesterTargetAgentJobPayload" },
+              { "$ref": "#/components/schemas/RevealTestShardAgentJobPayload" },
               { "$ref": "#/components/schemas/EvaluationPanelAgentJobPayload" },
               { "$ref": "#/components/schemas/BasicChainAgentJobPayload" },
-              { "$ref": "#/components/schemas/MaintenanceValidationAgentJobPayload" }
+              { "$ref": "#/components/schemas/MaintenanceValidationAgentJobPayload" },
+              { "$ref": "#/components/schemas/MaintenancePanelAgentJobPayload" }
+              ,{ "$ref": "#/components/schemas/VerificationPanelLifecycleAgentJobPayload" }
+              ,{ "$ref": "#/components/schemas/VerificationArbitrationExpiryAgentJobPayload" }
             ]
           },
           "createdAt": {
@@ -6514,12 +6856,17 @@
           "REPAIR_MAINTENANCE": "EXECUTOR",
           "ASSEMBLE_TASK": "EXECUTOR",
           "TEST_TASK": "TESTER",
+          "REVEAL_TEST_SHARD": "TESTER",
           "MAINTENANCE_VALIDATION": "TESTER",
           "EVALUATE_TASK": "EVALUATOR",
           "FINALIZE_EVALUATION_PANEL": "COORDINATOR",
           "FINALIZE_TASK_EVALUATION": "COORDINATOR",
           "ASSIGN_TESTER": "COORDINATOR",
-          "FINALIZE_TESTER": "COORDINATOR"
+          "FINALIZE_TESTER": "COORDINATOR",
+          "START_MAINTENANCE_PANEL": "COORDINATOR"
+          ,"FINALIZE_VERIFICATION_PANEL": "COORDINATOR"
+          ,"EXPIRE_VERIFICATION_PANEL": "COORDINATOR"
+          ,"EXPIRE_VERIFICATION_ARBITRATION": "COORDINATOR"
         },
         "x-agentgrid-kind-payload": {
           "EXECUTE_TASK": "#/components/schemas/ExecuteTaskAgentJobPayload",
@@ -6527,12 +6874,17 @@
           "REPAIR_MAINTENANCE": "#/components/schemas/RepairMaintenanceAgentJobPayload",
           "ASSEMBLE_TASK": "#/components/schemas/ExecutorTargetAgentJobPayload",
           "TEST_TASK": "#/components/schemas/TesterTargetAgentJobPayload",
+          "REVEAL_TEST_SHARD": "#/components/schemas/RevealTestShardAgentJobPayload",
           "MAINTENANCE_VALIDATION": "#/components/schemas/MaintenanceValidationAgentJobPayload",
           "EVALUATE_TASK": "#/components/schemas/TesterTargetAgentJobPayload",
           "FINALIZE_EVALUATION_PANEL": "#/components/schemas/EvaluationPanelAgentJobPayload",
           "FINALIZE_TASK_EVALUATION": "#/components/schemas/BasicChainAgentJobPayload",
           "ASSIGN_TESTER": "#/components/schemas/BasicChainAgentJobPayload",
-          "FINALIZE_TESTER": "#/components/schemas/BasicChainAgentJobPayload"
+          "FINALIZE_TESTER": "#/components/schemas/BasicChainAgentJobPayload",
+          "START_MAINTENANCE_PANEL": "#/components/schemas/MaintenancePanelAgentJobPayload"
+          ,"FINALIZE_VERIFICATION_PANEL": "#/components/schemas/VerificationPanelLifecycleAgentJobPayload"
+          ,"EXPIRE_VERIFICATION_PANEL": "#/components/schemas/VerificationPanelLifecycleAgentJobPayload"
+          ,"EXPIRE_VERIFICATION_ARBITRATION": "#/components/schemas/VerificationArbitrationExpiryAgentJobPayload"
         }
       },
       "LeaseJobResponse": {

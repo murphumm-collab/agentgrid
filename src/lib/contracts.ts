@@ -19,6 +19,7 @@ export const stakeManagerAbi = parseAbi([
   "event PositionSlashed(uint256 indexed positionId,uint256 indexed taskId,uint256 amount,address indexed recipient)",
   "event PublicationFeeCharged(uint256 indexed positionId,uint256 indexed taskId,uint256 amount,address indexed recipient)",
   "event EvaluationFeeCharged(uint256 indexed positionId,uint256 indexed taskId,uint256 amount,address indexed recipient)",
+  "event LifecycleFeeCharged(uint256 indexed positionId,uint256 indexed taskId,uint8 indexed stage,uint256 stakeBasis,uint256 amount)",
   "event PositionWithdrawn(uint256 indexed positionId,address indexed owner,uint256 amount)",
 ]);
 
@@ -29,6 +30,13 @@ export const agentRegistryAbi = parseAbi([
   "function agentActive(address) view returns (bool)",
   "function agentCapabilities(address) view returns (uint8)",
   "function isEligibleFor(address,uint8) view returns (bool)",
+  "function qualityOf(address,uint8) view returns ((uint16 scoreBps,uint32 outcomeCount,uint8 severeFaults,uint64 cooldownUntil,bool banned))",
+  "function qualityMultiplierBps(address,uint8) view returns (uint16)",
+  "function selectionWeight(address,uint8) view returns (uint256)",
+  "function outcomeReporterRoles(address) view returns (uint8)",
+  "event AgentQualityUpdated(address indexed agent,uint8 indexed role,bytes32 indexed outcomeId,uint16 scoreBps,uint32 outcomeCount,uint8 severeFaults,uint64 cooldownUntil,bool banned,bool success,bool severe,bytes32 evidenceHash)",
+  "event AgentQualityOutcomeIgnored(address indexed agent,uint8 indexed role,bytes32 indexed outcomeId,bytes32 evidenceHash,bytes32 reason)",
+  "event AgentRoleRehabilitated(address indexed agent,uint8 indexed role,bytes32 indexed evidenceHash)",
   "function agentPosition(address) view returns (uint256)",
   "function isEligible(address) view returns (bool)",
   "function agentCount() view returns (uint256)",
@@ -67,7 +75,6 @@ export const taskRegistryAbi = parseAbi([
   "function verificationPanel() view returns (address)",
   "function setCoordinator(address newCoordinator)",
   "function setDisputeResolver(address newResolver)",
-  "function publicationFeeFor(uint256 positionId,uint256 requestedReward) view returns (uint256)",
   "function taskPublicationFee(uint256 taskId) view returns (uint256)",
   "function finalizeVerificationPanel(uint256 taskId,uint32 workRound,uint8 checkpoint,bool passed,address winner,bytes32 selectedArtifactHash,bytes32 aggregateEvidenceHash,uint16[] executorWeightsBps,address[3] testers,uint16[3] testerRewardWeightsBps)",
   "function getTaskTesters(uint256 taskId) view returns (address[3])",
@@ -107,18 +114,26 @@ export const taskRegistryAbi = parseAbi([
 ]);
 
 export const verificationPanelAbi = parseAbi([
+  "function qualityRegistry() view returns (address)",
   "function commitShard(uint256 taskId,bytes32 commitment)",
   "function revealShard(uint256 taskId,uint16 criterionPassMask,address winner,bytes32 selectedArtifactHash,bytes32 evidenceHash,uint16[] executorWeightsBps,bytes32 salt)",
   "function finalize(uint256 taskId)",
   "function expire(uint256 taskId)",
-  "function getPanel(uint256 taskId) view returns ((address[3] testers,bytes32[3] scopeHashes,uint16[3] criterionMasks,uint16 requiredCriterionMask,uint32 epoch,uint32 workRound,uint8 checkpoint,uint8 executorCount,uint8 commitCount,uint8 revealCount,uint64 commitDeadline,uint64 revealDeadline,uint64 challengeDeadline,uint8 status))",
+  "function settleEvaluationOutcomes(uint256 taskId)",
+  "function evaluationOutcomesSettled(uint256 taskId) view returns (bool)",
+  "function getPanel(uint256 taskId) view returns ((address[3] testers,bytes32[3] scopeHashes,uint16[3] criterionMasks,uint16[3] qualityMultipliersBps,uint16 requiredCriterionMask,uint32 epoch,uint32 workRound,uint8 checkpoint,uint8 executorCount,uint8 commitCount,uint8 revealCount,uint64 commitDeadline,uint64 revealDeadline,uint64 challengeDeadline,uint8 status))",
   "function getReport(uint256 taskId,address tester) view returns ((bytes32 commitment,bytes32 evidenceHash,address winner,bytes32 selectedArtifactHash,uint16 criterionPassMask,uint8 commitOrder,bool revealed,uint16[] executorWeightsBps))",
+  "function getExecutorQualityMultipliers(uint256 taskId) view returns (uint16[])",
   "event PanelStarted(uint256 indexed taskId,uint32 indexed workRound,uint8 checkpoint,address[3] testers,uint16[3] criterionMasks,bytes32[3] scopeHashes)",
   "event ShardCommitted(uint256 indexed taskId,address indexed tester,uint8 indexed shard,uint32 epoch,uint32 workRound,uint8 commitOrder,bytes32 commitment)",
+  "event PanelRevealReady(uint256 indexed taskId,uint32 indexed workRound,uint8 checkpoint,uint32 indexed epoch,address[3] testers)",
   "event ShardRevealed(uint256 indexed taskId,address indexed tester,uint8 indexed shard,uint32 epoch,uint32 workRound,bytes32 evidenceHash,uint16 criterionPassMask)",
   "event PanelAggregated(uint256 indexed taskId,bool passed,bytes32 aggregateEvidenceHash)",
+  "event ValidatorRewardWeightsFrozen(uint256 indexed taskId,uint32 indexed workRound,uint8 checkpoint,uint32 indexed epoch,uint16[3] qualityMultipliersBps,uint8[3] commitOrders,uint16[3] finalWeightsBps,uint8 algorithmVersion)",
   "event PanelChallenged(uint256 indexed taskId,address indexed tester,bytes32 challengeHash)",
   "event PanelChallengeResolved(uint256 indexed taskId,bool upheld)",
+  "event EvaluationOutcomesSettled(uint256 indexed taskId,bool approved,uint8 positiveCount,uint8 missedCount)",
+  "event ExecutorQualityMultipliersFrozen(uint256 indexed taskId,uint32 indexed workRound,uint32 indexed epoch,uint16[] multipliersBps)",
 ]);
 
 export const verificationArbitrationCourtAbi = parseAbi([
@@ -127,6 +142,7 @@ export const verificationArbitrationCourtAbi = parseAbi([
   "function openChallenge(uint256 taskId,address validator,bytes32 challengeHash)",
   "function vote(uint256 taskId,bool upheld,bytes32 resolutionHash)",
   "function expireChallenge(uint256 taskId)",
+  "function getActiveCase(uint256 taskId) view returns (bytes32 caseId,uint64 deadline,bool resolved)",
   "function stake(address) view returns (uint256)",
   "function lockedStake(address) view returns (uint256)",
   "function falseChallengeCount(address) view returns (uint8)",
@@ -153,4 +169,18 @@ export const rewardVaultAbi = parseAbi([
   "event EvaluationFeeRegistered(uint256 indexed taskId,uint256 amount)",
   "event EvaluationFeePaid(uint256 indexed taskId,address indexed evaluator,uint256 amount)",
   "event EvaluationFeeSettled(uint256 indexed taskId,uint256 reporterCount,uint256 reserveAmount)",
+]);
+
+export const protocolEconomicsAbi = parseAbi([
+  "function commitNextTaskSource(bytes32 sourceId)",
+  "function claimVesting(bytes32 vestingId)",
+  "function taskSources(uint256 taskId) view returns (bytes32 sourceId,address recipient,uint64 frozenAt)",
+  "function consumedLifecycleStages(uint256 taskId) view returns (uint8)",
+  "function taskRewardRouted(uint256 taskId) view returns (bool)",
+  "function vestings(bytes32 vestingId) view returns (address recipient,uint128 amount,uint64 unlockAt,bool claimed)",
+  "event TaskSourceFrozen(uint256 indexed taskId,bytes32 indexed requestedSourceId,bytes32 indexed effectiveSourceId,address recipient,bool fallbackToDao)",
+  "event TaskRewardRouted(uint256 indexed taskId,uint256 grossReward,uint256 agentPool,uint256 daoAmount,uint256 sourceAmount,bytes32 daoVestingId,bytes32 sourceVestingId)",
+  "event LifecycleChargeRouted(uint256 indexed taskId,uint8 indexed stage,uint256 stakeBasis,uint256 amount,uint256 rewardVaultAmount,uint256 burnAmount,uint256 daoAmount,uint256 sourceAmount,uint256 securityAmount,bytes32 daoVestingId,bytes32 sourceVestingId)",
+  "event VestingCreated(bytes32 indexed vestingId,address indexed recipient,uint256 amount,uint256 unlockAt)",
+  "event VestingClaimed(bytes32 indexed vestingId,address indexed recipient,uint256 amount)",
 ]);

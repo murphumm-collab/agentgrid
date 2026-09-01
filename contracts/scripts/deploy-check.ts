@@ -11,7 +11,7 @@ async function main() {
   const chainId = await client.getChainId();
   if (chainId !== bscTestnet.id) throw new Error(`WRONG_CHAIN_${chainId}`);
   const artifacts = compileContracts();
-  const required = ["TestToken", "StakeCreditManager", "AgentRegistry", "RewardVault", "TaskRegistry", "DisputeResolver"];
+  const required = ["TestToken", "StakeCreditManager", "AgentRegistry", "RewardVault", "TaskRegistry", "VerificationPanel", "VerificationArbitrationCourt", "DisputeResolver", "ProtocolEconomics"];
   for (const name of required) if (!artifacts[name]?.bytecode || artifacts[name].bytecode === "0x") throw new Error(`MISSING_BYTECODE_${name}`);
   const blockers: string[] = [];
   const rawArbitrators = (process.env.ARBITRATOR_ADDRESSES ?? "").split(",").map((value) => value.trim()).filter(Boolean);
@@ -35,6 +35,9 @@ async function main() {
   }
   if (process.env.PROTOCOL_RESERVE_ADDRESS) {
     try { getAddress(process.env.PROTOCOL_RESERVE_ADDRESS); } catch { blockers.push("PROTOCOL_RESERVE_ADDRESS_INVALID"); }
+  }
+  for (const name of ["PROTOCOL_DAO_TREASURY_ADDRESS", "PROTOCOL_SECURITY_RESERVE_ADDRESS"] as const) {
+    try { getAddress(process.env[name] ?? ""); } catch { blockers.push(`${name}_REQUIRED`); }
   }
   let minimumBalance = parseEther("0.1");
   try { minimumBalance = parseEther(process.env.DEPLOYER_MIN_TBNB ?? "0.1"); } catch { blockers.push("DEPLOYER_MIN_TBNB_INVALID"); }

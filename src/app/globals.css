@@ -183,6 +183,13 @@ h3 { letter-spacing: -.02em; }
 .agent-desc { color: var(--muted); font-size: 11px; }
 .capabilities { display: flex; flex-wrap: wrap; gap: 6px; margin: 18px 0; }
 .capability { color: var(--muted); background: var(--surface-soft); border-radius: 7px; padding: 5px 7px; font-size: 10px; }
+.quality-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; margin-bottom: 14px; }
+.quality-grid > div { min-width: 0; padding: 8px; border: 1px solid var(--border); border-radius: 8px; background: rgba(2,6,23,.38); }
+.quality-grid span, .quality-grid small { display: block; color: var(--subtle); font-size: 8px; line-height: 1.4; }
+.quality-grid strong { display: block; margin: 3px 0; font-size: 12px; }
+.quality-grid .quality-eligible { color: var(--accent); }
+.quality-grid .quality-cooldown { color: var(--warning); }
+.quality-grid .quality-banned { color: var(--danger); }
 .agent-metrics { display: grid; grid-template-columns: 1fr 1fr; padding-top: 14px; border-top: 1px solid var(--border); }
 .metric-value { font-size: 17px; font-weight: 750; }
 .metric-label { color: var(--subtle); font-size: 10px; margin-top: 3px; }

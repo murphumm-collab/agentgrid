@@ -51,6 +51,21 @@ export const repairMaintenanceJobPayloadSchema = chainPayload({
 });
 export const evaluatorTargetJobPayloadSchema = chainPayload({ tester: addressSchema });
 export const testerTargetJobPayloadSchema = chainPayload({ tester: addressSchema, shard: z.number().int().min(0).max(2) });
+export const revealTestShardJobPayloadSchema = chainPayload({
+  tester: addressSchema,
+  shard: z.number().int().min(0).max(2),
+  workRound: z.number().int().positive(),
+  checkpoint: z.number().int().min(0).max(3),
+  panelEpoch: z.number().int().positive(),
+  reportHash: bytes32Schema,
+  evidenceHash: bytes32Schema,
+  criterionPassMask: z.number().int().min(0).max(65_535),
+  winner: addressSchema,
+  selectedArtifactHash: bytes32Schema,
+  executorWeightsBps: z.array(z.number().int().min(0).max(10_000)).max(32),
+  salt: bytes32Schema,
+  passed: z.boolean(),
+});
 export const evaluationPanelJobPayloadSchema = chainPayload({
   selectionBlock: uint256DecimalSchema,
   deadline: positiveUnixSecondsSchema,
@@ -64,6 +79,16 @@ export const maintenanceValidationJobPayloadSchema = z.object({
 export const maintenancePanelJobPayloadSchema = z.object({
   taskId: onchainTaskIdPathParameterSchema,
   checkpoint: z.number().int().min(1).max(3),
+  dueAt: positiveUnixSecondsSchema,
+}).strict();
+export const verificationPanelLifecycleJobPayloadSchema = z.object({
+  taskId: onchainTaskIdPathParameterSchema,
+  panelEpoch: z.number().int().positive(),
+  dueAt: positiveUnixSecondsSchema,
+}).strict();
+export const verificationArbitrationExpiryJobPayloadSchema = z.object({
+  taskId: onchainTaskIdPathParameterSchema,
+  caseId: bytes32Schema,
   dueAt: positiveUnixSecondsSchema,
 }).strict();
 
@@ -82,6 +107,7 @@ export const agentJobSchemas = {
   REPAIR_MAINTENANCE: job("REPAIR_MAINTENANCE", "EXECUTOR", repairMaintenanceJobPayloadSchema),
   ASSEMBLE_TASK: job("ASSEMBLE_TASK", "EXECUTOR", executorTargetJobPayloadSchema),
   TEST_TASK: job("TEST_TASK", "TESTER", testerTargetJobPayloadSchema),
+  REVEAL_TEST_SHARD: job("REVEAL_TEST_SHARD", "TESTER", revealTestShardJobPayloadSchema),
   MAINTENANCE_VALIDATION: job("MAINTENANCE_VALIDATION", "TESTER", maintenanceValidationJobPayloadSchema),
   EVALUATE_TASK: job("EVALUATE_TASK", "EVALUATOR", evaluatorTargetJobPayloadSchema),
   FINALIZE_EVALUATION_PANEL: job("FINALIZE_EVALUATION_PANEL", "COORDINATOR", evaluationPanelJobPayloadSchema),
@@ -89,6 +115,9 @@ export const agentJobSchemas = {
   ASSIGN_TESTER: job("ASSIGN_TESTER", "COORDINATOR", chainAgentJobPayloadSchema),
   FINALIZE_TESTER: job("FINALIZE_TESTER", "COORDINATOR", chainAgentJobPayloadSchema),
   START_MAINTENANCE_PANEL: job("START_MAINTENANCE_PANEL", "COORDINATOR", maintenancePanelJobPayloadSchema),
+  FINALIZE_VERIFICATION_PANEL: job("FINALIZE_VERIFICATION_PANEL", "COORDINATOR", verificationPanelLifecycleJobPayloadSchema),
+  EXPIRE_VERIFICATION_PANEL: job("EXPIRE_VERIFICATION_PANEL", "COORDINATOR", verificationPanelLifecycleJobPayloadSchema),
+  EXPIRE_VERIFICATION_ARBITRATION: job("EXPIRE_VERIFICATION_ARBITRATION", "COORDINATOR", verificationArbitrationExpiryJobPayloadSchema),
 } as const;
 
 export const agentJobKinds = Object.keys(agentJobSchemas) as Array<keyof typeof agentJobSchemas>;
@@ -126,6 +155,14 @@ export const testerJobCompletionResultSchema = z.object({
   transactionHash: bytes32Schema,
   passed: z.boolean(),
 }).strict();
+const testerCommitCompletionResultSchema = z.union([
+  testerJobCompletionResultSchema,
+  z.object({ reportHash: bytes32Schema, evidenceHash: bytes32Schema, alreadyCommitted: z.literal(true), passed: z.boolean() }).strict(),
+]);
+const testerRevealCompletionResultSchema = z.union([
+  testerJobCompletionResultSchema,
+  z.object({ reportHash: bytes32Schema, evidenceHash: bytes32Schema, alreadyRevealed: z.literal(true), passed: z.boolean() }).strict(),
+]);
 export const evaluatorJobCompletionResultSchema = z.union([
   z.object({ reportHash: bytes32Schema, transactionHash: bytes32Schema, approve: z.boolean() }).strict(),
   z.object({ reportHash: bytes32Schema, alreadySubmitted: z.literal(true), approve: z.boolean() }).strict(),
@@ -145,7 +182,8 @@ export const agentJobCompletionSchemas = {
   REVISE_TASK: executorJobCompletionResultSchema,
   REPAIR_MAINTENANCE: executorJobCompletionResultSchema,
   ASSEMBLE_TASK: assemblyJobCompletionResultSchema,
-  TEST_TASK: testerJobCompletionResultSchema,
+  TEST_TASK: testerCommitCompletionResultSchema,
+  REVEAL_TEST_SHARD: testerRevealCompletionResultSchema,
   MAINTENANCE_VALIDATION: testerJobCompletionResultSchema,
   EVALUATE_TASK: evaluatorJobCompletionResultSchema,
   FINALIZE_EVALUATION_PANEL: z.union([
@@ -161,6 +199,18 @@ export const agentJobCompletionSchemas = {
   START_MAINTENANCE_PANEL: z.union([
     coordinatorTransactionResult(["requestMaintenancePanel"]),
     coordinatorAlreadyFinalizedResult("requestMaintenancePanel"),
+  ]),
+  FINALIZE_VERIFICATION_PANEL: z.union([
+    coordinatorTransactionResult(["finalizeVerificationPanel"]),
+    coordinatorAlreadyFinalizedResult("finalizeVerificationPanel"),
+  ]),
+  EXPIRE_VERIFICATION_PANEL: z.union([
+    coordinatorTransactionResult(["expireVerificationPanel"]),
+    coordinatorAlreadyFinalizedResult("expireVerificationPanel"),
+  ]),
+  EXPIRE_VERIFICATION_ARBITRATION: z.union([
+    coordinatorTransactionResult(["expireVerificationArbitration"]),
+    coordinatorAlreadyFinalizedResult("expireVerificationArbitration"),
   ]),
 } as const satisfies Record<keyof typeof agentJobSchemas, z.ZodTypeAny>;
 

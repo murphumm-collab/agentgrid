@@ -52,10 +52,11 @@ Overrides remain explicitly bound to `127.0.0.1`; configure the matching smoke
 URLs with the selected ports. Do not stop unrelated containers to reclaim the
 default ports.
 
-After deploying the six protocol contracts, copy the application-facing addresses into
+After deploying the nine protocol contracts, copy the application-facing addresses into
 the server runtime (`TOKEN_ADDRESS`, `STAKE_MANAGER_ADDRESS`,
-`AGENT_REGISTRY_ADDRESS`, `TASK_REGISTRY_ADDRESS`, `REWARD_VAULT_ADDRESS`) and
-configure `DISPUTE_RESOLVER_ADDRESS` for server-side deployment verification. The
+`AGENT_REGISTRY_ADDRESS`, `TASK_REGISTRY_ADDRESS`, `REWARD_VAULT_ADDRESS`,
+`VERIFICATION_PANEL_ADDRESS`, `VERIFICATION_ARBITRATION_COURT_ADDRESS`,
+`DISPUTE_RESOLVER_ADDRESS`, and `PROTOCOL_ECONOMICS_ADDRESS`). The
 public `/api/chain/config` route validates and exposes only the BSC Testnet chain
 ID, confirmation count, public contract addresses and optional public
 `WALLETCONNECT_PROJECT_ID`; wallet code does not rely on values baked into the
@@ -76,10 +77,9 @@ Readiness endpoints:
 - `/api/health/live`: process liveness.
 - `/api/health/ready`: file-backed Secret policy, encryption configuration,
   PostgreSQL, Redis, artifact storage, alert delivery configuration, BSC RPC
-  chain ID, and exact normalized runtime bytecode at all six deployment contract
+  chain ID, and exact normalized runtime bytecode at all nine deployment contract
   addresses. Only compiler-declared immutable ranges may differ; an older,
-  unrelated or modified implementation returns HTTP 503. The dispute resolver is
-  verified server-side but is intentionally not exposed to browser wallet code.
+  unrelated or modified implementation returns HTTP 503.
   Readiness returns HTTP 503 until every check passes.
 
 ## Ingress and JSON request limits
@@ -361,14 +361,15 @@ filesystem-root, group-writable and world-writable configured directories.
 ## Maintenance scheduling
 
 `pnpm maintenance:scheduler` reads each on-chain grant start time and approved
-checkpoint, then creates an hourly-idempotent job targeted to the assigned
-tester when day 7, 30 or 90 is due. The tester reruns the delivery plus sealed
-hidden tests; only a passing signed result unlocks that checkpoint.
+checkpoint, then creates an hourly-idempotent three-member verification panel
+when day 7, 30 or 90 is due. Each member receives only its frozen criterion and
+hidden-test shard, commits before reveal, and the same 2-of-3 aggregation and
+challenge window must pass before the checkpoint unlocks.
 
 Before BSC deployment, configure three distinct `ARBITRATOR_ADDRESSES`, a valid
 `ARBITRATOR_QUORUM`, `PROTOCOL_COORDINATOR_ADDRESS`, reserve address and a
 testnet-only deployer key. Run `pnpm contracts:deploy:check`; it compiles all
-six protocol contracts, verifies chain ID 97, validates arbitration configuration and
+nine protocol contracts, verifies chain ID 97, validates arbitration configuration and
 reports deployer tBNB balance without broadcasting. After deployment run
 `pnpm contracts:deploy:verify` to check bytecode, registry wiring, separated
 roles, arbitrator membership/quorum and the 100,000 tAGT reward reserve. Runtime
@@ -395,9 +396,9 @@ waiting for five confirmations. If the process exits or the RPC disconnects,
 rerun with the same configuration and `DEPLOYMENT_RUN_FILE`; a changed role,
 bytecode hash or compiler configuration is rejected, and an already recorded
 hash is awaited instead of rebroadcast. Keep both the pending run file and final
-manifest as launch evidence. The final manifest contains exactly 15 successful
-transactions: six deployments, three wiring calls, reserve funding and five
-ownership transfers.
+manifest as launch evidence. The current final manifest contains exactly 28
+successful transactions: nine deployments, twelve wiring/authorization calls,
+reserve funding and six ownership transfers.
 
 `pnpm contracts:deploy:verify` is also fail-closed. It opens the mode-0600
 manifest without following symlinks, checks every recorded receipt and its

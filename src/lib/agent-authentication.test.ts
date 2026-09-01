@@ -26,7 +26,7 @@ describe("Agent authentication header contract", () => {
       info: { version: string };
       components: { securitySchemes: Record<string, { description?: string; "x-agentgrid-constraints"?: Record<string, unknown> }> };
     };
-    expect(openapi.info.version).toBe("0.7.0");
+    expect(openapi.info.version).toBe("0.8.0");
     expect(openapi.components.securitySchemes.AgentId["x-agentgrid-constraints"]).toEqual({
       minLength: 3,
       maxLength: 120,

@@ -16,10 +16,10 @@ import {
 } from "./protocol";
 import { readDatabase, updateDatabase } from "./store";
 import { bscRpcTransport } from "./bsc-rpc";
-import type { Agent, AgentRole, AgentScope, SoftwareEvidence, Task } from "./types";
+import type { Agent, AgentRole, AgentScope, ProtocolEconomicsSummary, SoftwareEvidence, Task } from "./types";
 import { chainContractAddresses, isProductionMode, runtimeConfig } from "./env";
 import { latestBusinessAdoptions, latestSignedTaskEvaluations, latestSignedTestEvidence, readChainProjectionRows } from "./store-postgres";
-import { projectAgentStatuses, projectChainBusiness } from "./chain-projection";
+import { projectAgentQualities, projectAgentStatuses, projectChainBusiness } from "./chain-projection";
 import { agentRegistryAbi, stakeManagerAbi } from "./contracts";
 import { AGENT_ROLES, AGENT_ROLE_CAPABILITY_MASK, AGENT_ROLE_DEFAULT_SCOPES, AGENT_SCOPES, roleAllowsScope } from "./agent-roles";
 import { assessTaskDefinition, collaborationPlanBlockers, taskDefinitionSchema, verificationPlanBlockers } from "./task-definition";
@@ -85,16 +85,25 @@ export const softwareEvidenceSchema = z.object({
 
 export async function protocolSnapshot() {
   const database = await readDatabase();
+  let economics: ProtocolEconomicsSummary = {
+    grossTaskRewards: 0, agentPool: 0, daoVested: 0, sourceVested: 0,
+    lifecycleConsumed: 0, rewardVaultRecycled: 0, burned: 0, securityReserved: 0,
+    netDemand30d: { status: "UNAVAILABLE", reason: "Demo mode has no confirmed external buyback or treasury-sale receipts." },
+    netDemand90d: { status: "UNAVAILABLE", reason: "Demo mode has no confirmed external buyback or treasury-sale receipts." },
+  };
   if (isProductionMode()) {
     const rows = await readChainProjectionRows();
     const projection = projectChainBusiness(rows);
     database.positions = projection.positions;
     database.tasks = projection.tasks;
     database.rewards = projection.rewards;
+    economics = projection.economics;
     const agentStatuses = projectAgentStatuses(rows.events);
+    const agentQualities = projectAgentQualities(rows.events);
     for (const agent of database.agents) {
       const active = agentStatuses.get(agent.owner.toLowerCase());
       if (active !== undefined) agent.online = Boolean(agent.online && active);
+      agent.quality = agentQualities.get(agent.owner.toLowerCase());
     }
     const submittedEvaluations = new Map(rows.events.filter((event) => event.eventName === "TaskEvaluationSubmitted").map((event) => [
       `${String(event.eventArgs?.taskId)}:${String(event.eventArgs?.evaluator).toLowerCase()}`,
@@ -110,16 +119,19 @@ export async function protocolSnapshot() {
       const task = database.tasks.find((item) => item.id === evaluation.taskId);
       if (task) { task.category = category; if (task.evaluation) task.evaluation.category = category; }
     }
-    const submittedEvidence = new Map(rows.events.filter((event) => event.eventName === "TestSubmitted" || event.eventName === "CompetitionResultSubmitted").map((event) => [String(event.eventArgs?.taskId), String(event.eventArgs?.evidenceHash).toLowerCase()]));
+    const submittedEvidence = new Set(rows.events.filter((event) => event.eventName === "TestSubmitted" || event.eventName === "CompetitionResultSubmitted").map((event) => `${String(event.eventArgs?.taskId)}:${String(event.eventArgs?.evidenceHash).toLowerCase()}`));
     const evidenceGroups = Map.groupBy(await latestSignedTestEvidence(), (evidence) => evidence.taskId);
     for (const [taskId, evidenceRows] of evidenceGroups) {
       const task = database.tasks.find((item) => item.id === taskId);
-      const currentEvidence = evidenceRows.filter((evidence) => evidence.workRound === (task?.workRound ?? 1));
+      const initialEvidence = evidenceRows.filter((evidence) => evidence.workRound === (task?.workRound ?? 1) && evidence.checkpoint === 0);
+      const currentEpoch = initialEvidence.reduce((latest, evidence) => Math.max(latest, evidence.panelEpoch), 0);
+      const currentEvidence = initialEvidence.filter((evidence) => evidence.panelEpoch === currentEpoch);
       if (!task || task.testerIds?.length !== 3 || currentEvidence.length !== 3 || !task.completionDefinition?.verificationPlan) continue;
       const ordered = task.testerIds.map((tester) => currentEvidence.find((evidence) => evidence.testerAddress.toLowerCase() === tester.toLowerCase())).filter(Boolean) as typeof evidenceRows;
       if (ordered.length !== 3 || !(await Promise.all(ordered.map((evidence, shard) => verifyStoredTestEvidence({
         ...evidence, expectedTaskRegistry: signingTaskRegistry, expectedWorkRound: task.workRound ?? 1,
-        expectedVerificationShard: shard, expectedExecutionMode: task.executionMode, expectedExecutorOrder: task.executorIds,
+        expectedCheckpoint: 0, expectedPanelEpoch: currentEpoch, expectedVerificationShard: shard,
+        expectedExecutionMode: task.executionMode, expectedExecutorOrder: task.executorIds,
       })))).every(Boolean)) continue;
       const criterionVotes = new Map<string, CriterionVerificationResult[]>();
       let authorized = true;
@@ -140,8 +152,10 @@ export async function protocolSnapshot() {
       }).filter(Boolean) as NonNullable<typeof task.testResult>["criterionResults"] | undefined;
       const evidenceHashes = ordered.map((evidence) => storedEvidenceHash(evidence)) as [Hex, Hex, Hex];
       const aggregateHash = panelAggregateEvidenceHash({ taskId, workRound: task.workRound ?? 1, evidenceHashes, testers: task.testerIds as [Hex, Hex, Hex], passMask });
-      if (submittedEvidence.get(taskId) !== aggregateHash.toLowerCase()) continue;
-      const commitOrders = new Map(rows.events.filter((event) => event.eventName === "ShardCommitted" && String(event.eventArgs?.taskId) === taskId && Number(event.eventArgs?.workRound) === (task.workRound ?? 1)).map((event) => [String(event.eventArgs?.tester).toLowerCase(), Number(event.eventArgs?.commitOrder)]));
+      if (!submittedEvidence.has(`${taskId}:${aggregateHash.toLowerCase()}`)) continue;
+      const commitOrders = new Map(rows.events.filter((event) => event.eventName === "ShardCommitted" && String(event.eventArgs?.taskId) === taskId
+        && Number(event.eventArgs?.workRound) === (task.workRound ?? 1) && Number(event.eventArgs?.epoch) === currentEpoch)
+        .map((event) => [String(event.eventArgs?.tester).toLowerCase(), Number(event.eventArgs?.commitOrder)]));
       if (commitOrders.size !== 3 || [...commitOrders.values()].some((order) => !Number.isInteger(order) || order < 0 || order > 2) || new Set(commitOrders.values()).size !== 3) continue;
       const reports = ordered.map((evidence) => evidence.report as Record<string, unknown>);
       const passed = Boolean(criterionResults?.length) && criterionResults!.every((result) => result.passed);
@@ -202,6 +216,7 @@ export async function protocolSnapshot() {
     agents: publicAgents,
     rewards: database.rewards,
     ledger: database.ledger,
+    economics,
   };
 }
 

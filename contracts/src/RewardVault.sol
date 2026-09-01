@@ -5,14 +5,15 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {ProtocolEconomics} from "./ProtocolEconomics.sol";
 
 contract RewardVault is Ownable, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     uint256 public constant EPOCH_DURATION = 30 days;
     uint256 public constant STAKE_CAP_BPS = 2_000;
-    uint256 public constant EXECUTOR_BPS = 6_500;
-    uint256 public constant TESTER_BPS = 1_500;
+    uint256 public constant EXECUTOR_BPS = 8_000;
+    uint256 public constant TESTER_BPS = 2_000;
     uint256 public constant BPS = 10_000;
 
     struct Grant {
@@ -31,6 +32,7 @@ contract RewardVault is Ownable, ReentrancyGuard {
     uint256 public immutable epochBudget;
     address public taskRegistry;
     address public verificationPanel;
+    ProtocolEconomics public protocolEconomics;
     mapping(uint256 => uint256) public epochSpent;
     mapping(bytes32 => uint256) public collaborationCount;
     mapping(uint256 => Grant) private grants;
@@ -68,6 +70,7 @@ contract RewardVault is Ownable, ReentrancyGuard {
     event EvaluationFeeRegistered(uint256 indexed taskId, uint256 amount);
     event EvaluationFeePaid(uint256 indexed taskId, address indexed evaluator, uint256 amount);
     event EvaluationFeeSettled(uint256 indexed taskId, uint256 reporterCount, uint256 reserveAmount);
+    event GrantEconomicsApplied(uint256 indexed taskId, uint256 grossReward, uint256 agentPool);
 
     constructor(IERC20 token_, address reserve_, uint256 epochBudget_, address initialOwner) Ownable(initialOwner) {
         token = token_;
@@ -89,6 +92,12 @@ contract RewardVault is Ownable, ReentrancyGuard {
     function setVerificationPanel(address panel) external onlyOwner {
         if (panel == address(0) || verificationPanel != address(0)) revert RegistryAlreadySet();
         verificationPanel = panel;
+    }
+
+    function setProtocolEconomics(ProtocolEconomics economics) external onlyOwner {
+        if (address(economics) == address(0) || address(protocolEconomics) != address(0)) revert RegistryAlreadySet();
+        protocolEconomics = economics;
+        token.forceApprove(address(economics), type(uint256).max);
     }
 
     function setTesterPanel(uint256 taskId, uint8 checkpoint, address[3] calldata testers, uint16[3] calldata weightsBps) external {
@@ -163,16 +172,26 @@ contract RewardVault is Ownable, ReentrancyGuard {
         if (grossReward > available) grossReward = available;
         if (grossReward == 0) revert EmptyReward();
 
+        uint256 agentPool = grossReward;
+        if (address(protocolEconomics) != address(0)) {
+            // Match ProtocolEconomics' independently rounded 3% + 2% legs.
+            // A single 5% floor differs by one wei for some gross values and
+            // would otherwise make a valid small Grant revert at the router.
+            uint256 networkAllocation = (grossReward * 300) / BPS + (grossReward * 200) / BPS;
+            agentPool = protocolEconomics.routeTaskReward(taskId, grossReward, networkAllocation);
+            emit GrantEconomicsApplied(taskId, grossReward, agentPool);
+        }
+
         Grant storage grant = grants[taskId];
         grant.executors = executors;
         grant.executorWeightsBps = executorWeightsBps;
         grant.tester = tester;
         grant.startedAt = block.timestamp;
-        grant.total = grossReward;
-        grant.amounts[0] = (grossReward * 4_000) / BPS;
-        grant.amounts[1] = (grossReward * 2_000) / BPS;
-        grant.amounts[2] = (grossReward * 2_000) / BPS;
-        grant.amounts[3] = grossReward - grant.amounts[0] - grant.amounts[1] - grant.amounts[2];
+        grant.total = agentPool;
+        grant.amounts[0] = (agentPool * 4_000) / BPS;
+        grant.amounts[1] = (agentPool * 2_000) / BPS;
+        grant.amounts[2] = (agentPool * 2_000) / BPS;
+        grant.amounts[3] = agentPool - grant.amounts[0] - grant.amounts[1] - grant.amounts[2];
         grant.approved[0] = true;
         epochSpent[epoch] += grossReward;
         collaborationCount[collaborationKey] = count + 1;

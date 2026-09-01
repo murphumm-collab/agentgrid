@@ -13,7 +13,7 @@ export function testEvidenceReportHash(raw: unknown) {
 }
 
 type EvidenceMessageInput = Omit<SignedEvidenceSubmission, "testerAgentId" | "signature">;
-export const testEvidenceSigningVersion = "AgentGrid Test Evidence V3" as const;
+export const testEvidenceSigningVersion = "AgentGrid Test Evidence V4" as const;
 
 export function evidenceMessage(raw: EvidenceMessageInput) {
   const input = signedEvidenceSubmissionSchema.omit({ testerAgentId: true, signature: true }).parse(raw);
@@ -28,6 +28,8 @@ export function evidenceMessage(raw: EvidenceMessageInput) {
       `TaskRegistry: ${input.taskRegistry.toLowerCase()}`,
       `Task: ${input.taskId}`,
       `Work round: ${input.workRound}`,
+      `Checkpoint: ${input.checkpoint}`,
+      `Panel epoch: ${input.panelEpoch}`,
       `Verification shard: ${input.verificationShard}`,
       `Execution mode: ${input.executionMode}`,
       `Artifact: ${input.artifactHash}`,
@@ -41,7 +43,7 @@ export async function verifyStoredTestEvidence(input: {
   taskId: string; testerAddress: string; artifactHash: string; reportHash: string; report: unknown; signature: string;
   signingVersion: string | null; signingMessage: string | null; expectedTaskRegistry: string;
   expectedWorkRound: number; expectedExecutionMode: "COLLABORATION" | "COMPETITION"; expectedExecutorOrder: string[];
-  expectedVerificationShard: number;
+  expectedCheckpoint: number; expectedPanelEpoch: number; expectedVerificationShard: number;
   allowLegacy?: boolean;
 }) {
   try {
@@ -55,12 +57,13 @@ export async function verifyStoredTestEvidence(input: {
       message = `AgentGrid Test Evidence\nTask: ${input.taskId}\nArtifact: ${input.artifactHash}\nReport: ${reportHash}`;
     } else {
       if (input.signingVersion !== testEvidenceSigningVersion || !input.signingMessage) return false;
-      const match = input.signingMessage.match(/^AgentGrid Test Evidence V3\nChain ID: (97)\nTaskRegistry: (0x[0-9a-f]{40})\nTask: ([0-9]+)\nWork round: ([1-9][0-9]*)\nVerification shard: ([0-2])\nExecution mode: (COLLABORATION|COMPETITION)\nArtifact: (sha256:[0-9a-f]{64})\nExecutor order: (0x[0-9a-f]{64})\nReport: (0x[0-9a-f]{64})$/);
+      const match = input.signingMessage.match(/^AgentGrid Test Evidence V4\nChain ID: (97)\nTaskRegistry: (0x[0-9a-f]{40})\nTask: ([0-9]+)\nWork round: ([1-9][0-9]*)\nCheckpoint: ([0-3])\nPanel epoch: ([1-9][0-9]*)\nVerification shard: ([0-2])\nExecution mode: (COLLABORATION|COMPETITION)\nArtifact: (sha256:[0-9a-f]{64})\nExecutor order: (0x[0-9a-f]{64})\nReport: (0x[0-9a-f]{64})$/);
       const executorOrder = signedEvidenceSubmissionSchema.shape.executorOrder.parse(input.expectedExecutorOrder);
       const executorOrderHash = keccak256(stringToHex(JSON.stringify(executorOrder.map((address) => address.toLowerCase()))));
       if (!match || match[2] !== input.expectedTaskRegistry.toLowerCase() || match[3] !== input.taskId
-        || match[4] !== String(input.expectedWorkRound) || match[5] !== String(input.expectedVerificationShard) || match[6] !== input.expectedExecutionMode
-        || match[7] !== input.artifactHash || match[8] !== executorOrderHash || match[9] !== reportHash) return false;
+        || match[4] !== String(input.expectedWorkRound) || match[5] !== String(input.expectedCheckpoint)
+        || match[6] !== String(input.expectedPanelEpoch) || match[7] !== String(input.expectedVerificationShard) || match[8] !== input.expectedExecutionMode
+        || match[9] !== input.artifactHash || match[10] !== executorOrderHash || match[11] !== reportHash) return false;
       if ((input.expectedExecutionMode === "COMPETITION") !== Boolean(report.competition)) return false;
       message = input.signingMessage;
     }

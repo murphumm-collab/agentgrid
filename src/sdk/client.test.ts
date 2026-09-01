@@ -19,10 +19,12 @@ const publicTask = {
   maxExecutors: 2,
   executorIds: [],
   testerId: null,
+  testerIds: [],
   criteria: [],
   artifact: null,
   verification: null,
   reward: null,
+  economics: null,
   maintenance: { healthy: [] },
   businessAdoption: null,
 } as const;

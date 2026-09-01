@@ -12,6 +12,7 @@
     "release:test-audit": "pnpm test && pnpm audit --prod --audit-level high --json",
     "test:watch": "vitest",
     "contracts:compile": "tsx contracts/scripts/compile.ts",
+    "contracts:manifest:generate": "tsx contracts/scripts/generate-runtime-manifest.ts",
     "contracts:test": "vitest run --config contracts/vitest.config.ts",
     "contracts:deploy:bsc-testnet": "tsx contracts/scripts/deploy.ts",
     "contracts:deploy:check": "tsx contracts/scripts/deploy-check.ts",

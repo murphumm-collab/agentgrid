@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseEther } from "viem";
-import { projectAgentStatuses, projectChainBusiness } from "./chain-projection";
+import { projectAgentQualities, projectAgentStatuses, projectChainBusiness } from "./chain-projection";
 import type { ChainProjectionRow, CommitmentProjectionRow } from "./store-postgres";
 
 const event = (eventName: string, eventArgs: Record<string, string | number | boolean | Array<string | number | boolean>>, blockNumber: string): ChainProjectionRow => ({
@@ -19,6 +19,20 @@ describe("confirmed chain business projection", () => {
     expect(statuses.get("0xother")).toBe(false);
   });
 
+  it("projects role-isolated quality, cooldown, ban and evidence-bound rehabilitation", () => {
+    const qualities = projectAgentQualities([
+      event("AgentQualityUpdated", { agent: "0xAgent", role: 2, scoreBps: 2200, outcomeCount: 4, severeFaults: 2, cooldownUntil: 1_800_000_000, banned: false }, "1"),
+      event("AgentQualityUpdated", { agent: "0xAgent", role: 1, scoreBps: 6400, outcomeCount: 8, severeFaults: 0, cooldownUntil: 0, banned: false }, "2"),
+      event("AgentQualityUpdated", { agent: "0xAgent", role: 2, scoreBps: 700, outcomeCount: 5, severeFaults: 3, cooldownUntil: 1_800_000_100, banned: true }, "3"),
+      event("AgentRoleRehabilitated", { agent: "0xAgent", role: 2, evidenceHash: `0x${"a".repeat(64)}` }, "4"),
+    ]).get("0xagent");
+    expect(qualities).toEqual({
+      executor: { scoreBps: 6400, outcomeCount: 8, severeFaults: 0, cooldownUntil: null, banned: false },
+      validator: { scoreBps: 2500, outcomeCount: 5, severeFaults: 2, cooldownUntil: null, banned: false },
+      evaluator: { scoreBps: 5000, outcomeCount: 0, severeFaults: 0, cooldownUntil: null, banned: false },
+    });
+  });
+
   it("folds stake, task lifecycle, maintenance and rewards", () => {
     const commitment: CommitmentProjectionRow = {
       specHash: `0x${"1".repeat(64)}`, publisher: "0xPublisher", status: "CONFIRMED", chainTaskId: "9",
@@ -28,6 +42,11 @@ describe("confirmed chain business projection", () => {
     const result = projectChainBusiness({ commitments: [commitment], events: [
       event("PositionCreated", { positionId: "3", owner: "0xPublisher", amount: parseEther("1000").toString() }, "1"),
       event("CreditIssued", { positionId: "3", expiresAt: 1_800_000_000 }, "2"),
+      event("TaskSourceFrozen", { taskId: "9", requestedSourceId: `0x${"8".repeat(64)}`, effectiveSourceId: `0x${"8".repeat(64)}`, recipient: "0xSource", fallbackToDao: false }, "2"),
+      event("VestingCreated", { vestingId: `0x${"a".repeat(64)}`, recipient: "0xDao", amount: parseEther("0.4").toString(), unlockAt: 1_800_000_000 }, "2"),
+      event("VestingCreated", { vestingId: `0x${"b".repeat(64)}`, recipient: "0xSource", amount: parseEther("0.3").toString(), unlockAt: 1_800_000_000 }, "2"),
+      event("LifecycleChargeRouted", { taskId: "9", stage: 0, stakeBasis: parseEther("1000").toString(), amount: parseEther("2").toString(), rewardVaultAmount: parseEther("0.7").toString(), burnAmount: parseEther("0.4").toString(), daoAmount: parseEther("0.4").toString(), sourceAmount: parseEther("0.3").toString(), securityAmount: parseEther("0.2").toString(), daoVestingId: `0x${"a".repeat(64)}`, sourceVestingId: `0x${"b".repeat(64)}` }, "2"),
+      event("LifecycleFeeCharged", { positionId: "3", taskId: "9", stage: 0, stakeBasis: parseEther("1000").toString(), amount: parseEther("2").toString() }, "2"),
       event("TaskCreated", { taskId: "9", publisher: "0xPublisher", positionId: "3", specHash: commitment.specHash }, "3"),
       event("CreditConsumed", { positionId: "3", taskId: "9" }, "3"),
       event("TaskClaimed", { taskId: "9", executor: "0xExecutor" }, "4"),
@@ -35,18 +54,23 @@ describe("confirmed chain business projection", () => {
       event("ContributionSubmitted", { taskId: "9", executor: "0xExecutor", workRound: "1", contributionHash: `0x${"a".repeat(64)}` }, "4"),
       event("WorkSubmitted", { taskId: "9", artifactHash: `0x${"2".repeat(64)}` }, "5"),
       event("TesterAssigned", { taskId: "9", tester: "0xTester", selectionProof: `0x${"3".repeat(64)}` }, "6"),
+      event("ExecutorQualityMultipliersFrozen", { taskId: "9", workRound: 1, epoch: 1, multipliersBps: [10_800] }, "6"),
       event("TestSubmitted", { taskId: "9", passed: true, evidenceHash: `0x${"4".repeat(64)}` }, "7"),
       event("UserReviewed", { taskId: "9", accepted: true, reasonHash: `0x${"0".repeat(64)}` }, "8"),
+      event("VestingCreated", { vestingId: `0x${"c".repeat(64)}`, recipient: "0xDao", amount: parseEther("6").toString(), unlockAt: 1_800_000_100 }, "8"),
+      event("VestingCreated", { vestingId: `0x${"d".repeat(64)}`, recipient: "0xSource", amount: parseEther("4").toString(), unlockAt: 1_800_000_100 }, "8"),
+      event("TaskRewardRouted", { taskId: "9", grossReward: parseEther("200").toString(), agentPool: parseEther("190").toString(), daoAmount: parseEther("6").toString(), sourceAmount: parseEther("4").toString(), daoVestingId: `0x${"c".repeat(64)}`, sourceVestingId: `0x${"d".repeat(64)}` }, "8"),
       event("GrantCreated", { taskId: "9", grossReward: parseEther("200").toString(), multiplierBps: "10000", issuanceProof: `0x${"5".repeat(64)}` }, "8"),
       event("CheckpointApproved", { taskId: "9", checkpoint: "1" }, "9"),
       event("MaintenanceValidated", { taskId: "9", checkpoint: "1", passed: true, evidenceHash: `0x${"6".repeat(64)}` }, "9"),
-      event("RewardClaimed", { taskId: "9", checkpoint: "0", amount: parseEther("80").toString() }, "10"),
+      event("RewardClaimed", { taskId: "9", checkpoint: "0", amount: parseEther("76").toString() }, "10"),
     ] });
-    expect(result.positions[0]).toMatchObject({ id: "3", amount: 1000, activeTaskId: "9" });
-    expect(result.tasks[0]).toMatchObject({ id: "9", state: "MAINTENANCE", executorIds: ["0xExecutor"], teamClosed: true, contributionHashes: { "0xexecutor": `0x${"a".repeat(64)}` }, testerId: "0xTester", maintenanceHealthy: [true, false, false] });
-    expect(result.rewards[0].total).toBe(200);
+    expect(result.positions[0]).toMatchObject({ id: "3", amount: 998, activeTaskId: "9" });
+    expect(result.tasks[0]).toMatchObject({ id: "9", state: "MAINTENANCE", executorIds: ["0xExecutor"], executorQualityMultipliersBps: [10_800], teamClosed: true, contributionHashes: { "0xexecutor": `0x${"a".repeat(64)}` }, testerId: "0xTester", maintenanceHealthy: [true, false, false], economics: { sourceRecipient: "0xSource", grossReward: 200, agentPool: 190 } });
+    expect(result.rewards[0].total).toBe(190);
     expect(result.rewards[0].tranches.map((item) => item.status)).toEqual(["CLAIMED", "CLAIMABLE", "LOCKED", "LOCKED"]);
     expect(result.rewards[0].tranches[1].dueAt).toBe("2026-01-08T00:00:08.000Z");
+    expect(result.economics).toMatchObject({ grossTaskRewards: 200, agentPool: 190, daoVested: 6.4, sourceVested: 4.3, lifecycleConsumed: 2, rewardVaultRecycled: 0.7, burned: 0.4, securityReserved: 0.2, netDemand30d: { status: "UNAVAILABLE" } });
   });
 
   it("applies slashing and releases the slot after completion", () => {

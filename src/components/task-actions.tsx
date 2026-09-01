@@ -39,14 +39,10 @@ export function TaskActions({ task, reward, locale, production = false, isPublis
 
   const demoArtifactHash = "sha256:7b57c8b979c793b5f50791478c1fc5772d49ed80f06c8a32f9f5079e0b07f799";
   const executorAuth = { id: "agent-builder-01", key: "amp_demo_executor" };
-  const testerKeys: Record<string, string> = {
-    "agent-verifier-01": "amp_demo_tester",
-    "agent-verifier-02": "amp_demo_proofline",
-  };
   return (
     <div className="action-stack">
       {result && <ActionNotice tone={result.tone}>{result.message}</ActionNotice>}
-      {task.state === "EVALUATING" && <div className="notice"><ShieldCheck size={15} style={{ verticalAlign: "middle", marginRight: 8 }} />{locale === "zh" ? `任务尚未公开。申请时已占用 Task Credit 并扣除 3 AGT 不可退评估费；协议正在收集 3 名随机评估 Agent 的报告（${task.evaluation?.completed ?? 0}/${task.evaluation?.required ?? 3}）。至少 2 票通过后才另扣发布费并进入市场；拒绝或超时会释放 Credit。` : `This task is not public. The request already occupied its Task Credit and charged the non-refundable 3 AGT evaluation fee. The protocol is collecting reports from 3 randomized evaluator Agents (${task.evaluation?.completed ?? 0}/${task.evaluation?.required ?? 3}). At least 2 approvals charge the separate publication fee and open the task; rejection or expiry releases the Credit.`}</div>}
+      {task.state === "EVALUATING" && <div className="notice"><ShieldCheck size={15} style={{ verticalAlign: "middle", marginRight: 8 }} />{locale === "zh" ? `任务尚未公开。申请时已占用 Task Credit 并按发布者质押基数扣除 0.2% 评估阶段费；协议正在收集 3 名随机评估 Agent 的报告（${task.evaluation?.completed ?? 0}/${task.evaluation?.required ?? 3}）。至少 2 票通过后才扣除 0.3% 公开阶段费并进入市场；拒绝或超时会释放 Credit。` : `This task is not public. Its Task Credit is occupied and the evaluation stage charged 0.2% of the publisher stake basis. The protocol is collecting reports from 3 randomized evaluator Agents (${task.evaluation?.completed ?? 0}/${task.evaluation?.required ?? 3}). At least 2 approvals charge the 0.3% publication stage and open the task; rejection or expiry releases the Credit.`}</div>}
       {task.state === "OPEN" && (
         production
           ? <div className="notice"><Hammer size={15} style={{ verticalAlign: "middle", marginRight: 8 }} />{locale === "zh" ? `协议已创建 ${task.maxExecutors} 个执行席位，只有已质押并注册的 Agent Runner 可以领取。` : `The protocol opened ${task.maxExecutors} executor slot(s); only staked registered Agent Runners can claim them.`}</div>
@@ -64,16 +60,7 @@ export function TaskActions({ task, reward, locale, production = false, isPublis
               <Hammer size={15} /> {t(locale, "submitDemo")}
             </button>
       )}
-      {task.state === "TESTING" && task.testerId && (
-        production
-          ? <div className="notice"><FlaskConical size={15} style={{ verticalAlign: "middle", marginRight: 8 }} />{locale === "zh" ? "最终加密成果已仅派给链上随机测试 Agent；发布者不能代测或取得密钥。" : "The final encrypted artifact is assigned only to the on-chain randomized tester; the publisher cannot self-test or obtain its key."}</div>
-          : <button className="button button-primary" disabled={Boolean(loading)} onClick={() => run(t(locale, "independentTest"), () => post(`/api/tasks/${task.id}/test`, {
-              testerId: task.testerId, selectionProof: task.testerSelectionProof,
-              evidence: { testsPassed: true, hiddenTestsPassed: true, lineCoverage: 0.94, branchCoverage: 0.91, criticalBranchCoverage: 0.98, artifactHash: task.submission?.artifactHash, logUrl: "https://example.com/test-runs/verified" },
-            }, { id: task.testerId!, key: testerKeys[task.testerId!] ?? "" }))}>
-              <FlaskConical size={15} /> {t(locale, "runTester")}
-            </button>
-      )}
+      {task.state === "TESTING" && <div className="notice"><FlaskConical size={15} style={{ verticalAlign: "middle", marginRight: 8 }} />{locale === "zh" ? `任务由 ${task.testerIds?.length ?? 0}/3 名链上随机验证 Agent 隔离交叉验证。每人只能读取自己的冻结分片，三份承诺齐全后才能揭示；演示页不会伪造单验证者通过。` : `The task is isolated across ${task.testerIds?.length ?? 0}/3 randomized on-chain validators. Each member can read only its frozen shard and reports reveal only after all three commitments; the demo UI does not fabricate a single-validator pass.`}</div>}
       {task.state === "USER_REVIEW" && (!production || isPublisher) && (
         <>
           <button className="button button-primary" disabled={Boolean(loading)} onClick={() => run(t(locale, "userAcceptance"), () => production ? reviewTaskOnChain(BigInt(task.id), true, "") : post(`/api/tasks/${task.id}/review`, { publisher: task.publisher, decision: "ACCEPT" }))}>
@@ -97,7 +84,7 @@ export function TaskActions({ task, reward, locale, production = false, isPublis
       )}
       {task.state === "MAINTENANCE" && (
         <>
-          {production && <div className="notice"><ShieldCheck size={15} style={{ verticalAlign: "middle", marginRight: 8 }} />{locale === "zh" ? "维护检查由协议在到期时自动派给原随机测试 Agent；执行 Agent 和发布者都不能自行批准。" : "Due maintenance checks are automatically assigned to the randomized tester; neither executor nor publisher can self-approve them."}</div>}
+          {production && <div className="notice"><ShieldCheck size={15} style={{ verticalAlign: "middle", marginRight: 8 }} />{locale === "zh" ? "维护检查到期后由协议重新选出三名合格验证 Agent，按冻结分片再次 commit/reveal 交叉验证；执行 Agent 和发布者都不能自行批准。" : "At each due maintenance checkpoint the protocol selects a fresh three-member eligible panel for another frozen-shard commit/reveal validation; neither executors nor the publisher can self-approve."}</div>}
           {task.maintenanceHealthy.map((healthy, index) => {
             if (healthy) return null;
             const tranche = reward?.tranches[index + 1];

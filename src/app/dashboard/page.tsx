@@ -33,6 +33,17 @@ export default async function AiDashboardPage() {
       <div><ShieldCheck size={17} /><span><strong>{dashboard.mode.toUpperCase()}</strong><small>{dashboard.discovery.a2aCompatible ? "A2A compatible" : "AgentGrid REST · A2A pending"}</small></span></div>
     </section>
 
+    <section className="card card-pad" style={{ marginBottom: 22 }}>
+      <div className="section-head"><div><div className="eyebrow">CONFIRMED PROTOCOL ECONOMICS</div><h2 className="section-title">{zh ? "链上经济事实，不展示价格承诺" : "On-chain economics, without price promises"}</h2></div><span className="badge badge-blue">95 / 3 / 2</span></div>
+      <div className="grid stats-grid">
+        <div className="stat-card"><div className="stat-head"><span>{zh ? "任务总奖励" : "Gross task rewards"}</span></div><div className="stat-value">{dashboard.economics.grossTaskRewards.toLocaleString()}</div><div className="stat-note">AGT · {zh ? "Agent 池" : "Agent pool"} {dashboard.economics.agentPool.toLocaleString()}</div></div>
+        <div className="stat-card"><div className="stat-head"><span>{zh ? "生命周期消耗" : "Lifecycle consumed"}</span></div><div className="stat-value">{dashboard.economics.lifecycleConsumed.toLocaleString()}</div><div className="stat-note">AGT · {zh ? "回收" : "recycled"} {dashboard.economics.rewardVaultRecycled.toLocaleString()}</div></div>
+        <div className="stat-card"><div className="stat-head"><span>{zh ? "已确认销毁" : "Confirmed burn"}</span></div><div className="stat-value">{dashboard.economics.burned.toLocaleString()}</div><div className="stat-note">AGT · {zh ? "安全准备金" : "security reserve"} {dashboard.economics.securityReserved.toLocaleString()}</div></div>
+        <div className="stat-card"><div className="stat-head"><span>{zh ? "锁仓分配" : "Vested allocation"}</span></div><div className="stat-value">{(dashboard.economics.daoVested + dashboard.economics.sourceVested).toLocaleString()}</div><div className="stat-note">DAO {dashboard.economics.daoVested.toLocaleString()} · source {dashboard.economics.sourceVested.toLocaleString()}</div></div>
+      </div>
+      <div className="notice" style={{ marginTop: 14 }}><strong>AGT net demand 30d / 90d: UNAVAILABLE</strong><p>{zh ? "外部回购执行和金库出售回执尚未纳入索引，因此不会用不完整数据计算或暗示净需求为正。" : dashboard.economics.netDemand30d.reason}</p></div>
+    </section>
+
     <div className="grid stats-grid">
       <div className="card stat-card"><div className="stat-head"><span>{zh ? "公开任务" : "Public tasks"}</span><span className="stat-icon"><Workflow size={17} /></span></div><div className="stat-value">{dashboard.summary.publicTasks}</div><div className="stat-note">{stateEntries.map(([state, count]) => `${state} ${count}`).join(" · ") || "—"}</div></div>
       <div className="card stat-card"><div className="stat-head"><span>{zh ? "在线 Agent" : "Online agents"}</span><span className="stat-icon"><Bot size={17} /></span></div><div className="stat-value">{dashboard.summary.onlineAgents}</div><div className="stat-note">EXEC {dashboard.summary.roleSupply.EXECUTOR} · TEST {dashboard.summary.roleSupply.TESTER} · EVAL {dashboard.summary.roleSupply.EVALUATOR}</div></div>

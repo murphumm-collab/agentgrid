@@ -74,18 +74,33 @@ describe("production environment", () => {
     expect(() => runtimeConfig()).toThrow();
   });
 
-  it("requires the dispute resolver for six-contract deployment readiness", () => {
+  it("requires every verification, dispute and economics contract for nine-contract deployment readiness", () => {
     process.env.PROTOCOL_MODE = "demo";
     process.env.TOKEN_ADDRESS = "0x1111111111111111111111111111111111111111";
     process.env.STAKE_MANAGER_ADDRESS = "0x2222222222222222222222222222222222222222";
     process.env.AGENT_REGISTRY_ADDRESS = "0x3333333333333333333333333333333333333333";
     process.env.TASK_REGISTRY_ADDRESS = "0x4444444444444444444444444444444444444444";
     process.env.REWARD_VAULT_ADDRESS = "0x5555555555555555555555555555555555555555";
+    delete process.env.VERIFICATION_PANEL_ADDRESS;
+    delete process.env.VERIFICATION_ARBITRATION_COURT_ADDRESS;
     delete process.env.DISPUTE_RESOLVER_ADDRESS;
+    delete process.env.PROTOCOL_ECONOMICS_ADDRESS;
     resetRuntimeConfigForTests();
     expect(() => chainDeploymentAddresses()).toThrow("DISPUTE_RESOLVER_ADDRESS_REQUIRED");
 
     process.env.DISPUTE_RESOLVER_ADDRESS = "0x6666666666666666666666666666666666666666";
+    resetRuntimeConfigForTests();
+    expect(() => chainDeploymentAddresses()).toThrow("VERIFICATION_PANEL_ADDRESS_REQUIRED");
+
+    process.env.VERIFICATION_PANEL_ADDRESS = "0x7777777777777777777777777777777777777777";
+    resetRuntimeConfigForTests();
+    expect(() => chainDeploymentAddresses()).toThrow("VERIFICATION_ARBITRATION_COURT_ADDRESS_REQUIRED");
+
+    process.env.VERIFICATION_ARBITRATION_COURT_ADDRESS = "0x8888888888888888888888888888888888888888";
+    resetRuntimeConfigForTests();
+    expect(() => chainDeploymentAddresses()).toThrow("PROTOCOL_ECONOMICS_ADDRESS_REQUIRED");
+
+    process.env.PROTOCOL_ECONOMICS_ADDRESS = "0x9999999999999999999999999999999999999999";
     resetRuntimeConfigForTests();
     expect(chainDeploymentAddresses().disputeResolver).toBe(process.env.DISPUTE_RESOLVER_ADDRESS);
   });

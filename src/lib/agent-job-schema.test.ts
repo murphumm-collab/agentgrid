@@ -14,12 +14,21 @@ const validJobs = [
   { id: "job:repair", role: "EXECUTOR", kind: "REPAIR_MAINTENANCE", payload: { taskId: "3", executor: address, checkpoint: 1, evidenceHash: hash, ...provenance }, createdAt: now },
   { id: "job:assemble", role: "EXECUTOR", kind: "ASSEMBLE_TASK", payload: { taskId: "4", executor: address, ...provenance }, createdAt: now },
   { id: "job:test", role: "TESTER", kind: "TEST_TASK", payload: { taskId: "5", tester: address, shard: 0, ...provenance }, createdAt: now },
+  { id: "job:reveal", role: "TESTER", kind: "REVEAL_TEST_SHARD", payload: {
+    taskId: "5", tester: address, shard: 0, workRound: 1, checkpoint: 0, panelEpoch: 1,
+    reportHash: hash, evidenceHash: hash, criterionPassMask: 3, winner: address,
+    selectedArtifactHash: hash, executorWeightsBps: [10_000], salt: hash, passed: true, ...provenance,
+  }, createdAt: now },
   { id: "job:maintenance", role: "TESTER", kind: "MAINTENANCE_VALIDATION", payload: { taskId: "6", tester: address, checkpoint: 2, dueAt: "1800000000" }, createdAt: now },
   { id: "job:evaluate", role: "EVALUATOR", kind: "EVALUATE_TASK", payload: { taskId: "7", tester: address, ...provenance }, createdAt: now },
   { id: "job:panel", role: "COORDINATOR", kind: "FINALIZE_EVALUATION_PANEL", payload: { taskId: "8", selectionBlock: "100", deadline: "1800000000", ...provenance }, createdAt: now },
   ...["FINALIZE_TASK_EVALUATION", "ASSIGN_TESTER", "FINALIZE_TESTER"].map((kind, index) => ({
     id: `job:coordinator:${index}`, role: "COORDINATOR", kind, payload: { taskId: String(index + 9), ...provenance }, createdAt: now,
   })),
+  { id: "job:maintenance-panel", role: "COORDINATOR", kind: "START_MAINTENANCE_PANEL", payload: { taskId: "12", checkpoint: 1, dueAt: "1800000000" }, createdAt: now },
+  { id: "job:finalize-verification", role: "COORDINATOR", kind: "FINALIZE_VERIFICATION_PANEL", payload: { taskId: "13", panelEpoch: 2, dueAt: "1800000000" }, createdAt: now },
+  { id: "job:expire-verification", role: "COORDINATOR", kind: "EXPIRE_VERIFICATION_PANEL", payload: { taskId: "14", panelEpoch: 3, dueAt: "1800000000" }, createdAt: now },
+  { id: "job:expire-arbitration", role: "COORDINATOR", kind: "EXPIRE_VERIFICATION_ARBITRATION", payload: { taskId: "15", caseId: hash, dueAt: "1800000000" }, createdAt: now },
 ];
 
 const validCompletionResults = {
@@ -28,12 +37,17 @@ const validCompletionResults = {
   REPAIR_MAINTENANCE: { artifactHash, transactionHash: hash },
   ASSEMBLE_TASK: { artifactHash, transactionHash: hash, contributions: 2 },
   TEST_TASK: { reportHash: hash, evidenceHash: hash, transactionHash: hash, passed: true },
+  REVEAL_TEST_SHARD: { reportHash: hash, evidenceHash: hash, alreadyRevealed: true, passed: true },
   MAINTENANCE_VALIDATION: { reportHash: hash, evidenceHash: hash, transactionHash: hash, passed: false },
   EVALUATE_TASK: { reportHash: hash, alreadySubmitted: true, approve: true },
   FINALIZE_EVALUATION_PANEL: { phase: "finalizeEvaluationPanel", alreadyFinalized: true },
   FINALIZE_TASK_EVALUATION: { phase: "finalizeTaskEvaluation", transactionHash: hash },
   ASSIGN_TESTER: { phase: "requestTester", transactionHash: hash },
   FINALIZE_TESTER: { phase: "finalizeTester", transactionHash: hash },
+  START_MAINTENANCE_PANEL: { phase: "requestMaintenancePanel", alreadyFinalized: true },
+  FINALIZE_VERIFICATION_PANEL: { phase: "finalizeVerificationPanel", transactionHash: hash },
+  EXPIRE_VERIFICATION_PANEL: { phase: "expireVerificationPanel", transactionHash: hash },
+  EXPIRE_VERIFICATION_ARBITRATION: { phase: "expireVerificationArbitration", alreadyFinalized: true },
 } as const;
 
 describe("Agent queue job contracts", () => {
@@ -64,7 +78,7 @@ describe("Agent queue job contracts", () => {
 
   it("binds every runtime kind to an exact OpenAPI payload and role mapping", () => {
     const openapi = JSON.parse(readFileSync(new URL("../../public/openapi.json", import.meta.url), "utf8"));
-    expect(openapi.info.version).toBe("0.7.0");
+    expect(openapi.info.version).toBe("0.8.0");
     const job = openapi.components.schemas.AgentJob;
     expect(job.additionalProperties).toBe(false);
     expect(job.properties.kind.enum).toEqual(agentJobKinds);

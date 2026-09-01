@@ -36,6 +36,8 @@ export const signedEvidenceSubmissionSchema = z.object({
   taskRegistry: walletAddressSchema,
   taskId: z.string().regex(/^\d+$/),
   workRound: z.number().int().positive(),
+  checkpoint: z.number().int().min(0).max(3),
+  panelEpoch: z.number().int().positive(),
   verificationShard: z.number().int().min(0).max(2),
   executionMode: z.enum(["COLLABORATION", "COMPETITION"]),
   executorOrder: z.array(walletAddressSchema).min(1).max(32),

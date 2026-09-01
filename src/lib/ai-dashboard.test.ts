@@ -15,6 +15,12 @@ function source(): AiDashboardSource {
     tasks: database.tasks,
     agents: database.agents,
     rewards: database.rewards,
+    economics: {
+      grossTaskRewards: 200, agentPool: 190, daoVested: 7, sourceVested: 4.25,
+      lifecycleConsumed: 15, rewardVaultRecycled: 5.25, burned: 3, securityReserved: 1.5,
+      netDemand30d: { status: "UNAVAILABLE", reason: "External receipts missing." },
+      netDemand90d: { status: "UNAVAILABLE", reason: "External receipts missing." },
+    },
   };
 }
 
@@ -22,7 +28,8 @@ describe("AI dashboard", () => {
   it("publishes deterministic action metadata without private task states", () => {
     const dashboard = buildAiDashboard(source(), new Date("2026-08-31T00:00:00.000Z"));
     const serialized = JSON.stringify(dashboard);
-    expect(dashboard.schemaVersion).toBe("1.2");
+    expect(dashboard.schemaVersion).toBe("1.3");
+    expect(dashboard.economics).toMatchObject({ agentPool: 190, burned: 3, netDemand30d: { status: "UNAVAILABLE" } });
     expect(dashboard.generatedAt).toBe("2026-08-31T00:00:00.000Z");
     expect(dashboard.actionContracts.find((action) => action.id === "lease-job")?.authentication).toContain("x-agent-id");
     expect(serialized).not.toContain("Private draft");

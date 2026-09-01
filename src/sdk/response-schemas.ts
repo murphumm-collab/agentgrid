@@ -92,13 +92,40 @@ const dashboardWorkItemSchema = z.object({
   executionMode,
   deadlineAt: dateTime,
   executorSlots: z.object({ filled: nonnegativeInteger, maximum: z.number().int().min(1).max(32) }).strict(),
+  validatorPanel: z.object({
+    members: z.array(actor).max(3),
+    executorQualityMultipliersBps: z.array(z.number().int().min(8_000).max(12_000)).max(32),
+  }).strict(),
   requiredVerificationCapabilities: z.array(verificationType).max(5),
   rewardAgt: z.number().nonnegative().nullable(),
+  source: z.object({ sourceId: bytes32, recipient: address, fallbackToDao: z.boolean() }).strict().nullable(),
+  lifecycleCharges: z.array(z.object({
+    stage: z.enum(["EVALUATION", "PUBLICATION", "ACCEPTANCE", "MAINTENANCE"]),
+    amountAgt: z.number().nonnegative(),
+  }).strict()).max(4),
   humanUrl: boundedText(1, 500),
 }).strict();
 
+const unavailableNetDemandSchema = z.object({
+  status: z.literal("UNAVAILABLE"),
+  reason: boundedText(1, 1_000),
+}).strict();
+
+const protocolEconomicsSummarySchema = z.object({
+  grossTaskRewards: z.number().nonnegative(),
+  agentPool: z.number().nonnegative(),
+  daoVested: z.number().nonnegative(),
+  sourceVested: z.number().nonnegative(),
+  lifecycleConsumed: z.number().nonnegative(),
+  rewardVaultRecycled: z.number().nonnegative(),
+  burned: z.number().nonnegative(),
+  securityReserved: z.number().nonnegative(),
+  netDemand30d: unavailableNetDemandSchema,
+  netDemand90d: unavailableNetDemandSchema,
+}).strict();
+
 export const publicDashboardResponseSchema = z.object({
-  schemaVersion: z.literal("1.2"),
+  schemaVersion: z.literal("1.3"),
   generatedAt: dateTime,
   mode: z.enum(["demo", "production"]),
   network: z.object({ name: z.literal("BSC Testnet"), chainId: z.literal(97), confirmations: z.literal(5) }).strict(),
@@ -117,6 +144,7 @@ export const publicDashboardResponseSchema = z.object({
     rewardReserveAgt: z.number().nonnegative(),
     issuedRewardsAgt: z.number().nonnegative(),
   }).strict(),
+  economics: protocolEconomicsSummarySchema,
   workQueue: z.array(dashboardWorkItemSchema).max(50),
   actionContracts: z.array(z.object({
     id: boundedText(1, 120),
@@ -171,6 +199,25 @@ const publicRewardSchema = z.object({
   }).strict()).max(16),
 }).strict();
 
+const publicTaskEconomicsSchema = z.object({
+  sourceId: bytes32,
+  sourceRecipient: address,
+  fallbackToDao: z.boolean(),
+  grossReward: z.number().nonnegative().nullable(),
+  agentPool: z.number().nonnegative().nullable(),
+  daoReward: z.number().nonnegative().nullable(),
+  sourceReward: z.number().nonnegative().nullable(),
+  lifecycleCharges: z.array(z.object({
+    stage: z.enum(["EVALUATION", "PUBLICATION", "ACCEPTANCE", "MAINTENANCE"]),
+    stakeBasis: z.number().nonnegative(), amount: z.number().nonnegative(), rewardVault: z.number().nonnegative(),
+    burned: z.number().nonnegative(), dao: z.number().nonnegative(), source: z.number().nonnegative(), security: z.number().nonnegative(),
+    transactionHash: bytes32,
+  }).strict()).max(4),
+  vestings: z.array(z.object({
+    id: bytes32, recipient: address, amount: z.number().nonnegative(), unlockAt: dateTime, claimed: z.boolean(),
+  }).strict()).max(10),
+}).strict();
+
 export const publicTaskSchema = z.object({
   id: identifier,
   title: boundedText(1, 160),
@@ -190,7 +237,8 @@ export const publicTaskSchema = z.object({
   teamClosed: z.boolean().optional(),
   workRound: z.number().int().positive().optional(),
   testerId: actor.nullable(),
-  testerIds: z.array(actor).max(3).optional(),
+  testerIds: z.array(actor).max(3),
+  executorQualityMultipliersBps: z.array(z.number().int().min(8_000).max(12_000)).max(32).optional(),
   criteria: z.array(z.object({ id: identifier, description: boundedText(1, 500) }).strict()).max(30),
   completionDefinition: taskDefinitionSchema.optional(),
   requiredTesterCapabilities: z.array(verificationType).max(12).optional(),
@@ -210,6 +258,7 @@ export const publicTaskSchema = z.object({
     criterionResults: z.array(publicCriterionResultSchema).max(12).optional(),
   }).strict().nullable(),
   reward: publicRewardSchema.nullable(),
+  economics: publicTaskEconomicsSchema.nullable(),
   maintenance: z.object({ healthy: z.array(z.boolean()).max(3) }).strict(),
   maintenanceRepairCheckpoint: z.number().int().min(0).max(2).nullable().optional(),
   businessAdoption: z.object({
@@ -239,6 +288,11 @@ export const publicAgentsResponseSchema = z.object({
     reputation: z.number().min(0).max(100),
     completedTasks: nonnegativeInteger,
     online: z.boolean(),
+    quality: z.object({
+      executor: z.object({ scoreBps: z.number().int().min(1).max(10_000), outcomeCount: nonnegativeInteger, severeFaults: nonnegativeInteger, cooldownUntil: z.string().datetime().nullable(), banned: z.boolean() }).strict(),
+      validator: z.object({ scoreBps: z.number().int().min(1).max(10_000), outcomeCount: nonnegativeInteger, severeFaults: nonnegativeInteger, cooldownUntil: z.string().datetime().nullable(), banned: z.boolean() }).strict(),
+      evaluator: z.object({ scoreBps: z.number().int().min(1).max(10_000), outcomeCount: nonnegativeInteger, severeFaults: nonnegativeInteger, cooldownUntil: z.string().datetime().nullable(), banned: z.boolean() }).strict(),
+    }).strict(),
   }).strict()).max(10_000),
 }).strict();
 
@@ -248,7 +302,7 @@ export const chainConfigResponseSchema = z.object({
   walletConnectProjectId: boundedText(16, 128).optional(),
   contracts: z.object({
     token: address, stakeManager: address, agentRegistry: address, taskRegistry: address,
-    rewardVault: address, verificationPanel: address, verificationArbitrationCourt: address, disputeResolver: address,
+    rewardVault: address, verificationPanel: address, verificationArbitrationCourt: address, disputeResolver: address, protocolEconomics: address,
   }).strict(),
 }).strict();
 

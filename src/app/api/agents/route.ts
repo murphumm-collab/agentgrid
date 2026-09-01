@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { apiError } from "@/lib/http";
 import { protocolSnapshot, registerAgent, registerAgentSchema } from "@/lib/service";
+import { initialAgentQuality } from "@/lib/chain-projection";
 import { isProductionMode } from "@/lib/env";
 import { requirePublisherRequest } from "@/lib/auth";
 import { readJsonBody } from "@/lib/request-body";
@@ -11,7 +12,7 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   try {
     const snapshot = await protocolSnapshot();
-    return NextResponse.json({ agents: snapshot.agents.map(({ id, name, owner, role, capabilities, stake, reputation, completedTasks, online }) => ({ id, name, owner, role, capabilities, stake, reputation, completedTasks, online })) });
+    return NextResponse.json({ agents: snapshot.agents.map(({ id, name, owner, role, capabilities, stake, reputation, completedTasks, online, quality }) => ({ id, name, owner, role, capabilities, stake, reputation, completedTasks, online, quality: quality ?? initialAgentQuality() })) });
   } catch (error) {
     return apiError(error);
   }

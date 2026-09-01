@@ -2,7 +2,7 @@ import { keccak256, type Hex } from "viem";
 import { z } from "zod";
 import rawManifest from "@/generated/runtime-contract-manifest.json";
 
-export const runtimeContractKeys = ["token", "stakeManager", "agentRegistry", "rewardVault", "taskRegistry", "verificationPanel", "verificationArbitrationCourt", "disputeResolver"] as const;
+export const runtimeContractKeys = ["token", "stakeManager", "agentRegistry", "rewardVault", "taskRegistry", "verificationPanel", "verificationArbitrationCourt", "disputeResolver", "protocolEconomics"] as const;
 export type RuntimeContractKey = typeof runtimeContractKeys[number];
 
 const referenceSchema = z.object({ start: z.number().int().nonnegative(), length: z.number().int().positive() }).strict();

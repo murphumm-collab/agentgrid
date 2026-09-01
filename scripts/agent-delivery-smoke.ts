@@ -45,6 +45,9 @@ const contractAddresses = {
   rewardVault: "0x2222222222222222222222222222222222222224",
   taskRegistry: "0x2222222222222222222222222222222222222225",
   disputeResolver: "0x2222222222222222222222222222222222222226",
+  verificationPanel: "0x2222222222222222222222222222222222222227",
+  verificationArbitrationCourt: "0x2222222222222222222222222222222222222228",
+  protocolEconomics: "0x2222222222222222222222222222222222222229",
 } as const;
 const contractAddress = contractAddresses.taskRegistry;
 const taskId = "42";
@@ -281,7 +284,7 @@ async function verifyPackagedAiFrontend(baseUrl: string, secretValues: Record<st
     };
   };
   const requiredPaths = ["/api/public/dashboard", "/api/tasks", "/api/artifacts/uploads", "/api/hidden-tests/uploads", "/api/tasks/{taskId}/business-adoption", "/api/notifications", "/api/notifications/{notificationId}/read"];
-  if (openapi.info?.version !== "0.7.0" || requiredPaths.some((route) => !openapi.paths?.[route])
+  if (openapi.info?.version !== "0.8.0" || requiredPaths.some((route) => !openapi.paths?.[route])
     || !openapi.paths?.["/api/agents"]?.get || !openapi.paths?.["/api/agents"]?.post) {
     throw new Error("DELIVERY_SMOKE_OPENAPI_CONTRACT_INVALID");
   }
@@ -485,6 +488,9 @@ async function main() {
     [contractAddresses.rewardVault.toLowerCase()]: artifacts.RewardVault.deployedBytecode,
     [contractAddresses.taskRegistry.toLowerCase()]: artifacts.TaskRegistry.deployedBytecode,
     [contractAddresses.disputeResolver.toLowerCase()]: artifacts.DisputeResolver.deployedBytecode,
+    [contractAddresses.verificationPanel.toLowerCase()]: artifacts.VerificationPanel.deployedBytecode,
+    [contractAddresses.verificationArbitrationCourt.toLowerCase()]: artifacts.VerificationArbitrationCourt.deployedBytecode,
+    [contractAddresses.protocolEconomics.toLowerCase()]: artifacts.ProtocolEconomics.deployedBytecode,
   };
   const admin = new Pool({ connectionString: baseDatabaseUrl, max: 1 });
   const redis = createClient({ url: redisUrl });
@@ -552,6 +558,9 @@ async function main() {
     TASK_REGISTRY_ADDRESS: contractAddresses.taskRegistry,
     REWARD_VAULT_ADDRESS: contractAddresses.rewardVault,
     DISPUTE_RESOLVER_ADDRESS: contractAddresses.disputeResolver,
+    VERIFICATION_PANEL_ADDRESS: contractAddresses.verificationPanel,
+    VERIFICATION_ARBITRATION_COURT_ADDRESS: contractAddresses.verificationArbitrationCourt,
+    PROTOCOL_ECONOMICS_ADDRESS: contractAddresses.protocolEconomics,
     PORT: String(port),
     HOSTNAME: "127.0.0.1",
   };
@@ -742,13 +751,17 @@ async function main() {
     if (
       !chainConfigResponse.ok || chainConfig.chainId !== 97 || chainConfig.confirmations !== 5 ||
       chainConfig.walletConnectProjectId !== "delivery-smoke-walletconnect-project" ||
-      Object.values(chainConfig.contracts ?? {}).length !== 5 ||
+      Object.values(chainConfig.contracts ?? {}).length !== 9 ||
       Object.entries({
         token: contractAddresses.token,
         stakeManager: contractAddresses.stakeManager,
         agentRegistry: contractAddresses.agentRegistry,
         taskRegistry: contractAddresses.taskRegistry,
         rewardVault: contractAddresses.rewardVault,
+        disputeResolver: contractAddresses.disputeResolver,
+        verificationPanel: contractAddresses.verificationPanel,
+        verificationArbitrationCourt: contractAddresses.verificationArbitrationCourt,
+        protocolEconomics: contractAddresses.protocolEconomics,
       }).some(([key, address]) => chainConfig.contracts?.[key]?.toLowerCase() !== address.toLowerCase())
     ) throw new Error("DELIVERY_SMOKE_RUNTIME_BROWSER_CHAIN_CONFIG_FAILED");
     await verifyJsonBodyPolicy(baseUrl);

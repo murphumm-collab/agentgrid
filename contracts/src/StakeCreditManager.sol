@@ -5,6 +5,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {ProtocolEconomics} from "./ProtocolEconomics.sol";
 
 contract StakeCreditManager is Ownable, ReentrancyGuard {
     using SafeERC20 for IERC20;
@@ -23,6 +24,8 @@ contract StakeCreditManager is Ownable, ReentrancyGuard {
 
     IERC20 public immutable token;
     address public taskRegistry;
+    address public qualitySlasher;
+    ProtocolEconomics public protocolEconomics;
     uint256 public nextPositionId = 1;
     mapping(uint256 => Position) public positions;
 
@@ -41,6 +44,7 @@ contract StakeCreditManager is Ownable, ReentrancyGuard {
     event PublicationFeeCharged(uint256 indexed positionId, uint256 indexed taskId, uint256 amount, address indexed recipient);
     event EvaluationFeeCharged(uint256 indexed positionId, uint256 indexed taskId, uint256 amount, address indexed recipient);
     event PositionWithdrawn(uint256 indexed positionId, address indexed owner, uint256 amount);
+    event LifecycleFeeCharged(uint256 indexed positionId, uint256 indexed taskId, ProtocolEconomics.LifecycleStage indexed stage, uint256 stakeBasis, uint256 amount);
 
     constructor(IERC20 token_, address initialOwner) Ownable(initialOwner) {
         token = token_;
@@ -60,6 +64,18 @@ contract StakeCreditManager is Ownable, ReentrancyGuard {
         if (registry == address(0)) revert Unauthorized();
         if (taskRegistry != address(0)) revert RegistryAlreadySet();
         taskRegistry = registry;
+    }
+
+    function setProtocolEconomics(ProtocolEconomics economics) external onlyOwner {
+        if (address(economics) == address(0)) revert Unauthorized();
+        if (address(protocolEconomics) != address(0)) revert RegistryAlreadySet();
+        protocolEconomics = economics;
+        token.forceApprove(address(economics), type(uint256).max);
+    }
+
+    function setQualitySlasher(address slasher) external onlyOwner {
+        if (slasher == address(0) || slasher.code.length == 0 || qualitySlasher != address(0)) revert RegistryAlreadySet();
+        qualitySlasher = slasher;
     }
 
     function createPosition(uint256 amount) external nonReentrant returns (uint256 positionId) {
@@ -108,6 +124,18 @@ contract StakeCreditManager is Ownable, ReentrancyGuard {
         emit PositionSlashed(positionId, taskId, amount, recipient);
     }
 
+    /// @notice Slashes an Agent's registry stake after a canonical upheld
+    /// quality arbitration. Unlike publisher task slashing, Agent positions do
+    /// not carry the challenged task as their activeTaskId.
+    function slashAgentPosition(uint256 positionId, uint256 amount, address recipient) external nonReentrant {
+        if (msg.sender != qualitySlasher || recipient == address(0) || amount == 0) revert Unauthorized();
+        Position storage position = positions[positionId];
+        if (position.owner == address(0) || amount > position.amount) revert InvalidAmount();
+        position.amount -= amount;
+        token.safeTransfer(recipient, amount);
+        emit PositionSlashed(positionId, 0, amount, recipient);
+    }
+
     function chargePublicationFee(uint256 positionId, uint256 taskId, uint256 amount, address recipient) external onlyRegistry nonReentrant {
         Position storage position = positions[positionId];
         if (position.activeTaskId != taskId || recipient == address(0) || amount == 0 || amount > position.amount) revert InvalidAmount();
@@ -122,6 +150,18 @@ contract StakeCreditManager is Ownable, ReentrancyGuard {
         position.amount -= amount;
         token.safeTransfer(recipient, amount);
         emit EvaluationFeeCharged(positionId, taskId, amount, recipient);
+    }
+
+    function chargeLifecycleFee(
+        uint256 positionId, uint256 taskId, ProtocolEconomics.LifecycleStage stage, uint256 stakeBasis
+    ) external onlyRegistry nonReentrant returns (uint256 amount) {
+        Position storage position = positions[positionId];
+        if (position.activeTaskId != taskId || address(protocolEconomics) == address(0)) revert InvalidAmount();
+        amount = protocolEconomics.lifecycleChargeFor(stakeBasis, stage);
+        if (amount == 0 || amount > position.amount) revert InvalidAmount();
+        position.amount -= amount;
+        protocolEconomics.routeLifecycleCharge(taskId, stage, stakeBasis, amount);
+        emit LifecycleFeeCharged(positionId, taskId, stage, stakeBasis, amount);
     }
 
     function requestWithdrawal(uint256 positionId) external onlyPositionOwner(positionId) {

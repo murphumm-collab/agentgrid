@@ -8,6 +8,13 @@ import {VerificationPanel} from "./VerificationPanel.sol";
 
 interface IArbitrationAgentRegistry {
     function isEligible(address agent) external view returns (bool);
+    function agentPosition(address agent) external view returns (uint256);
+    function stakeManager() external view returns (address);
+}
+
+interface IArbitrationStakeManager {
+    function stakeOf(uint256 positionId) external view returns (uint256);
+    function slashAgentPosition(uint256 positionId, uint256 amount, address recipient) external;
 }
 
 /// @notice Token-staked challenge court for validator misconduct. A false
@@ -41,6 +48,7 @@ contract VerificationArbitrationCourt is ReentrancyGuard {
     IERC20 public immutable token;
     VerificationPanel public immutable panel;
     IArbitrationAgentRegistry public immutable agentRegistry;
+    IArbitrationStakeManager public immutable stakeManager;
     address public immutable reserve;
     mapping(address => uint256) public stake;
     mapping(address => uint256) public lockedStake;
@@ -68,6 +76,7 @@ contract VerificationArbitrationCourt is ReentrancyGuard {
         token = token_;
         panel = panel_;
         agentRegistry = agentRegistry_;
+        stakeManager = IArbitrationStakeManager(agentRegistry_.stakeManager());
         reserve = reserve_;
         for (uint8 i; i < 3; ++i) {
             if (arbitrators[i] == address(0) || isArbitrator[arbitrators[i]]) revert Unauthorized();
@@ -150,8 +159,15 @@ contract VerificationArbitrationCourt is ReentrancyGuard {
         if (dispute.challenger == address(0) || dispute.resolved || block.timestamp <= dispute.deadline) revert InvalidChallenge();
         dispute.resolved = true;
         _unlockParticipants(dispute);
-        panel.resolveChallenge(taskId, false);
+        panel.resolveChallenge(taskId, false, caseId, bytes32(0));
         emit VerificationChallengeExpired(taskId, caseId);
+    }
+
+    function getActiveCase(uint256 taskId) external view returns (bytes32 caseId, uint64 deadline, bool resolved) {
+        caseId = activeCaseId[taskId];
+        Challenge storage dispute = cases[caseId];
+        deadline = dispute.deadline;
+        resolved = dispute.resolved;
     }
 
     function _resolve(uint256 taskId, bytes32 caseId, bool upheld, bytes32 resolutionHash) private nonReentrant {
@@ -165,6 +181,16 @@ contract VerificationArbitrationCourt is ReentrancyGuard {
         if (upheld) {
             validatorSlash = dispute.validatorStakeLocked;
             stake[dispute.validator] -= validatorSlash;
+            if (validatorSlash < VALIDATOR_SLASH) {
+                uint256 positionId = agentRegistry.agentPosition(dispute.validator);
+                uint256 mainStake = stakeManager.stakeOf(positionId);
+                uint256 shortfall = VALIDATOR_SLASH - validatorSlash;
+                uint256 mainSlash = mainStake < shortfall ? mainStake : shortfall;
+                if (mainSlash != 0) {
+                    stakeManager.slashAgentPosition(positionId, mainSlash, address(this));
+                    validatorSlash += mainSlash;
+                }
+            }
             challengerReward = (validatorSlash * CHALLENGER_REWARD_BPS) / BPS;
             stake[dispute.challenger] += challengerReward;
             falseChallengeCount[dispute.challenger] = 0;
@@ -178,7 +204,7 @@ contract VerificationArbitrationCourt is ReentrancyGuard {
             falseChallengeCount[dispute.challenger] = failures == type(uint8).max ? failures : failures + 1;
             token.safeTransfer(reserve, challengerSlash);
         }
-        panel.resolveChallenge(taskId, upheld);
+        panel.resolveChallenge(taskId, upheld, caseId, resolutionHash);
         emit VerificationChallengeResolved(taskId, caseId, upheld, resolutionHash, challengerSlash, validatorSlash, challengerReward);
     }
 

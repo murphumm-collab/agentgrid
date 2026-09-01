@@ -34,7 +34,7 @@ describe("public Agent directory", () => {
     const body = await response.json() as { agents: Array<Record<string, unknown>> };
     expect(body.agents.length).toBeGreaterThan(0);
     expect(Object.keys(body.agents[0]).sort()).toEqual([
-      "capabilities", "completedTasks", "id", "name", "online", "owner", "reputation", "role", "stake",
+      "capabilities", "completedTasks", "id", "name", "online", "owner", "quality", "reputation", "role", "stake",
     ]);
     const serialized = JSON.stringify(body);
     for (const field of ["endpoint", "apiKey", "apiKeyHash", "apiKeySalt", "scopes", "stakePositionId", "revokedAt"]) {
@@ -99,14 +99,14 @@ describe("public Agent directory", () => {
     expect(payload.agents.some((agent) => agent.name === valid.name)).toBe(false);
   });
 
-  it("binds the strict runtime registration boundary to OpenAPI 0.7.0", () => {
+  it("binds the strict runtime registration boundary to OpenAPI 0.8.0", () => {
     const openapi = JSON.parse(readFileSync(new URL("../../../../public/openapi.json", import.meta.url), "utf8")) as {
       info: { version: string };
       paths: Record<string, { post?: { responses?: Record<string, unknown> } }>;
       components: { schemas: { AgentRegistration: Record<string, unknown> & { properties: Record<string, Record<string, unknown>> } } };
     };
     const schema = openapi.components.schemas.AgentRegistration;
-    expect(openapi.info.version).toBe("0.7.0");
+    expect(openapi.info.version).toBe("0.8.0");
     expect(schema.additionalProperties).toBe(false);
     expect(schema.required).toContain("stakePositionId");
     expect(schema.properties.owner.pattern).toBe("^0x[0-9a-fA-F]{40}$");

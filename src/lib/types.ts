@@ -17,6 +17,20 @@ export type AgentRole = "EXECUTOR" | "TESTER" | "EVALUATOR" | "BOTH";
 export type AgentScope = "tasks:claim" | "tasks:submit" | "tests:submit" | "evaluations:submit" | "heartbeat:write";
 export type ExecutionMode = "COLLABORATION" | "COMPETITION";
 
+export interface AgentRoleQuality {
+  scoreBps: number;
+  outcomeCount: number;
+  severeFaults: number;
+  cooldownUntil: string | null;
+  banned: boolean;
+}
+
+export interface AgentQuality {
+  executor: AgentRoleQuality;
+  validator: AgentRoleQuality;
+  evaluator: AgentRoleQuality;
+}
+
 export interface Agent {
   id: string;
   name: string;
@@ -34,6 +48,7 @@ export interface Agent {
   reputation: number;
   completedTasks: number;
   online: boolean;
+  quality?: AgentQuality;
 }
 
 export interface StakePosition {
@@ -152,6 +167,7 @@ export interface Task {
   workRound?: number;
   testerId: string | null;
   testerIds?: string[];
+  executorQualityMultipliersBps?: number[];
   testerSelectionProof: string | null;
   criteria: AcceptanceCriterion[];
   completionDefinition?: TaskDefinition;
@@ -169,6 +185,54 @@ export interface Task {
     proof: string;
   };
   businessAdoption?: BusinessAdoption;
+  economics?: TaskEconomics;
+}
+
+export type LifecycleEconomicsStage = "EVALUATION" | "PUBLICATION" | "ACCEPTANCE" | "MAINTENANCE";
+
+export interface EconomicsVesting {
+  id: string;
+  recipient: string;
+  amount: number;
+  unlockAt: string;
+  claimed: boolean;
+}
+
+export interface LifecycleEconomicsCharge {
+  stage: LifecycleEconomicsStage;
+  stakeBasis: number;
+  amount: number;
+  rewardVault: number;
+  burned: number;
+  dao: number;
+  source: number;
+  security: number;
+  transactionHash: string;
+}
+
+export interface TaskEconomics {
+  sourceId: string;
+  sourceRecipient: string;
+  fallbackToDao: boolean;
+  grossReward?: number;
+  agentPool?: number;
+  daoReward?: number;
+  sourceReward?: number;
+  lifecycleCharges: LifecycleEconomicsCharge[];
+  vestings: EconomicsVesting[];
+}
+
+export interface ProtocolEconomicsSummary {
+  grossTaskRewards: number;
+  agentPool: number;
+  daoVested: number;
+  sourceVested: number;
+  lifecycleConsumed: number;
+  rewardVaultRecycled: number;
+  burned: number;
+  securityReserved: number;
+  netDemand30d: { status: "UNAVAILABLE"; reason: string };
+  netDemand90d: { status: "UNAVAILABLE"; reason: string };
 }
 
 export interface LedgerEntry {

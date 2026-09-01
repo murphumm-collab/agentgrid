@@ -1,14 +1,17 @@
 import { createPublicClient, decodeEventLog, type Address, type Hex, type Log } from "viem";
 import { bscTestnet } from "viem/chains";
 import { chainDeploymentAddresses, runtimeConfig } from "./env";
-import { agentRegistryAbi, rewardVaultAbi, stakeManagerAbi, taskRegistryAbi, verificationArbitrationCourtAbi, verificationPanelAbi } from "./contracts";
+import { agentRegistryAbi, protocolEconomicsAbi, rewardVaultAbi, stakeManagerAbi, taskRegistryAbi, verificationArbitrationCourtAbi, verificationPanelAbi } from "./contracts";
 import { chainCursor, persistChainBatch, rewindChain, type IndexedChainEvent } from "./store-postgres";
 import { dispatchJobOutbox } from "./agent-queue";
 import { bscRpcTransport } from "./bsc-rpc";
 
 // v2 begins at CHAIN_START_BLOCK so deployments upgraded from the legacy
 // four-address index do not silently miss historical panel/court evidence.
-const cursorName = "bsc-testnet-protocol-v2";
+// Bump the cursor whenever the indexed contract set changes. Reusing the v2
+// cursor after adding ProtocolEconomics would silently skip its earlier logs on
+// an upgraded deployment.
+const cursorName = "bsc-testnet-protocol-v3";
 const reorgRewind = BigInt(20);
 
 function jsonSafe(value: unknown): unknown {
@@ -19,7 +22,7 @@ function jsonSafe(value: unknown): unknown {
 }
 
 function decode(log: Log): Pick<IndexedChainEvent, "eventName" | "eventArgs"> {
-  for (const abi of [stakeManagerAbi, agentRegistryAbi, taskRegistryAbi, rewardVaultAbi, verificationPanelAbi, verificationArbitrationCourtAbi]) {
+  for (const abi of [stakeManagerAbi, agentRegistryAbi, taskRegistryAbi, rewardVaultAbi, verificationPanelAbi, verificationArbitrationCourtAbi, protocolEconomicsAbi]) {
     try {
       const decoded = decodeEventLog({ abi, data: log.data, topics: log.topics });
       return { eventName: decoded.eventName, eventArgs: jsonSafe(decoded.args) as Record<string, string | number | boolean | Array<string | number | boolean>> };
@@ -50,6 +53,7 @@ export async function indexConfirmedChainEvents() {
     address: [
       addresses.stakeManager, addresses.agentRegistry, addresses.taskRegistry, addresses.rewardVault,
       addresses.verificationPanel, addresses.verificationArbitrationCourt,
+      addresses.protocolEconomics,
     ] as Address[],
     fromBlock: cursor.nextBlock,
     toBlock,

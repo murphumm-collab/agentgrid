@@ -2,8 +2,8 @@ import { createPublicClient, createWalletClient, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { bscTestnet } from "viem/chains";
 import { completeAgentJob, heartbeatAgentJob, leaseAgentJob } from "../src/lib/agent-queue";
-import { taskRegistryAbi } from "../src/lib/contracts";
-import { chainContractAddresses, runtimeConfig } from "../src/lib/env";
+import { taskRegistryAbi, verificationArbitrationCourtAbi, verificationPanelAbi } from "../src/lib/contracts";
+import { chainContractAddresses, chainDeploymentAddresses, runtimeConfig } from "../src/lib/env";
 import { requiredSecret } from "../src/lib/secrets";
 import { bscRpcTransport } from "../src/lib/bsc-rpc";
 
@@ -43,6 +43,43 @@ async function coordinate() {
   try {
     const taskId = String(leased.job.payload.taskId ?? "");
     if (!/^\d+$/.test(taskId)) throw new Error("COORDINATOR_JOB_TASK_ID_INVALID");
+    if (leased.job.kind === "FINALIZE_VERIFICATION_PANEL" || leased.job.kind === "EXPIRE_VERIFICATION_PANEL") {
+      const deployment = chainDeploymentAddresses();
+      const panel = await publicClient.readContract({ address: deployment.verificationPanel, abi: verificationPanelAbi, functionName: "getPanel", args: [BigInt(taskId)] });
+      const expectedStatus = leased.job.kind === "FINALIZE_VERIFICATION_PANEL" ? 3 : [1, 2];
+      const phase = leased.job.kind === "FINALIZE_VERIFICATION_PANEL" ? "finalizeVerificationPanel" : "expireVerificationPanel";
+      const statusMatches = Array.isArray(expectedStatus) ? expectedStatus.includes(Number(panel.status)) : Number(panel.status) === expectedStatus;
+      if (Number(panel.epoch) !== leased.job.payload.panelEpoch || !statusMatches) {
+        await completeAgentJob(leased.job.id, "protocol-coordinator", { phase, alreadyFinalized: true });
+        return true;
+      }
+      const dueAt = BigInt(leased.job.payload.dueAt);
+      const block = await publicClient.getBlock();
+      if (block.timestamp <= dueAt) throw new Error("VERIFICATION_PANEL_LIFECYCLE_NOT_DUE");
+      const functionName = leased.job.kind === "FINALIZE_VERIFICATION_PANEL" ? "finalize" : "expire";
+      await heartbeatAgentJob(leased.job.id, "protocol-coordinator");
+      const hash = await wallet.writeContract({ address: deployment.verificationPanel, abi: verificationPanelAbi, functionName, args: [BigInt(taskId)] });
+      const receipt = await publicClient.waitForTransactionReceipt({ hash, confirmations: config.CHAIN_CONFIRMATIONS });
+      if (receipt.status !== "success") throw new Error("VERIFICATION_PANEL_LIFECYCLE_TRANSACTION_REVERTED");
+      await completeAgentJob(leased.job.id, "protocol-coordinator", { phase, transactionHash: hash });
+      return true;
+    }
+    if (leased.job.kind === "EXPIRE_VERIFICATION_ARBITRATION") {
+      const courtAddress = chainDeploymentAddresses().verificationArbitrationCourt;
+      const activeCase = await publicClient.readContract({ address: courtAddress, abi: verificationArbitrationCourtAbi, functionName: "getActiveCase", args: [BigInt(taskId)] });
+      if (activeCase.caseId.toLowerCase() !== leased.job.payload.caseId.toLowerCase() || activeCase.resolved) {
+        await completeAgentJob(leased.job.id, "protocol-coordinator", { phase: "expireVerificationArbitration", alreadyFinalized: true });
+        return true;
+      }
+      const block = await publicClient.getBlock();
+      if (block.timestamp <= BigInt(leased.job.payload.dueAt)) throw new Error("VERIFICATION_ARBITRATION_NOT_DUE");
+      await heartbeatAgentJob(leased.job.id, "protocol-coordinator");
+      const hash = await wallet.writeContract({ address: courtAddress, abi: verificationArbitrationCourtAbi, functionName: "expireChallenge", args: [BigInt(taskId)] });
+      const receipt = await publicClient.waitForTransactionReceipt({ hash, confirmations: config.CHAIN_CONFIRMATIONS });
+      if (receipt.status !== "success") throw new Error("VERIFICATION_ARBITRATION_EXPIRY_TRANSACTION_REVERTED");
+      await completeAgentJob(leased.job.id, "protocol-coordinator", { phase: "expireVerificationArbitration", transactionHash: hash });
+      return true;
+    }
     if (leased.job.kind === "START_MAINTENANCE_PANEL") {
       const task = await publicClient.readContract({ address: registry, abi: evaluationCoordinatorAbi, functionName: "tasks", args: [BigInt(taskId)] });
       if (task[19] !== 8) {
@@ -74,6 +111,13 @@ async function coordinate() {
       } else {
         const task = await publicClient.readContract({ address: registry, abi: evaluationCoordinatorAbi, functionName: "tasks", args: [BigInt(taskId)] });
         if (task[19] !== 1) {
+          const panelAddress = chainDeploymentAddresses().verificationPanel;
+          const settled = await publicClient.readContract({ address: panelAddress, abi: verificationPanelAbi, functionName: "evaluationOutcomesSettled", args: [BigInt(taskId)] });
+          if (!settled && task[19] !== 0) {
+            const qualityHash = await wallet.writeContract({ address: panelAddress, abi: verificationPanelAbi, functionName: "settleEvaluationOutcomes", args: [BigInt(taskId)] });
+            const qualityReceipt = await publicClient.waitForTransactionReceipt({ hash: qualityHash, confirmations: config.CHAIN_CONFIRMATIONS });
+            if (qualityReceipt.status !== "success") throw new Error("SETTLE_EVALUATION_OUTCOMES_TRANSACTION_REVERTED");
+          }
           await completeAgentJob(leased.job.id, "protocol-coordinator", { phase: functionName, alreadyFinalized: true });
           return true;
         }
@@ -82,6 +126,12 @@ async function coordinate() {
       const hash = await wallet.writeContract({ address: registry, abi: evaluationCoordinatorAbi, functionName, args: [BigInt(taskId)] });
       const receipt = await publicClient.waitForTransactionReceipt({ hash, confirmations: config.CHAIN_CONFIRMATIONS });
       if (receipt.status !== "success") throw new Error("FINALIZE_TASK_EVALUATION_TRANSACTION_REVERTED");
+      if (functionName === "finalizeTaskEvaluation") {
+        const panelAddress = chainDeploymentAddresses().verificationPanel;
+        const qualityHash = await wallet.writeContract({ address: panelAddress, abi: verificationPanelAbi, functionName: "settleEvaluationOutcomes", args: [BigInt(taskId)] });
+        const qualityReceipt = await publicClient.waitForTransactionReceipt({ hash: qualityHash, confirmations: config.CHAIN_CONFIRMATIONS });
+        if (qualityReceipt.status !== "success") throw new Error("SETTLE_EVALUATION_OUTCOMES_TRANSACTION_REVERTED");
+      }
       await completeAgentJob(leased.job.id, "protocol-coordinator", { transactionHash: hash, phase: functionName });
       console.log(JSON.stringify({ taskId, transactionHash: hash, phase: functionName }));
       return true;

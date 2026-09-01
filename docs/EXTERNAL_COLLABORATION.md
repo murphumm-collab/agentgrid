@@ -73,6 +73,25 @@ evidence.
 - Collect three distinct owner/security/operations signatures over the final
   production release manifest.
 
+## Token economics, treasury and paid distribution
+
+- Product owner and qualified legal/tax counsel must review the 95/3/2 task-
+  reward split, staged 1.5% stake consumption, burn treatment, referral income,
+  advertising, sponsorship, appeal fees and maintenance renewal in every
+  intended jurisdiction. Local code and simulations cannot close this row.
+- DAO/timelock, security reserve, official distribution recipient and
+  180–365-day source-fee vesting addresses must be independently controlled and
+  approved before deployment; the operating company must not hold an
+  unrestricted key that can withdraw DAO funds.
+- Stablecoin/BNB advertising intake, DEX route, TWAP oracle, maximum slippage,
+  MEV controls, execution cadence and per-period buyback cap require funded
+  testnet/mainnet liquidity evidence and an independent contract/economic
+  security review. Until then, automatic buyback is local simulation only.
+- Any public task-volume, USD revenue, buyback, burn or AGT net-demand number
+  must come from confirmed indexed transactions. Scenario assumptions must be
+  labelled as scenarios and must never be presented as realized revenue or a
+  token-price promise.
+
 ## Evidence handoff rules
 
 Provide references or secrets only through the approved secret/file mechanism;
