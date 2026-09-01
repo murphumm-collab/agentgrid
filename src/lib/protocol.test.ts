@@ -20,11 +20,11 @@ import type { Agent, ProtocolConfig, SoftwareEvidence, StakePosition, Task, Test
 const now = "2026-08-30T00:00:00.000Z";
 
 it("keeps the participant reward split complete and aligned with RewardVault", () => {
-  expect(REWARD_SPLIT_BPS).toEqual({ executors: 6_500, tester: 1_500, reserve: 2_000 });
+  expect(REWARD_SPLIT_BPS).toEqual({ executors: 8_000, tester: 2_000, reserve: 0 });
   expect(Object.values(REWARD_SPLIT_BPS).reduce((sum, value) => sum + value, 0)).toBe(10_000);
   const rewardVault = readFileSync(new URL("../../contracts/src/RewardVault.sol", import.meta.url), "utf8");
-  expect(rewardVault).toContain("EXECUTOR_BPS = 6_500");
-  expect(rewardVault).toContain("TESTER_BPS = 1_500");
+  expect(rewardVault).toContain("EXECUTOR_BPS = 8_000");
+  expect(rewardVault).toContain("TESTER_BPS = 2_000");
 });
 
 function position(overrides: Partial<StakePosition> = {}): StakePosition {

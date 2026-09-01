@@ -38,6 +38,18 @@ contract AgentRegistry {
         bool banned;
     }
 
+    struct AgentStateCheckpoint {
+        uint64 version;
+        uint256 positionId;
+        uint8 capabilities;
+        bool active;
+    }
+
+    struct QualityCheckpoint {
+        uint64 version;
+        RoleQuality quality;
+    }
+
     StakeCreditManager public immutable stakeManager;
     mapping(address => uint256) public agentPosition;
     mapping(uint256 => address) public positionAgent;
@@ -48,8 +60,11 @@ contract AgentRegistry {
     mapping(bytes32 => bool) public consumedOutcome;
     mapping(bytes32 => bool) public consumedRehabilitation;
     mapping(address => mapping(uint8 => mapping(uint256 => uint8))) public positiveOutcomesInEpoch;
+    mapping(address => AgentStateCheckpoint[]) private agentStateCheckpoints;
+    mapping(address => mapping(uint8 => QualityCheckpoint[])) private qualityCheckpoints;
     address[] private registeredAgents;
     bytes32 public registryHash;
+    uint64 public registryVersion;
 
     error Unauthorized();
     error PositionAlreadyBound();
@@ -69,6 +84,7 @@ contract AgentRegistry {
     );
     event AgentQualityOutcomeIgnored(address indexed agent, uint8 indexed role, bytes32 indexed outcomeId, bytes32 evidenceHash, bytes32 reason);
     event AgentRoleRehabilitated(address indexed agent, uint8 indexed role, bytes32 indexed evidenceHash);
+    event RegistrySnapshotAdvanced(uint64 indexed version, bytes32 indexed registryHash);
 
     constructor(StakeCreditManager stakeManager_) {
         stakeManager = stakeManager_;
@@ -112,7 +128,8 @@ contract AgentRegistry {
         agentCapabilities[msg.sender] = capabilities;
         agentActive[msg.sender] = true;
         if (previous == 0) registeredAgents.push(msg.sender);
-        registryHash = keccak256(abi.encode(registryHash, msg.sender, positionId));
+        _advanceRegistry(keccak256(abi.encode("REGISTER", msg.sender, positionId, capabilities)));
+        _writeStateCheckpoint(msg.sender);
         emit AgentRegistered(msg.sender, positionId, amount);
         emit AgentCapabilitiesUpdated(msg.sender, capabilities);
         emit AgentStatusUpdated(msg.sender, true);
@@ -130,7 +147,8 @@ contract AgentRegistry {
         }
         if (agentActive[msg.sender] == active) return;
         agentActive[msg.sender] = active;
-        registryHash = keccak256(abi.encode(registryHash, msg.sender, positionId, active));
+        _advanceRegistry(keccak256(abi.encode("ACTIVE", msg.sender, positionId, active)));
+        _writeStateCheckpoint(msg.sender);
         emit AgentStatusUpdated(msg.sender, active);
     }
 
@@ -183,7 +201,8 @@ contract AgentRegistry {
             uint8 positives = positiveOutcomesInEpoch[agent][role][epoch];
             if (positives >= MAX_POSITIVE_OUTCOMES_PER_EPOCH) {
                 quality.scoreBps = score;
-                registryHash = keccak256(abi.encode(registryHash, agent, role, score, quality.outcomeCount, evidenceHash, "POSITIVE_EPOCH_CAP"));
+                _advanceRegistry(keccak256(abi.encode("POSITIVE_EPOCH_CAP", agent, role, score, quality.outcomeCount, evidenceHash)));
+                _writeQualityCheckpoint(agent, role, quality);
                 emit AgentQualityOutcomeIgnored(agent, role, outcomeId, evidenceHash, keccak256("POSITIVE_EPOCH_CAP"));
                 emit AgentQualityUpdated(
                     agent, role, outcomeId, score, quality.outcomeCount, quality.severeFaults,
@@ -203,7 +222,8 @@ contract AgentRegistry {
             }
             if (quality.scoreBps < PAID_POOL_MINIMUM_QUALITY_BPS) quality.cooldownUntil = uint64(block.timestamp + QUALITY_COOLDOWN);
         }
-        registryHash = keccak256(abi.encode(registryHash, agent, role, quality.scoreBps, quality.outcomeCount, evidenceHash));
+        _advanceRegistry(keccak256(abi.encode("QUALITY", agent, role, quality.scoreBps, quality.outcomeCount, evidenceHash)));
+        _writeQualityCheckpoint(agent, role, quality);
         emit AgentQualityUpdated(
             agent, role, outcomeId, quality.scoreBps, quality.outcomeCount, quality.severeFaults,
             quality.cooldownUntil, quality.banned, success, severe, evidenceHash
@@ -224,7 +244,8 @@ contract AgentRegistry {
         quality.cooldownUntil = 0;
         quality.banned = false;
         if (quality.severeFaults >= PERMANENT_BAN_SEVERE_FAULTS) quality.severeFaults = PERMANENT_BAN_SEVERE_FAULTS - 1;
-        registryHash = keccak256(abi.encode(registryHash, agent, role, quality.scoreBps, evidenceHash, "REHABILITATED"));
+        _advanceRegistry(keccak256(abi.encode("REHABILITATED", agent, role, quality.scoreBps, evidenceHash)));
+        _writeQualityCheckpoint(agent, role, quality);
         emit AgentRoleRehabilitated(agent, role, evidenceHash);
     }
 
@@ -248,32 +269,101 @@ contract AgentRegistry {
         return 1_000 + _effectiveScore(agent, role);
     }
 
+    /// @notice Returns the request-time weight while preserving a current-state
+    /// safety veto. Positive changes after the snapshot cannot increase the
+    /// draw probability; withdrawal, deactivation, capability removal, cooldown
+    /// or a ban can still remove an unsafe/unavailable candidate.
+    function selectionWeightAt(
+        address agent, uint8 capability, uint64 snapshotVersion, uint64 snapshotTime
+    ) public view returns (uint256) {
+        if (
+            snapshotVersion == 0 || snapshotVersion > registryVersion || snapshotTime > block.timestamp ||
+            !isEligibleFor(agent, capability)
+        ) return 0;
+        AgentStateCheckpoint memory state = _stateAt(agent, snapshotVersion);
+        if (!state.active || state.positionId == 0 || (state.capabilities & capability) != capability) return 0;
+        (address owner, uint256 amount, , , uint256 withdrawalRequestedAt) = stakeManager.positions(state.positionId);
+        if (owner != agent || amount < stakeManager.MINIMUM_STAKE() || withdrawalRequestedAt != 0) return 0;
+        uint8 role = _roleForCapability(capability);
+        RoleQuality memory quality = _qualityAt(agent, role, snapshotVersion);
+        uint16 score = quality.scoreBps == 0 ? INITIAL_QUALITY_BPS : quality.scoreBps;
+        if (quality.banned || quality.cooldownUntil > snapshotTime || score < PAID_POOL_MINIMUM_QUALITY_BPS) return 0;
+        if (quality.outcomeCount < 3 && score > INITIAL_QUALITY_BPS) score = INITIAL_QUALITY_BPS;
+        return 1_000 + score;
+    }
+
     /// @notice Deterministic quality-weighted sampling with a fairness floor.
     /// The calling TaskRegistry supplies a read-only conflict predicate so the
     /// quality registry never needs task-specific storage.
     function selectWeightedTaskCandidate(
         uint256 taskId, bytes32 proof, uint8 slot, uint256 candidateCount,
         uint8 capability, address[3] calldata selected, uint8 selectedCount,
-        bool evaluatorPanel
+        bool evaluatorPanel, bytes32 snapshot
     ) external view returns (address winner) {
         if (candidateCount == 0 || candidateCount > registeredAgents.length) return address(0);
+        uint256 packedSnapshot = uint256(snapshot);
+        uint64 snapshotVersion = uint64(packedSnapshot >> 64);
+        uint64 snapshotTime = uint64(packedSnapshot);
         uint256 totalWeight;
         for (uint256 i; i < candidateCount; ++i) {
             address candidate = registeredAgents[i];
-            if (_selected(candidate, selected, selectedCount) || !isEligibleFor(candidate, capability)) continue;
+            if (_selected(candidate, selected, selectedCount)) continue;
             if (IAgentSelectionConflicts(msg.sender).isAgentSelectionConflict(taskId, candidate, evaluatorPanel)) continue;
-            totalWeight += _selectionWeight(candidate, capability);
+            totalWeight += selectionWeightAt(candidate, capability, snapshotVersion, snapshotTime);
         }
         if (totalWeight == 0) return address(0);
         uint256 ticket = uint256(keccak256(abi.encode(proof, slot, "QUALITY_WEIGHTED_SELECTION"))) % totalWeight;
         uint256 cumulative;
         for (uint256 i; i < candidateCount; ++i) {
             address candidate = registeredAgents[i];
-            if (_selected(candidate, selected, selectedCount) || !isEligibleFor(candidate, capability)) continue;
+            if (_selected(candidate, selected, selectedCount)) continue;
             if (IAgentSelectionConflicts(msg.sender).isAgentSelectionConflict(taskId, candidate, evaluatorPanel)) continue;
-            cumulative += _selectionWeight(candidate, capability);
+            cumulative += selectionWeightAt(candidate, capability, snapshotVersion, snapshotTime);
             if (ticket < cumulative) return candidate;
         }
+    }
+
+    function _advanceRegistry(bytes32 mutationHash) private {
+        registryVersion += 1;
+        registryHash = keccak256(abi.encode(registryHash, registryVersion, mutationHash));
+        emit RegistrySnapshotAdvanced(registryVersion, registryHash);
+    }
+
+    function _writeStateCheckpoint(address agent) private {
+        agentStateCheckpoints[agent].push(AgentStateCheckpoint({
+            version: registryVersion,
+            positionId: agentPosition[agent],
+            capabilities: agentCapabilities[agent],
+            active: agentActive[agent]
+        }));
+    }
+
+    function _writeQualityCheckpoint(address agent, uint8 role, RoleQuality storage quality) private {
+        qualityCheckpoints[agent][role].push(QualityCheckpoint({ version: registryVersion, quality: quality }));
+    }
+
+    function _stateAt(address agent, uint64 version) private view returns (AgentStateCheckpoint memory checkpoint) {
+        AgentStateCheckpoint[] storage checkpoints = agentStateCheckpoints[agent];
+        uint256 low;
+        uint256 high = checkpoints.length;
+        while (low < high) {
+            uint256 middle = (low + high) / 2;
+            if (checkpoints[middle].version <= version) low = middle + 1;
+            else high = middle;
+        }
+        if (low != 0) checkpoint = checkpoints[low - 1];
+    }
+
+    function _qualityAt(address agent, uint8 role, uint64 version) private view returns (RoleQuality memory quality) {
+        QualityCheckpoint[] storage checkpoints = qualityCheckpoints[agent][role];
+        uint256 low;
+        uint256 high = checkpoints.length;
+        while (low < high) {
+            uint256 middle = (low + high) / 2;
+            if (checkpoints[middle].version <= version) low = middle + 1;
+            else high = middle;
+        }
+        if (low != 0) quality = checkpoints[low - 1].quality;
     }
 
     function _selectionWeight(address agent, uint8 capability) private view returns (uint256) {

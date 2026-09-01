@@ -16,7 +16,7 @@ contract TaskRegistry is Ownable {
     uint256 public constant EXECUTOR_INACTIVITY_WINDOW = 6 hours;
     uint256 public constant EVALUATION_SELECTION_DELAY = 5;
     uint256 public constant EVALUATION_WINDOW = 3 days;
-    uint8 public constant EVALUATOR_COUNT = 3;
+    uint8 private constant EVALUATOR_COUNT = 3;
     enum State { None, Evaluating, Open, Claimed, Submitted, Testing, Correction, UserReview, Maintenance, Completed, Rejected }
     enum ExecutionMode { Collaboration, Competition }
 
@@ -282,6 +282,9 @@ contract TaskRegistry is Ownable {
         selection.candidateCount = count;
         selection.deadline = block.timestamp + EVALUATION_WINDOW;
         selection.candidateSetHash = agentRegistry.registryHash();
+        selection.selectionProof = bytes32(
+            (uint256(agentRegistry.registryVersion()) << 64) | uint64(block.timestamp)
+        );
         emit TaskEvaluationRequested(
             taskId,
             msg.sender,
@@ -306,14 +309,19 @@ contract TaskRegistry is Ownable {
             block.timestamp > selection.deadline || block.number <= selection.selectionBlock ||
             block.number > selection.selectionBlock + 256
         ) revert InvalidEvaluation();
+        bytes32 snapshot = selection.selectionProof;
         bytes32 proof = keccak256(
-            abi.encode(blockhash(selection.selectionBlock), taskId, selection.candidateSetHash, selection.candidateCount, "EVALUATOR_PANEL")
+            abi.encode(
+                blockhash(selection.selectionBlock), taskId, selection.candidateSetHash, selection.candidateCount,
+                snapshot, uint8(1)
+            )
         );
         address[3] memory selected;
         for (uint8 slot; slot < EVALUATOR_COUNT; ++slot) {
             selected[slot] = _qualityWeightedCandidate(
                 taskId, proof, slot, selection.candidateCount,
-                agentRegistry.CAPABILITY_EVALUATE(), selected, slot, true
+                agentRegistry.CAPABILITY_EVALUATE(), selected, slot, true,
+                snapshot
             );
             if (selected[slot] == address(0)) revert InvalidEvaluation();
             taskEvaluators[taskId][slot] = selected[slot];
@@ -577,6 +585,9 @@ contract TaskRegistry is Ownable {
         task.testerSelectionBlock = block.number + 5;
         task.testerCandidateCount = count;
         task.candidateSetHash = agentRegistry.registryHash();
+        task.selectionProof = bytes32(
+            (uint256(agentRegistry.registryVersion()) << 64) | uint64(block.timestamp)
+        );
         emit TesterRequested(taskId, task.testerSelectionBlock, task.candidateSetHash, count);
     }
 
@@ -584,13 +595,18 @@ contract TaskRegistry is Ownable {
         Task storage task = tasks[taskId];
         uint256 selectionBlock = task.testerSelectionBlock;
         if (task.state != State.Submitted || selectionBlock == 0 || block.number <= selectionBlock || block.number > selectionBlock + 256) revert InvalidState();
-        bytes32 proof = keccak256(abi.encode(blockhash(selectionBlock), taskId, task.candidateSetHash, task.testerCandidateCount));
+        bytes32 snapshot = task.selectionProof;
+        bytes32 proof = keccak256(abi.encode(
+            blockhash(selectionBlock), taskId, task.candidateSetHash, task.testerCandidateCount,
+            snapshot
+        ));
         if (address(verificationPanel) == address(0)) revert InvalidState();
         address[3] memory testers;
         for (uint8 slot; slot < 3; ++slot) {
             testers[slot] = _qualityWeightedCandidate(
                 taskId, proof, slot, task.testerCandidateCount,
-                taskRequiredTesterCapabilities[taskId], testers, slot, false
+                taskRequiredTesterCapabilities[taskId], testers, slot, false,
+                snapshot
             );
         }
         if (testers[2] == address(0)) revert InvalidTesterSet();
@@ -634,7 +650,7 @@ contract TaskRegistry is Ownable {
         else emit TestSubmitted(taskId, passed, aggregateEvidenceHash);
     }
 
-    function _resetTesterSelection(Task storage task) private {
+    function _resetTesterSelection(uint256 taskId, Task storage task) private {
         task.tester = address(0);
         task.testerSelectionBlock = 0;
         task.testerCandidateCount = 0;
@@ -648,7 +664,7 @@ contract TaskRegistry is Ownable {
         task.contributionCount = 0;
         task.artifactHash = bytes32(0);
         delete taskTesters[taskId];
-        _resetTesterSelection(task);
+        _resetTesterSelection(taskId, task);
         address[] storage executors = taskExecutors[taskId];
         for (uint256 i; i < executors.length; ++i) executorClaimedAt[taskId][executors[i]] = block.timestamp;
     }
@@ -760,15 +776,16 @@ contract TaskRegistry is Ownable {
         verificationPanel.startPanel(taskId, task.workRound, checkpoint, task.executorCount, testers, 7, masks, scopes);
     }
 
-    /// @dev Deterministic weighted sampling without replacement. Every eligible
-    /// Agent retains a 1,000-ticket fairness floor; quality adds up to 10,000
-    /// tickets. The future-block proof makes the draw unknowable at task creation.
+    /// @dev Deterministic weighted sampling without replacement. The snapshot
+    /// prevents post-request positive changes from improving draw probability.
     function _qualityWeightedCandidate(
         uint256 taskId, bytes32 proof, uint8 slot, uint256 candidateCount,
-        uint8 capability, address[3] memory selected, uint8 selectedCount, bool evaluatorPanel
+        uint8 capability, address[3] memory selected, uint8 selectedCount, bool evaluatorPanel,
+        bytes32 snapshot
     ) private view returns (address winner) {
         return agentRegistry.selectWeightedTaskCandidate(
-            taskId, proof, slot, candidateCount, capability, selected, selectedCount, evaluatorPanel
+            taskId, proof, slot, candidateCount, capability, selected, selectedCount,
+            evaluatorPanel, snapshot
         );
     }
 

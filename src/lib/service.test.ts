@@ -60,8 +60,8 @@ describe("backend protocol workflow", () => {
     const grant = snapshot.rewards[0];
     const delivery = grant.tranches[0];
     const claimed = await claimReward("task-demo-001", delivery.id);
-    expect(claimed.executorTotal).toBe(52);
-    expect(claimed.testerAmount).toBe(12);
+    expect(claimed.executorTotal).toBe(64);
+    expect(claimed.testerAmount).toBe(16);
     await expect(claimReward("task-demo-001", delivery.id)).rejects.toThrow("TRANCHE_NOT_CLAIMABLE");
     await expect(completeMaintenance("task-demo-001", "0xDemoPublisher", 0, true)).rejects.toThrow("CHECKPOINT_NOT_DUE");
   });
@@ -82,10 +82,10 @@ describe("backend protocol workflow", () => {
     const snapshot = await protocolSnapshot();
     const claimed = await claimReward("task-demo-001", snapshot.rewards[0].tranches[0].id);
     expect(claimed.executorPayments).toEqual([
-      { agentId: "agent-builder-01", weightBps: 5_000, amount: 26 },
-      { agentId: "agent-verifier-02", weightBps: 5_000, amount: 26 },
+      { agentId: "agent-builder-01", weightBps: 5_000, amount: 32 },
+      { agentId: "agent-verifier-02", weightBps: 5_000, amount: 32 },
     ]);
-    expect(claimed.protocolReserve).toBe(16);
+    expect(claimed.protocolReserve).toBe(0);
   });
 
   it("requires agent credentials and structured rejection evidence", async () => {

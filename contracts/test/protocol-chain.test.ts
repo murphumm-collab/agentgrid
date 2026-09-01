@@ -310,7 +310,9 @@ describe("AgentGrid Solidity protocol", () => {
     const targetReport = await read(addresses.verificationPanel, "VerificationPanel", "getReport", [1n, selected[0]]) as { evidenceHash: `0x${string}` };
     const reserveBeforeResolution = await read(addresses.token, "TestToken", "balanceOf", [reserveAccount.address]) as bigint;
     const resolutionReceipt = await write(arbitrators[2], court, "VerificationArbitrationCourt", "vote", [1n, true, acceptedResolution]);
-    const qualityLog = resolutionReceipt.logs.find((log) => log.address.toLowerCase() === addresses.agentRegistry.toLowerCase());
+    const qualityTopic = keccak256(stringToHex("AgentQualityUpdated(address,uint8,bytes32,uint16,uint32,uint8,uint64,bool,bool,bool,bytes32)"));
+    const qualityLog = resolutionReceipt.logs.find((log) =>
+      log.address.toLowerCase() === addresses.agentRegistry.toLowerCase() && log.topics[0] === qualityTopic);
     if (!qualityLog) throw new Error("AGENT_QUALITY_LOG_MISSING");
     const qualityEvent = decodeEventLog({ abi: artifacts.AgentRegistry.abi as Abi, data: qualityLog.data, topics: qualityLog.topics });
     const expectedQualityEvidence = keccak256(encodeAbiParameters(

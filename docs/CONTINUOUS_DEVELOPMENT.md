@@ -72,35 +72,43 @@ The current source also adds `ProtocolEconomics` and is migrating the legacy
 fixed evaluation/publication fees to immutable source attribution, 95/3/2 gross
 reward routing, DAO/source vesting and idempotent 20/30/70/30-bps lifecycle
 charges. Compilation, isolated economics tests, focused lifecycle regressions,
-the v0.8 machine surface and economics dashboard projection pass locally. The
+the OpenAPI 0.8.1 machine surface and economics dashboard projection pass locally. The
 role-separated quality path now records validator and executor results plus a
 permissionless, one-shot evaluator settlement, freezes fixed-pool executor
 quality multipliers and caps positive gains per role/30-day epoch. Maintenance
 now has only the three-member shard commit/reveal queue path; the unused
 single-validator `MAINTENANCE_VALIDATION` contract was removed. Common-control
 self-dealing resistance, deployment verification and final QA remain open. The
-current Solidity source passed the complete contract regression on 2026-09-01:
-4 files and 22/22 tests, including the 12-scenario protocol chain, four
-economics cases, four role-quality cases and two arbitration penalty/recovery
-cases. The suite proves 5%/15%/30% repeated-false-challenge slashing and
-three-day no-quorum unlock and panel recovery. A subsequent focused upheld-case
-run also directly proves the 100/60/40 target-slash/challenger-reward/reserve
-delta. This is current-source contract evidence, not the fixed release QA.
-Therefore previous QA reports are historical evidence only.
+latest current-source full contract run executed 23 cases: 22 passed, while one
+test-only log selector chose the newly preceding snapshot event instead of the
+quality event. The selector now matches the exact quality-event topic and the
+focused upheld-arbitration rerun passes, including the 100/60/40 delta. A fresh
+uninterrupted 23/23 run remains required by final QA. This is current-source
+contract evidence, not the fixed release QA. Therefore previous QA reports are
+historical evidence only.
 
-The next quality-selection hardening must bind request-time eligibility and
-quality weights to an on-chain historical snapshot (or an equivalently
-verifiable commitment/proof). The current candidate-set hash freezes registry
-state in the entropy commitment but finalization still reads live weights;
-simply requiring the live hash to remain unchanged would let unrelated valid
-outcomes deny service to every pending selection. GitHub push also remains an
-external credential handoff: the local branch carries unpushed commits and
-HTTPS authentication is unavailable on this machine.
+Quality-weighted evaluator and validator selection now binds a request-time
+registry version/timestamp checkpoint into the future-block proof. Subsequent
+positive scores, reactivation and added capabilities cannot improve an old
+draw; current withdrawal, deactivation, capability removal, cooldown and bans
+remain safety vetoes. The focused five-case quality suite and both real panel
+selection paths pass, all eleven deployables remain below EIP-170, and AI
+Dashboard 1.4/OpenAPI 0.8.1 expose the closed anti-manipulation policy. Common-
+control resistance, public rehabilitation and final packaged evidence remain
+open. GitHub push also remains an external credential handoff: the local
+branch carries unpushed commits and HTTPS authentication is unavailable on this
+machine.
 
-Governed source froze after adding visible failure, busy state and duplicate-
+The current application suite passes 328/328 tests across 88 files; typecheck,
+lint, all 15 Worker/Ops bundles and the production Web build pass. The Demo and
+homepage participant split now matches RewardVault's post-network Agent pool:
+80% executors, 20% three-validator panel and only rounding dust to reserve. This
+does not replace ProtocolEconomics' outer 95/3/2 Agent/DAO/source routing.
+
+The superseded application source froze after adding visible failure, busy state and duplicate-
 safe boundaries to language, clipboard and Demo mutations. Discovery
-schema 1.1 and OpenAPI 0.6.9 expose explicit single-task,
-job-heartbeat and job-completion templates. The current 307-test / 83-file suite
+schema 1.1 and OpenAPI 0.6.9 exposed explicit single-task,
+job-heartbeat and job-completion templates. That 307-test / 83-file suite
 enumerates the production SDK prototype, binds every workflow to discovery and
 verifies every discovered API template exists in OpenAPI. It also binds the
 six-entry mobile primary-navigation contract so the AI Dashboard remains

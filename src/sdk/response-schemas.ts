@@ -125,7 +125,7 @@ const protocolEconomicsSummarySchema = z.object({
 }).strict();
 
 export const publicDashboardResponseSchema = z.object({
-  schemaVersion: z.literal("1.3"),
+  schemaVersion: z.literal("1.4"),
   generatedAt: dateTime,
   mode: z.enum(["demo", "production"]),
   network: z.object({ name: z.literal("BSC Testnet"), chainId: z.literal(97), confirmations: z.literal(5) }).strict(),
@@ -145,6 +145,18 @@ export const publicDashboardResponseSchema = z.object({
     issuedRewardsAgt: z.number().nonnegative(),
   }).strict(),
   economics: protocolEconomicsSummarySchema,
+  selectionPolicy: z.object({
+    snapshot: z.literal("REQUEST_TIME_REGISTRY_VERSION_AND_TIMESTAMP"),
+    positiveChangesAfterRequest: z.literal("IGNORED_FOR_FROZEN_DRAW"),
+    safetyVetoes: z.tuple([
+      z.literal("WITHDRAWAL"), z.literal("DEACTIVATION"), z.literal("CAPABILITY_REMOVAL"),
+      z.literal("QUALITY_COOLDOWN"), z.literal("ROLE_BAN"),
+    ]),
+    fairnessFloorTickets: z.literal(1_000),
+    testnetRandomness: z.literal("FUTURE_BLOCK_HASH"),
+    mainnetRequirement: z.literal("VRF_REQUIRED"),
+    proofBinding: z.literal("PACKED_SNAPSHOT_INCLUDED_IN_SELECTION_PROOF"),
+  }).strict(),
   workQueue: z.array(dashboardWorkItemSchema).max(50),
   actionContracts: z.array(z.object({
     id: boundedText(1, 120),

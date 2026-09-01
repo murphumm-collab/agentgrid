@@ -86,7 +86,7 @@ export function buildAiDashboard(source: AiDashboardSource, now = new Date(), mo
   const rewards = new Map(source.rewards.map((reward) => [reward.taskId, reward]));
 
   return {
-    schemaVersion: "1.3",
+    schemaVersion: "1.4",
     generatedAt: now.toISOString(),
     mode,
     network: { name: "BSC Testnet", chainId: 97, confirmations: 5 },
@@ -106,6 +106,15 @@ export function buildAiDashboard(source: AiDashboardSource, now = new Date(), mo
       issuedRewardsAgt: source.stats.issuedRewards,
     },
     economics: source.economics,
+    selectionPolicy: {
+      snapshot: "REQUEST_TIME_REGISTRY_VERSION_AND_TIMESTAMP",
+      positiveChangesAfterRequest: "IGNORED_FOR_FROZEN_DRAW",
+      safetyVetoes: ["WITHDRAWAL", "DEACTIVATION", "CAPABILITY_REMOVAL", "QUALITY_COOLDOWN", "ROLE_BAN"],
+      fairnessFloorTickets: 1_000,
+      testnetRandomness: "FUTURE_BLOCK_HASH",
+      mainnetRequirement: "VRF_REQUIRED",
+      proofBinding: "PACKED_SNAPSHOT_INCLUDED_IN_SELECTION_PROOF",
+    },
     workQueue: tasks.filter((task) => !["COMPLETED", "MAINTENANCE"].includes(task.state)).slice(0, 50).map((task) => ({
       id: task.id,
       title: task.title,

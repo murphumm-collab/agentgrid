@@ -169,4 +169,42 @@ describe("AgentRegistry role quality", () => {
     expect(quality).toMatchObject({ scoreBps: 7_000, outcomeCount: 12 });
     expect(await read("AgentRegistry", "qualityMultiplierBps", [agent.account!.address, 1])).toBe(10_800);
   });
+
+  it("freezes request-time selection weight while retaining current safety vetoes", async () => {
+    const snapshotVersion = await read("AgentRegistry", "registryVersion") as bigint;
+    const snapshotTime = (await publicClient.getBlock()).timestamp;
+    expect(await read("AgentRegistry", "selectionWeightAt", [
+      agent.account!.address, 2, snapshotVersion, snapshotTime,
+    ])).toBe(6_000n);
+
+    for (let index = 0; index < 3; index += 1) await write(owner, qualityReporter, "QualityReporterHarness", "record", [
+      agent.account!.address, 2, keccak256(stringToHex(`snapshot-success-${index}`)),
+      keccak256(stringToHex("VERIFICATION_COMPLETED")), true, false,
+      keccak256(stringToHex(`snapshot-evidence-${index}`)),
+    ]);
+    expect(await read("AgentRegistry", "selectionWeight", [agent.account!.address, 2])).toBe(6_600n);
+    expect(await read("AgentRegistry", "selectionWeightAt", [
+      agent.account!.address, 2, snapshotVersion, snapshotTime,
+    ])).toBe(6_000n);
+
+    await write(agent, agentRegistry, "AgentRegistry", "setActive", [false]);
+    expect(await read("AgentRegistry", "selectionWeightAt", [
+      agent.account!.address, 2, snapshotVersion, snapshotTime,
+    ])).toBe(0n);
+    await write(agent, agentRegistry, "AgentRegistry", "setActive", [true]);
+    expect(await read("AgentRegistry", "selectionWeightAt", [
+      agent.account!.address, 2, snapshotVersion, snapshotTime,
+    ])).toBe(6_000n);
+
+    await write(agent, agentRegistry, "AgentRegistry", "registerWithCapabilities", [1n, 5]);
+    const noTestVersion = await read("AgentRegistry", "registryVersion") as bigint;
+    const noTestTime = (await publicClient.getBlock()).timestamp;
+    expect(await read("AgentRegistry", "selectionWeightAt", [
+      agent.account!.address, 2, snapshotVersion, snapshotTime,
+    ])).toBe(0n);
+    await write(agent, agentRegistry, "AgentRegistry", "registerWithCapabilities", [1n, 7]);
+    expect(await read("AgentRegistry", "selectionWeightAt", [
+      agent.account!.address, 2, noTestVersion, noTestTime,
+    ])).toBe(0n);
+  });
 });

@@ -33,6 +33,13 @@ export default async function AiDashboardPage() {
       <div><ShieldCheck size={17} /><span><strong>{dashboard.mode.toUpperCase()}</strong><small>{dashboard.discovery.a2aCompatible ? "A2A compatible" : "AgentGrid REST · A2A pending"}</small></span></div>
     </section>
 
+    <section className="notice" style={{ marginBottom: 22 }} aria-label={zh ? "Agent 选择防操纵规则" : "Agent selection anti-manipulation policy"}>
+      <strong>{zh ? "Agent 抽样在请求时冻结" : "Agent draws freeze at request time"}</strong>
+      <p>{zh
+        ? `之后的加分、重新激活或新增能力不会提高本次概率；撤资、停用、移除能力、冷却或封禁仍会安全剔除。公平底票 ${dashboard.selectionPolicy.fairnessFloorTickets}，主网上线前必须使用 VRF。`
+        : `Later gains, reactivation and added capabilities cannot improve this draw; withdrawal, deactivation, capability removal, cooldown and bans remain safety vetoes. Fairness floor: ${dashboard.selectionPolicy.fairnessFloorTickets} tickets; mainnet requires VRF.`}</p>
+    </section>
+
     <section className="card card-pad" style={{ marginBottom: 22 }}>
       <div className="section-head"><div><div className="eyebrow">CONFIRMED PROTOCOL ECONOMICS</div><h2 className="section-title">{zh ? "链上经济事实，不展示价格承诺" : "On-chain economics, without price promises"}</h2></div><span className="badge badge-blue">95 / 3 / 2</span></div>
       <div className="grid stats-grid">

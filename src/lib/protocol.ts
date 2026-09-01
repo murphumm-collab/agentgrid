@@ -9,7 +9,11 @@ import type {
   TestResult,
 } from "./types";
 
-export const REWARD_SPLIT_BPS = Object.freeze({ executors: 6_500, tester: 1_500, reserve: 2_000 });
+// The RewardVault receives the 95% Agent pool after ProtocolEconomics has
+// already routed DAO/source shares. Inside that fixed pool, executors receive
+// 80% and the three-member validator panel receives 20%; only rounding dust is
+// retained by the reserve.
+export const REWARD_SPLIT_BPS = Object.freeze({ executors: 8_000, tester: 2_000, reserve: 0 });
 
 export const DEFAULT_CONFIG: ProtocolConfig = {
   epochId: "epoch-001",

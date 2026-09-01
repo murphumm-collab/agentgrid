@@ -22,7 +22,7 @@ real-user pilot.
 ## A. Reproducible local gates
 
 - [x] `pnpm lint`
-- [x] `pnpm test` — 302 tests across 81 files. The displayed 100% coverage applies
+- [x] `pnpm test` — current source passes 328 tests across 88 files. The displayed 100% coverage applies
   only to `src/lib/protocol.ts`; it is not evidence of full Worker/API coverage.
 - [x] `pnpm audit --prod --audit-level high --json` — the current production
   graph reports zero info/low/moderate/high/critical advisories; this live audit
@@ -34,7 +34,11 @@ real-user pilot.
 - [ ] `pnpm contracts:compile` — current source compiles eleven deployable
   artifacts, including `ProtocolEconomics`; this focused pass is not yet part of
   the final frozen 22-command QA evidence.
-- [x] `pnpm contracts:test` — eleven complete on-chain lifecycle/adversarial tests
+- [ ] `pnpm contracts:test` — the current-source full run executed 23 cases:
+  22 passed and one test-only event-selector assertion failed after the new
+  snapshot event preceded `AgentQualityUpdated`. The selector now matches the
+  exact event topic and its focused upheld-arbitration rerun passes; one fresh
+  uninterrupted 23/23 run remains part of the final frozen QA.
 - [x] `pnpm build` and `pnpm workers:build` (15 Web/Worker/Ops entry bundles)
 - [x] Candidate manifest v2 binds every standalone payload file/internal link,
   entry count and byte count; escaping links and changed chunks are rejected,
@@ -502,10 +506,14 @@ real-user pilot.
   neutral. Executor role-quality multipliers are frozen with the panel and
   renormalize contribution weights inside the unchanged fixed pool. A 30-day,
   per-role ten-positive-outcome cap prevents unlimited score gain in one epoch.
+  Request-time registry version/timestamp checkpoints now freeze the positive
+  eligibility/quality upper bound and are bound into evaluator/validator draw
+  proofs; current withdrawal, deactivation, capability removal, cooldown and
+  bans remain fail-safe vetoes. Focused tests prove post-request score gains and
+  capability additions cannot improve an old draw, while both real selection
+  paths complete from the frozen snapshot.
   The row remains open for common-control/self-dealing resistance, the public
-  rehabilitation process and request-time historical eligibility/quality
-  snapshots. A frozen candidate-set hash alone is insufficient while weighted
-  selection still reads mutable live quality at finalization.
+  rehabilitation process and final machine/dashboard projection evidence.
 - [ ] Indexer, OpenAPI, SDK and the human/AI dashboards expose source attribution,
   vesting, lifecycle charges, treasury/burn/security routes, sponsored labels,
   role quality and 30/90-day AGT net-demand components without presenting
