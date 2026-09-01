@@ -1260,6 +1260,7 @@ export async function operationalDatabaseMetrics() {
   await migratePostgres();
   const result = await databasePool().query<{
     chainEvents: string; confirmedTasks: string; pendingOutbox: string; readyArtifacts: string; signedEvidence: string; businessAdoptions: string; unreadNotifications: string; auditEvents24h: string; artifactReleases24h: string; expiredEvaluations: string;
+    qualityLowValueIgnored1h: string; qualitySelfDealingIgnored1h: string; qualityRelationshipCapIgnored1h: string;
     latestIndexedBlock: string | null; chainCursorAgeSeconds: string | null; pendingOutboxOldestSeconds: string | null; lastNotificationAgeSeconds: string | null;
   }>(`SELECT
     (SELECT COUNT(*) FROM chain_events)::text AS "chainEvents",
@@ -1275,10 +1276,23 @@ export async function operationalDatabaseMetrics() {
       SELECT 1 FROM chain_events e WHERE e.event_name='TaskEvaluationRequested' AND e.event_args->>'taskId'=c.chain_task_id::text
       AND (e.event_args->>'deadline')::numeric < EXTRACT(EPOCH FROM NOW())
     ))::text AS "expiredEvaluations",
+    (SELECT COUNT(*) FROM chain_events WHERE event_name='AgentQualityOutcomeIgnored'
+      AND LOWER(event_args->>'reason')=$1
+      AND block_timestamp > NOW()-INTERVAL '1 hour')::text AS "qualityLowValueIgnored1h",
+    (SELECT COUNT(*) FROM chain_events WHERE event_name='AgentQualityOutcomeIgnored'
+      AND LOWER(event_args->>'reason')=$2
+      AND block_timestamp > NOW()-INTERVAL '1 hour')::text AS "qualitySelfDealingIgnored1h",
+    (SELECT COUNT(*) FROM chain_events WHERE event_name='AgentQualityOutcomeIgnored'
+      AND LOWER(event_args->>'reason')=$3
+      AND block_timestamp > NOW()-INTERVAL '1 hour')::text AS "qualityRelationshipCapIgnored1h",
     (SELECT MAX(block_number) FROM chain_events)::text AS "latestIndexedBlock",
     (SELECT EXTRACT(EPOCH FROM NOW()-MAX(updated_at)) FROM chain_cursors)::text AS "chainCursorAgeSeconds",
     (SELECT EXTRACT(EPOCH FROM NOW()-MIN(created_at)) FROM job_outbox WHERE dispatched_at IS NULL)::text AS "pendingOutboxOldestSeconds",
-    (SELECT EXTRACT(EPOCH FROM NOW()-MAX(created_at)) FROM notifications)::text AS "lastNotificationAgeSeconds"`);
+    (SELECT EXTRACT(EPOCH FROM NOW()-MAX(created_at)) FROM notifications)::text AS "lastNotificationAgeSeconds"`, [
+      keccak256(stringToHex("LOW_VALUE_TASK")).toLowerCase(),
+      keccak256(stringToHex("SELF_DEALING_RELATIONSHIP")).toLowerCase(),
+      keccak256(stringToHex("RELATIONSHIP_EPOCH_CAP")).toLowerCase(),
+    ]);
   return Object.fromEntries(Object.entries(result.rows[0]).map(([key, value]) => [key, value === null ? null : Number(value)]));
 }
 

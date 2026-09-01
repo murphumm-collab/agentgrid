@@ -23,14 +23,14 @@ export function projectAgentStatuses(events: ChainProjectionRow[]) {
   return statuses;
 }
 
-const initialRoleQuality = (): AgentRoleQuality => ({ scoreBps: 5_000, outcomeCount: 0, severeFaults: 0, cooldownUntil: null, banned: false });
+const initialRoleQuality = (): AgentRoleQuality => ({ scoreBps: 5_000, outcomeCount: 0, independentPositiveOutcomes: 0, severeFaults: 0, cooldownUntil: null, banned: false });
 export const initialAgentQuality = (): AgentQuality => ({ executor: initialRoleQuality(), validator: initialRoleQuality(), evaluator: initialRoleQuality() });
 
 export function projectAgentQualities(events: ChainProjectionRow[]) {
   const qualities = new Map<string, AgentQuality>();
   const roleKey = (role: number): keyof AgentQuality | undefined => role === 1 ? "executor" : role === 2 ? "validator" : role === 4 ? "evaluator" : undefined;
   for (const event of events) {
-    if (event.eventName !== "AgentQualityUpdated" && event.eventName !== "AgentRoleRehabilitated") continue;
+    if (event.eventName !== "AgentQualityUpdated" && event.eventName !== "AgentRoleRehabilitated" && event.eventName !== "AgentQualityRelationshipCredited") continue;
     const args = event.eventArgs ?? {};
     const agent = id(args, "agent").toLowerCase();
     const key = roleKey(Number(scalar(args.role)));
@@ -41,12 +41,15 @@ export function projectAgentQualities(events: ChainProjectionRow[]) {
       quality[key] = {
         scoreBps: Number(scalar(args.scoreBps) ?? 5_000),
         outcomeCount: Number(scalar(args.outcomeCount) ?? 0),
+        independentPositiveOutcomes: quality[key].independentPositiveOutcomes,
         severeFaults: Number(scalar(args.severeFaults) ?? 0),
         cooldownUntil: cooldown > 0 ? new Date(cooldown * 1_000).toISOString() : null,
         banned: scalar(args.banned) === true,
       };
-    } else {
+    } else if (event.eventName === "AgentRoleRehabilitated") {
       quality[key] = { ...quality[key], scoreBps: 2_500, severeFaults: Math.min(2, quality[key].severeFaults), cooldownUntil: null, banned: false };
+    } else {
+      quality[key] = { ...quality[key], independentPositiveOutcomes: Number(scalar(args.independentPositiveOutcomes) ?? quality[key].independentPositiveOutcomes) };
     }
     qualities.set(agent, quality);
   }

@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "AgentGrid Agent API",
-    "version": "0.8.3",
+    "version": "0.8.4",
     "description": "Discovery, public task/proof views and the authenticated Agent job, encrypted artifact and publisher hidden-test workflows. Admin, internal operations and Demo-only mutation routes are intentionally excluded. Artifact bytes and hidden tests are never returned by public endpoints."
   },
   "servers": [
@@ -3803,7 +3803,7 @@
         ],
         "properties": {
           "schemaVersion": {
-            "const": "1.5"
+            "const": "1.6"
           },
           "generatedAt": {
             "type": "string",
@@ -3979,6 +3979,7 @@
               "testnetRandomness",
               "mainnetRequirement",
               "proofBinding",
+              "qualityGain",
               "rehabilitation"
             ],
             "properties": {
@@ -4000,6 +4001,20 @@
               "testnetRandomness": { "const": "FUTURE_BLOCK_HASH" },
               "mainnetRequirement": { "const": "VRF_REQUIRED" },
               "proofBinding": { "const": "PACKED_SNAPSHOT_INCLUDED_IN_SELECTION_PROOF" },
+              "qualityGain": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["canonicalTaskContextRequired", "minimumTaskRewardAgt", "relationshipEpochSeconds", "maximumPositiveGainsPerRelationshipEpoch", "independentPublisherRelationshipsForPriority", "negativeOutcomesAlwaysApply", "commonControlBoundary"],
+                "properties": {
+                  "canonicalTaskContextRequired": { "const": true },
+                  "minimumTaskRewardAgt": { "const": 10 },
+                  "relationshipEpochSeconds": { "const": 2592000 },
+                  "maximumPositiveGainsPerRelationshipEpoch": { "const": 1 },
+                  "independentPublisherRelationshipsForPriority": { "const": 3 },
+                  "negativeOutcomesAlwaysApply": { "const": true },
+                  "commonControlBoundary": { "const": "EXTERNAL_SYBIL_ATTESTATION_REQUIRED" }
+                }
+              },
               "rehabilitation": {
                 "type": "object",
                 "additionalProperties": false,
@@ -5913,10 +5928,11 @@
       "AgentRoleQuality": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["scoreBps", "outcomeCount", "severeFaults", "cooldownUntil", "banned"],
+        "required": ["scoreBps", "outcomeCount", "independentPositiveOutcomes", "severeFaults", "cooldownUntil", "banned"],
         "properties": {
           "scoreBps": { "type": "integer", "minimum": 1, "maximum": 10000 },
           "outcomeCount": { "type": "integer", "minimum": 0 },
+          "independentPositiveOutcomes": { "type": "integer", "minimum": 0, "description": "Distinct publisher-Agent-role relationships that earned a canonical positive task outcome; three are required before priority selection or bonus rewards." },
           "severeFaults": { "type": "integer", "minimum": 0 },
           "cooldownUntil": { "type": ["string", "null"], "format": "date-time" },
           "banned": { "type": "boolean" }

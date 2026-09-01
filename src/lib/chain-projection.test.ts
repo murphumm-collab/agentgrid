@@ -22,14 +22,15 @@ describe("confirmed chain business projection", () => {
   it("projects role-isolated quality, cooldown, ban and evidence-bound rehabilitation", () => {
     const qualities = projectAgentQualities([
       event("AgentQualityUpdated", { agent: "0xAgent", role: 2, scoreBps: 2200, outcomeCount: 4, severeFaults: 2, cooldownUntil: 1_800_000_000, banned: false }, "1"),
+      event("AgentQualityRelationshipCredited", { agent: "0xAgent", role: 1, independentPositiveOutcomes: 3, publisher: "0xPublisher", taskId: 8 }, "2"),
       event("AgentQualityUpdated", { agent: "0xAgent", role: 1, scoreBps: 6400, outcomeCount: 8, severeFaults: 0, cooldownUntil: 0, banned: false }, "2"),
       event("AgentQualityUpdated", { agent: "0xAgent", role: 2, scoreBps: 700, outcomeCount: 5, severeFaults: 3, cooldownUntil: 1_800_000_100, banned: true }, "3"),
       event("AgentRoleRehabilitated", { agent: "0xAgent", role: 2, evidenceHash: `0x${"a".repeat(64)}` }, "4"),
     ]).get("0xagent");
     expect(qualities).toEqual({
-      executor: { scoreBps: 6400, outcomeCount: 8, severeFaults: 0, cooldownUntil: null, banned: false },
-      validator: { scoreBps: 2500, outcomeCount: 5, severeFaults: 2, cooldownUntil: null, banned: false },
-      evaluator: { scoreBps: 5000, outcomeCount: 0, severeFaults: 0, cooldownUntil: null, banned: false },
+      executor: { scoreBps: 6400, outcomeCount: 8, independentPositiveOutcomes: 3, severeFaults: 0, cooldownUntil: null, banned: false },
+      validator: { scoreBps: 2500, outcomeCount: 5, independentPositiveOutcomes: 0, severeFaults: 2, cooldownUntil: null, banned: false },
+      evaluator: { scoreBps: 5000, outcomeCount: 0, independentPositiveOutcomes: 0, severeFaults: 0, cooldownUntil: null, banned: false },
     });
   });
 

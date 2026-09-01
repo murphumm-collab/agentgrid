@@ -370,6 +370,8 @@ describe("AgentGrid Solidity protocol", () => {
     expect(await read(addresses.stakeManager, "StakeCreditManager", "stakeOf", [4n])).toBe(parseEther("995"));
     expect(await read(addresses.agentRegistry, "AgentRegistry", "qualityOf", [evaluators[0].account!.address, 4])).toMatchObject({ scoreBps: 5_200, outcomeCount: 1 });
     expect(await read(addresses.agentRegistry, "AgentRegistry", "qualityOf", [evaluators[1].account!.address, 4])).toMatchObject({ scoreBps: 5_200, outcomeCount: 1 });
+    expect(await read(addresses.agentRegistry, "AgentRegistry", "independentPositiveOutcomeCount", [evaluators[0].account!.address, 4])).toBe(1);
+    expect(await read(addresses.agentRegistry, "AgentRegistry", "independentPositiveOutcomeCount", [evaluators[1].account!.address, 4])).toBe(1);
     expect(await read(addresses.agentRegistry, "AgentRegistry", "qualityOf", [evaluators[2].account!.address, 4])).toMatchObject({ scoreBps: 5_000, outcomeCount: 0 });
     for (const evaluator of evaluators) {
       expect(await read(addresses.token, "TestToken", "balanceOf", [evaluator.account!.address])).toBe(9_000n * 10n ** 18n + parseEther("0.7") / 3n);

@@ -23,7 +23,10 @@ interface IVerificationPanelConsumer {
 }
 
 interface IQualityAgentRegistry {
-    function recordOutcome(address agent, uint8 role, bytes32 contextId, bytes32 outcomeType, bool success, bool severe, bytes32 evidenceHash) external;
+    function recordTaskOutcome(
+        address agent, uint8 role, uint256 taskId, address publisher, uint256 taskReward,
+        bytes32 contextId, bytes32 outcomeType, bool success, bool severe, bytes32 evidenceHash
+    ) external;
     function qualityMultiplierBps(address agent, uint8 role) external view returns (uint16);
 }
 
@@ -295,16 +298,16 @@ contract VerificationPanel {
             (bytes32 category,,,,, bool voteApprove, bytes32 reportHash, bool submitted) = registry.evaluationReports(taskId, evaluators[i]);
             if (!submitted) {
                 missedCount += 1;
-                qualityRegistry.recordOutcome(
+                _recordTaskOutcome(taskId,
                     evaluators[i], 4, contextId, OUTCOME_EVALUATION_MISSED, false, false,
                     keccak256(abi.encode(taskId, evaluators[i], reportCount, "MISSING_EVALUATION_REPORT"))
                 );
             } else if (approved && voteApprove && category == finalCategory) {
                 positiveCount += 1;
-                qualityRegistry.recordOutcome(evaluators[i], 4, contextId, OUTCOME_EVALUATION_ALIGNED, true, false, reportHash);
+                _recordTaskOutcome(taskId, evaluators[i], 4, contextId, OUTCOME_EVALUATION_ALIGNED, true, false, reportHash);
             } else if (!approved && approveCount < 2 && !voteApprove) {
                 positiveCount += 1;
-                qualityRegistry.recordOutcome(evaluators[i], 4, contextId, OUTCOME_EVALUATION_REJECTION_ALIGNED, true, false, reportHash);
+                _recordTaskOutcome(taskId, evaluators[i], 4, contextId, OUTCOME_EVALUATION_REJECTION_ALIGNED, true, false, reportHash);
             }
         }
         emit EvaluationOutcomesSettled(taskId, approved, positiveCount, missedCount);
@@ -412,13 +415,13 @@ contract VerificationPanel {
         for (uint8 i; i < PANEL_SIZE; ++i) {
             Report storage report = reports[taskId][panel.epoch][testers[i]];
             if (testers[i] == severeFault) {
-                qualityRegistry.recordOutcome(testers[i], 2, contextId, reason, false, true, severeEvidence);
+                _recordTaskOutcome(taskId, testers[i], 2, contextId, reason, false, true, severeEvidence);
             } else if (reason == REASON_COMMIT_TIMEOUT && report.commitment == bytes32(0)) {
-                qualityRegistry.recordOutcome(testers[i], 2, contextId, reason, false, false, evidenceHash);
+                _recordTaskOutcome(taskId, testers[i], 2, contextId, reason, false, false, evidenceHash);
             } else if (reason == REASON_REVEAL_TIMEOUT) {
-                qualityRegistry.recordOutcome(testers[i], 2, contextId, reason, report.revealed, false, report.revealed ? report.evidenceHash : evidenceHash);
+                _recordTaskOutcome(taskId, testers[i], 2, contextId, reason, report.revealed, false, report.revealed ? report.evidenceHash : evidenceHash);
             } else if (reason == REASON_UPHELD_CHALLENGE) {
-                qualityRegistry.recordOutcome(testers[i], 2, contextId, OUTCOME_VERIFICATION_COMPLETED, true, false, report.evidenceHash);
+                _recordTaskOutcome(taskId, testers[i], 2, contextId, OUTCOME_VERIFICATION_COMPLETED, true, false, report.evidenceHash);
             }
         }
         panel.status = Status.Voided;
@@ -432,10 +435,31 @@ contract VerificationPanel {
         return keccak256(abi.encode(taskId, panel.workRound, panel.checkpoint, panel.epoch));
     }
 
+    function _recordTaskOutcome(
+        uint256 taskId, address agent, uint8 role, bytes32 contextId,
+        bytes32 outcomeType, bool success, bool severe, bytes32 evidenceHash
+    ) private {
+        (bool ok, bytes memory taskData) = address(registry).staticcall(
+            abi.encodeWithSelector(IVerificationPanelConsumer.tasks.selector, taskId)
+        );
+        if (!ok || taskData.length != 640) revert InvalidState();
+        uint256 publisherWord;
+        uint256 taskReward;
+        assembly ("memory-safe") {
+            publisherWord := mload(add(taskData, 32))
+            taskReward := mload(add(taskData, 160))
+        }
+        address publisher = address(uint160(publisherWord));
+        qualityRegistry.recordTaskOutcome(
+            agent, role, taskId, publisher, taskReward,
+            contextId, outcomeType, success, severe, evidenceHash
+        );
+    }
+
     function _recordCompletedOutcomes(uint256 taskId, Panel storage panel, bytes32[3] memory evidence) private {
         bytes32 contextId = _qualityContext(taskId, panel);
         for (uint8 i; i < PANEL_SIZE; ++i) {
-            qualityRegistry.recordOutcome(panel.testers[i], 2, contextId, OUTCOME_VERIFICATION_COMPLETED, true, false, evidence[i]);
+            _recordTaskOutcome(taskId, panel.testers[i], 2, contextId, OUTCOME_VERIFICATION_COMPLETED, true, false, evidence[i]);
         }
     }
 
@@ -448,7 +472,7 @@ contract VerificationPanel {
             // Competition losers remain neutral: losing a valid comparison is
             // not equivalent to submitting work that failed verification.
             if (passed && winner != address(0) && executors[i] != winner) continue;
-            qualityRegistry.recordOutcome(
+            _recordTaskOutcome(taskId,
                 executors[i], 1, contextId,
                 passed ? OUTCOME_EXECUTION_VERIFIED : OUTCOME_EXECUTION_FAILED,
                 passed, false, evidenceHash

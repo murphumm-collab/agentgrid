@@ -20,6 +20,7 @@ export type ExecutionMode = "COLLABORATION" | "COMPETITION";
 export interface AgentRoleQuality {
   scoreBps: number;
   outcomeCount: number;
+  independentPositiveOutcomes: number;
   severeFaults: number;
   cooldownUntil: string | null;
   banned: boolean;
@@ -85,6 +86,7 @@ export interface TestResult extends SoftwareEvidence {
   testerId: string;
   testerIds?: string[];
   reportHashes?: string[];
+  aggregateEvidenceHash?: string;
   passed: boolean;
   failures: string[];
   submittedAt: string;

@@ -72,20 +72,25 @@ The current source also adds `ProtocolEconomics` and is migrating the legacy
 fixed evaluation/publication fees to immutable source attribution, 95/3/2 gross
 reward routing, DAO/source vesting and idempotent 20/30/70/30-bps lifecycle
 charges. Compilation, isolated economics tests, focused lifecycle regressions,
-the OpenAPI 0.8.3 machine surface and economics dashboard projection pass locally. The
+the OpenAPI 0.8.4 machine surface and economics dashboard projection pass locally. The
 role-separated quality path now records validator and executor results plus a
 permissionless, one-shot evaluator settlement, freezes fixed-pool executor
 quality multipliers and caps positive gains per role/30-day epoch. Maintenance
 now has only the three-member shard commit/reveal queue path; the unused
 single-validator `MAINTENANCE_VALIDATION` contract was removed. The legacy Demo
 HTTP route and Demo SDK method that could directly submit one
-validator result are now removed as well; OpenAPI 0.8.3 uses `testerIds`,
+validator result are now removed as well; OpenAPI 0.8.4 uses `testerIds`,
 `reportHashes` and `aggregateEvidenceHash` as the panel projection while marking
-the first-member aliases deprecated. Common-control self-dealing resistance,
-deployment verification and final QA remain open. The
-latest current-source full contract run passes all 25 cases across four files,
-including the corrected exact quality-event selector and the four-case Court
-penalty/rehabilitation suite. This is current-source regression evidence, not
+the first-member aliases deprecated. Canonical task quality gains now reject
+sub-10-AGT, same-address and repeated publisher-Agent-role relationship farming,
+require three distinct credited publisher relationships for priority status,
+and never suppress failures. Dashboard 1.6/OpenAPI 0.8.4 publish this boundary.
+Wallet-level common-control still requires external Sybil attestation;
+deployment verification and final QA remain open. The current-source full
+contract run now passes all 26 cases across four files in one uninterrupted run,
+including the task-context relationship gate, exact quality-event selector and
+the four-case Court penalty/rehabilitation suite. This is current-source
+regression evidence, not
 the fixed release QA. Therefore previous QA reports are historical evidence only.
 
 Quality-weighted evaluator and validator selection now binds a request-time
@@ -94,7 +99,7 @@ positive scores, reactivation and added capabilities cannot improve an old
 draw; current withdrawal, deactivation, capability removal, cooldown and bans
 remain safety vetoes. The focused five-case quality suite and both real panel
 selection paths pass, all eleven deployables remain below EIP-170, and AI
-Dashboard 1.5/OpenAPI 0.8.3 expose the closed anti-manipulation and public
+Dashboard 1.6/OpenAPI 0.8.4 expose the closed anti-manipulation and public
 rehabilitation policies. The Agent-initiated Court path freezes at least 500 AGT,
 requires an exact matching 2-of-3 resolution, restores only the 2500-bps floor,
 slashes rejected appeals by 5/15/30%, and expires no-quorum cases after three
@@ -104,7 +109,7 @@ GitHub push also remains an external credential handoff: the local
 branch carries unpushed commits and HTTPS authentication is unavailable on this
 machine.
 
-The current application suite passes 328/328 tests across 88 files; typecheck,
+The current application suite passes 329/329 tests across 88 files; typecheck,
 lint, all 15 Worker/Ops bundles and the production Web build pass. The Demo and
 homepage participant split now matches RewardVault's post-network Agent pool:
 80% executors, 20% three-validator panel and only rounding dust to reserve. This

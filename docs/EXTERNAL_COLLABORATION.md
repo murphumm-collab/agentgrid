@@ -48,6 +48,13 @@ evidence.
 
 ## Independent pilot participants
 
+- Select an independently governed Sybil/common-control attestation mechanism
+  for publisher and Agent wallets. The pilot must prove that related wallets are
+  grouped or rejected without exposing unnecessary identity data; separate
+  addresses, self-declared labels and project-controlled test wallets are not
+  independence evidence. Until this exists, mainnet quality incentives remain a
+  mandatory external gate even though local relationship and low-value caps apply.
+
 - At least three unrelated publishers must complete real-business tasks.
 - Three independently operated validation Agents must each receive only their
   frozen criterion/test shard, commit before reveal and cross-check the other

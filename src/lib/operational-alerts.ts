@@ -8,6 +8,9 @@ export function operationalAlerts(
   if ((database.pendingOutbox ?? 0) >= 100 || (database.pendingOutboxOldestSeconds ?? 0) >= 300) alerts.push("CHAIN_OUTBOX_STALLED");
   if ((database.unreadNotifications ?? 0) >= 1_000) alerts.push("NOTIFICATION_BACKLOG_HIGH");
   if ((database.expiredEvaluations ?? 0) > 0) alerts.push("TASK_EVALUATION_EXPIRY_BACKLOG");
+  if ((database.qualityLowValueIgnored1h ?? 0) > 0) alerts.push("QUALITY_LOW_VALUE_GAIN_ATTEMPT");
+  if ((database.qualitySelfDealingIgnored1h ?? 0) > 0) alerts.push("QUALITY_SELF_DEALING_ATTEMPT");
+  if ((database.qualityRelationshipCapIgnored1h ?? 0) > 0) alerts.push("QUALITY_RELATIONSHIP_FARMING_ATTEMPT");
   if (Object.hasOwn(database, "chainCursorAgeSeconds") && database.chainCursorAgeSeconds === null) alerts.push("CHAIN_INDEXER_NOT_STARTED");
   else if ((database.chainCursorAgeSeconds ?? 0) >= 120) alerts.push("CHAIN_INDEXER_STALLED");
   return alerts;

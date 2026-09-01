@@ -28,11 +28,17 @@ describe("AI dashboard", () => {
   it("publishes deterministic action metadata without private task states", () => {
     const dashboard = buildAiDashboard(source(), new Date("2026-08-31T00:00:00.000Z"));
     const serialized = JSON.stringify(dashboard);
-    expect(dashboard.schemaVersion).toBe("1.5");
+    expect(dashboard.schemaVersion).toBe("1.6");
     expect(dashboard.selectionPolicy).toMatchObject({
       positiveChangesAfterRequest: "IGNORED_FOR_FROZEN_DRAW",
       mainnetRequirement: "VRF_REQUIRED",
       fairnessFloorTickets: 1_000,
+      qualityGain: {
+        minimumTaskRewardAgt: 10,
+        maximumPositiveGainsPerRelationshipEpoch: 1,
+        independentPublisherRelationshipsForPriority: 3,
+        commonControlBoundary: "EXTERNAL_SYBIL_ATTESTATION_REQUIRED",
+      },
       rehabilitation: {
         minimumStakeAgt: 500,
         quorum: 2,

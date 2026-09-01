@@ -39,35 +39,35 @@
     },
     "agentRegistry": {
       "name": "AgentRegistry",
-      "normalizedRuntimeBytecodeHash": "0xbfea60a69522452a074a1ad4917aa9baa60eda81db44597083c8a68462620018",
+      "normalizedRuntimeBytecodeHash": "0x40cc635fdc8b32bec5c0a8650b6bf40eec39d64e74fb8475df5e05a234a2decd",
       "immutableReferences": [
         {
           "length": 32,
-          "start": 580
+          "start": 646
         },
         {
           "length": 32,
-          "start": 2706
+          "start": 3033
         },
         {
           "length": 32,
-          "start": 4715
+          "start": 5134
         },
         {
           "length": 32,
-          "start": 5726
+          "start": 6167
         },
         {
           "length": 32,
-          "start": 8029
+          "start": 7038
         },
         {
           "length": 32,
-          "start": 8681
+          "start": 7692
         },
         {
           "length": 32,
-          "start": 9653
+          "start": 8664
         }
       ]
     },
@@ -119,7 +119,7 @@
     },
     "taskRegistry": {
       "name": "TaskRegistry",
-      "normalizedRuntimeBytecodeHash": "0xb07812490a2b0a23eb08300eca65da1c2b6c8591ef4a9f98df0e4de4837945ec",
+      "normalizedRuntimeBytecodeHash": "0xb5f71fa14bf0ab60df67d16d256177c9b7039511c0c55cfecf6ab6b6eacdab08",
       "immutableReferences": [
         {
           "length": 32,
@@ -229,149 +229,133 @@
     },
     "verificationPanel": {
       "name": "VerificationPanel",
-      "normalizedRuntimeBytecodeHash": "0xa9fcb35326eace43f5a9350aca036b05425385ad3535ea01ad90289a61676550",
+      "normalizedRuntimeBytecodeHash": "0x975c7e333c542ac685fdcaae2ccd3521de2ff6ed84ef74cac2009d0000124652",
       "immutableReferences": [
         {
           "length": 32,
-          "start": 2498
+          "start": 1989
         },
         {
           "length": 32,
-          "start": 2948
+          "start": 2517
         },
         {
           "length": 32,
-          "start": 7549
+          "start": 2914
         },
         {
           "length": 32,
-          "start": 7751
+          "start": 7801
         },
         {
           "length": 32,
-          "start": 9429
+          "start": 8000
         },
         {
           "length": 32,
-          "start": 13118
+          "start": 9565
         },
         {
           "length": 32,
-          "start": 15053
+          "start": 12367
         },
         {
           "length": 32,
-          "start": 15617
+          "start": 14086
         },
         {
           "length": 32,
-          "start": 15805
+          "start": 14357
         },
         {
           "length": 32,
-          "start": 13604
+          "start": 14859
         },
         {
           "length": 32,
-          "start": 16225
+          "start": 15049
         },
         {
           "length": 32,
-          "start": 1779
+          "start": 18928
         },
         {
           "length": 32,
-          "start": 1984
+          "start": 19324
         },
         {
           "length": 32,
-          "start": 2159
+          "start": 19678
         },
         {
           "length": 32,
-          "start": 2331
+          "start": 12785
         },
         {
           "length": 32,
-          "start": 3413
+          "start": 15464
         },
         {
           "length": 32,
-          "start": 3790
+          "start": 2118
         },
         {
           "length": 32,
-          "start": 4048
+          "start": 2264
         },
         {
           "length": 32,
-          "start": 8459
+          "start": 3633
         },
         {
           "length": 32,
-          "start": 8579
+          "start": 4064
         },
         {
           "length": 32,
-          "start": 8702
+          "start": 4504
         },
         {
           "length": 32,
-          "start": 9592
+          "start": 8647
         },
         {
           "length": 32,
-          "start": 12331
+          "start": 12853
         },
         {
           "length": 32,
-          "start": 12513
+          "start": 14489
         },
         {
           "length": 32,
-          "start": 12725
+          "start": 14628
         },
         {
           "length": 32,
-          "start": 12825
+          "start": 19060
         },
         {
           "length": 32,
-          "start": 12910
+          "start": 19457
         },
         {
           "length": 32,
-          "start": 13672
+          "start": 19811
         },
         {
           "length": 32,
-          "start": 14851
+          "start": 849
         },
         {
           "length": 32,
-          "start": 14935
-        },
-        {
-          "length": 32,
-          "start": 15280
-        },
-        {
-          "length": 32,
-          "start": 15396
-        },
-        {
-          "length": 32,
-          "start": 879
-        },
-        {
-          "length": 32,
-          "start": 16491
+          "start": 15730
         }
       ]
     },
     "verificationArbitrationCourt": {
       "name": "VerificationArbitrationCourt",
-      "normalizedRuntimeBytecodeHash": "0xefadcb05900d42e037765f70d9de7b88bfa91de1eda4032682a803ef94be3387",
+      "normalizedRuntimeBytecodeHash": "0x8277d5ae329da71d36a7e07585678b08457114fd8dc172084ce9a144093600e2",
       "immutableReferences": [
         {
           "length": 32,

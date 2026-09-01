@@ -179,6 +179,14 @@ a false appeal. Deployment verification must confirm the Court's
 `AgentRegistry.outcomeReporterRoles` mask equals `7`; the manifest therefore
 contains 29 transactions, including 13 explicit wiring calls.
 
+Quality monitoring must alert on `AgentQualityOutcomeIgnored` reasons
+`LOW_VALUE_TASK`, `SELF_DEALING_RELATIONSHIP` and `RELATIONSHIP_EPOCH_CAP`, and
+index `AgentQualityRelationshipCredited.independentPositiveOutcomes`. These
+events are protocol facts, not an operator scoring interface. Repeated related
+wallet clusters require investigation through the independently governed Sybil
+attestation process; an operator must not merge identities, restore scores or
+grant a quality exception through the database.
+
 ## Confirmed-event notifications
 
 The chain indexer's PostgreSQL transaction also writes recipient-specific

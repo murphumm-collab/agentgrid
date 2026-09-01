@@ -23,6 +23,18 @@ describe("operational alert thresholds", () => {
     expect(operationalAlerts({ expiredEvaluations: 1 }, queue)).toEqual(["TASK_EVALUATION_EXPIRY_BACKLOG"]);
   });
 
+  it("detects rejected low-value, self-dealing and repeat relationship quality gains", () => {
+    expect(operationalAlerts({
+      qualityLowValueIgnored1h: 1,
+      qualitySelfDealingIgnored1h: 2,
+      qualityRelationshipCapIgnored1h: 3,
+    }, queue)).toEqual([
+      "QUALITY_LOW_VALUE_GAIN_ATTEMPT",
+      "QUALITY_SELF_DEALING_ATTEMPT",
+      "QUALITY_RELATIONSHIP_FARMING_ATTEMPT",
+    ]);
+  });
+
   it("detects a missing or stale confirmed-chain indexer", () => {
     expect(operationalAlerts({ chainCursorAgeSeconds: null }, queue)).toEqual(["CHAIN_INDEXER_NOT_STARTED"]);
     expect(operationalAlerts({ chainCursorAgeSeconds: 121 }, queue)).toEqual(["CHAIN_INDEXER_STALLED"]);

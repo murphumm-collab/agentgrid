@@ -165,7 +165,8 @@ export async function protocolSnapshot() {
         failures: passed ? [] : ["Cross-validation panel rejected at least one required criterion"],
         testsPassed: reports.every((report) => Boolean(report.testsPassed)), hiddenTestsPassed: reports.every((report) => Boolean(report.hiddenTestsPassed)), artifactHash: ordered[0].artifactHash,
         lineCoverage: Math.min(...reports.map((report) => Number(report.lineCoverage))), branchCoverage: Math.min(...reports.map((report) => Number(report.branchCoverage))), criticalBranchCoverage: Math.min(...reports.map((report) => Number(report.criticalBranchCoverage))),
-        submittedAt: ordered.map((evidence) => evidence.createdAt).sort().at(-1)!, selectionProof: task.testerSelectionProof ?? "", reportHash: aggregateHash,
+        submittedAt: ordered.map((evidence) => evidence.createdAt).sort().at(-1)!, selectionProof: task.testerSelectionProof ?? "",
+        aggregateEvidenceHash: aggregateHash, reportHash: aggregateHash,
         executorWeightsBps, criterionResults,
       };
     }

@@ -84,21 +84,23 @@ describe("AgentRegistry role quality", () => {
     return publicClient.readContract({ address: agentRegistry, abi: artifacts[name].abi as Abi, functionName, args } as never);
   }
 
+  const publisher = (index: number) => mnemonicToAccount(mnemonic, { addressIndex: index + 10 }).address;
+
   it("starts neutral, rewards proven outcomes and keeps role scores isolated", async () => {
     const initial = await read("AgentRegistry", "qualityOf", [agent.account!.address, 2]) as { scoreBps: number; outcomeCount: number };
     expect(initial.scoreBps).toBe(5_000);
     expect(await read("AgentRegistry", "selectionWeight", [agent.account!.address, 2])).toBe(6_000n);
 
-    await write(owner, qualityReporter, "QualityReporterHarness", "record", [
-      agent.account!.address, 2, keccak256(stringToHex("task-1-panel-1")), keccak256(stringToHex("VERIFICATION_COMPLETED")), true, false, keccak256(stringToHex("verified-success")),
+    await write(owner, qualityReporter, "QualityReporterHarness", "recordTask", [
+      agent.account!.address, 2, 1n, publisher(1), parseEther("100"), keccak256(stringToHex("task-1-panel-1")), keccak256(stringToHex("VERIFICATION_COMPLETED")), true, false, keccak256(stringToHex("verified-success")),
     ]);
     const improved = await read("AgentRegistry", "qualityOf", [agent.account!.address, 2]) as { scoreBps: number; outcomeCount: number };
     expect(improved.scoreBps).toBe(5_200);
     expect(improved.outcomeCount).toBe(1);
     expect(await read("AgentRegistry", "qualityMultiplierBps", [agent.account!.address, 2])).toBe(10_000);
     expect(await read("AgentRegistry", "selectionWeight", [agent.account!.address, 2])).toBe(6_000n);
-    for (let index = 2; index <= 3; index += 1) await write(owner, qualityReporter, "QualityReporterHarness", "record", [
-      agent.account!.address, 2, keccak256(stringToHex(`task-${index}-panel-1`)), keccak256(stringToHex("VERIFICATION_COMPLETED")), true, false, keccak256(stringToHex(`verified-success-${index}`)),
+    for (let index = 2; index <= 3; index += 1) await write(owner, qualityReporter, "QualityReporterHarness", "recordTask", [
+      agent.account!.address, 2, BigInt(index), publisher(index), parseEther("100"), keccak256(stringToHex(`task-${index}-panel-1`)), keccak256(stringToHex("VERIFICATION_COMPLETED")), true, false, keccak256(stringToHex(`verified-success-${index}`)),
     ]);
     expect(await read("AgentRegistry", "qualityMultiplierBps", [agent.account!.address, 2])).toBe(10_240);
     expect(await read("AgentRegistry", "selectionWeight", [agent.account!.address, 2])).toBe(6_600n);
@@ -144,6 +146,8 @@ describe("AgentRegistry role quality", () => {
     ])).rejects.toThrow();
     await expect(write(owner, agentRegistry, "AgentRegistry", "setOutcomeReporter", [outsider.account!.address, 2])).rejects.toThrow();
     await write(owner, qualityReporter, "QualityReporterHarness", "record", [agent.account!.address, 2, context, outcomeType, true, false, evidence]);
+    expect(await read("AgentRegistry", "independentPositiveOutcomeCount", [agent.account!.address, 2])).toBe(0);
+    expect((await read("AgentRegistry", "qualityOf", [agent.account!.address, 2]) as { scoreBps: number }).scoreBps).toBe(5_000);
     await expect(write(owner, qualityReporter, "QualityReporterHarness", "record", [
       agent.account!.address, 2, context, outcomeType, false, true, keccak256(stringToHex("changed-evidence")),
     ])).rejects.toThrow();
@@ -159,9 +163,37 @@ describe("AgentRegistry role quality", () => {
     expect(afterIgnored.outcomeCount).toBe(beforeIgnored.outcomeCount);
   });
 
+  it("withholds gains from tiny, self-dealing and repeated publisher relationships without suppressing failures", async () => {
+    const outcomeType = keccak256(stringToHex("EXECUTION_VERIFIED"));
+    const relationPublisher = publisher(40);
+    await write(owner, qualityReporter, "QualityReporterHarness", "recordTask", [
+      agent.account!.address, 1, 1n, relationPublisher, parseEther("9.99"), keccak256(stringToHex("tiny-task")), outcomeType, true, false, keccak256(stringToHex("tiny-evidence")),
+    ]);
+    await write(owner, qualityReporter, "QualityReporterHarness", "recordTask", [
+      agent.account!.address, 1, 2n, agent.account!.address, parseEther("100"), keccak256(stringToHex("self-task")), outcomeType, true, false, keccak256(stringToHex("self-evidence")),
+    ]);
+    expect(await read("AgentRegistry", "independentPositiveOutcomeCount", [agent.account!.address, 1])).toBe(0);
+    expect((await read("AgentRegistry", "qualityOf", [agent.account!.address, 1]) as { scoreBps: number }).scoreBps).toBe(5_000);
+
+    await write(owner, qualityReporter, "QualityReporterHarness", "recordTask", [
+      agent.account!.address, 1, 3n, relationPublisher, parseEther("100"), keccak256(stringToHex("valid-task")), outcomeType, true, false, keccak256(stringToHex("valid-evidence")),
+    ]);
+    await write(owner, qualityReporter, "QualityReporterHarness", "recordTask", [
+      agent.account!.address, 1, 4n, relationPublisher, parseEther("100"), keccak256(stringToHex("repeat-task")), outcomeType, true, false, keccak256(stringToHex("repeat-evidence")),
+    ]);
+    expect(await read("AgentRegistry", "independentPositiveOutcomeCount", [agent.account!.address, 1])).toBe(1);
+    expect((await read("AgentRegistry", "qualityOf", [agent.account!.address, 1]) as { scoreBps: number; outcomeCount: number })).toMatchObject({ scoreBps: 5_200, outcomeCount: 4 });
+    expect(await read("AgentRegistry", "selectionWeight", [agent.account!.address, 1])).toBe(6_000n);
+
+    await write(owner, qualityReporter, "QualityReporterHarness", "recordTask", [
+      agent.account!.address, 1, 5n, relationPublisher, parseEther("1"), keccak256(stringToHex("failed-tiny-task")), keccak256(stringToHex("EXECUTION_FAILED")), false, false, keccak256(stringToHex("failed-evidence")),
+    ]);
+    expect((await read("AgentRegistry", "qualityOf", [agent.account!.address, 1]) as { scoreBps: number }).scoreBps).toBe(4_700);
+  });
+
   it("caps positive score gains per role and epoch without replaying or inflating rewards", async () => {
-    for (let index = 0; index < 12; index += 1) await write(owner, qualityReporter, "QualityReporterHarness", "record", [
-      agent.account!.address, 1, keccak256(stringToHex(`executor-task-${index}`)),
+    for (let index = 0; index < 12; index += 1) await write(owner, qualityReporter, "QualityReporterHarness", "recordTask", [
+      agent.account!.address, 1, BigInt(index + 1), publisher(index), parseEther("100"), keccak256(stringToHex(`executor-task-${index}`)),
       keccak256(stringToHex("EXECUTION_VERIFIED")), true, false,
       keccak256(stringToHex(`executor-evidence-${index}`)),
     ]);
@@ -177,8 +209,8 @@ describe("AgentRegistry role quality", () => {
       agent.account!.address, 2, snapshotVersion, snapshotTime,
     ])).toBe(6_000n);
 
-    for (let index = 0; index < 3; index += 1) await write(owner, qualityReporter, "QualityReporterHarness", "record", [
-      agent.account!.address, 2, keccak256(stringToHex(`snapshot-success-${index}`)),
+    for (let index = 0; index < 3; index += 1) await write(owner, qualityReporter, "QualityReporterHarness", "recordTask", [
+      agent.account!.address, 2, BigInt(index + 1), publisher(index), parseEther("100"), keccak256(stringToHex(`snapshot-success-${index}`)),
       keccak256(stringToHex("VERIFICATION_COMPLETED")), true, false,
       keccak256(stringToHex(`snapshot-evidence-${index}`)),
     ]);

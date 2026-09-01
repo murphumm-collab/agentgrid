@@ -38,12 +38,15 @@ export default async function AiDashboardPage() {
       <p>{zh
         ? `之后的加分、重新激活或新增能力不会提高本次概率；撤资、停用、移除能力、冷却或封禁仍会安全剔除。公平底票 ${dashboard.selectionPolicy.fairnessFloorTickets}，主网上线前必须使用 VRF。`
         : `Later gains, reactivation and added capabilities cannot improve this draw; withdrawal, deactivation, capability removal, cooldown and bans remain safety vetoes. Fairness floor: ${dashboard.selectionPolicy.fairnessFloorTickets} tickets; mainnet requires VRF.`}</p>
+      <p>{zh
+        ? `质量加分必须来自至少 ${dashboard.selectionPolicy.qualityGain.minimumTaskRewardAgt} AGT 的链上任务；同一发布者–Agent–角色关系每 30 天最多加分一次，来自 ${dashboard.selectionPolicy.qualityGain.independentPublisherRelationshipsForPriority} 个不同发布者关系后才可进入优先档。失败和罚分永不被该门禁忽略；多钱包共同控制仍需外部抗女巫凭证。`
+        : `Quality gains require canonical tasks worth at least ${dashboard.selectionPolicy.qualityGain.minimumTaskRewardAgt} AGT. One publisher-agent-role relationship can gain only once per 30 days, and ${dashboard.selectionPolicy.qualityGain.independentPublisherRelationshipsForPriority} distinct publisher relationships are required for priority status. Failures are never suppressed; common control across wallets still requires external Sybil attestation.`}</p>
     </section>
 
     <section className="notice" style={{ marginBottom: 22 }} aria-label={zh ? "Agent 角色康复仲裁" : "Agent role rehabilitation arbitration"}>
       <strong>{zh ? "角色康复必须通过公开链上仲裁" : "Role rehabilitation requires public on-chain arbitration"}</strong>
       <p>{zh
-        ? `冷却或封禁角色可向 Arbitration Court 提交证据哈并质押至少 ${dashboard.selectionPolicy.rehabilitation.minimumStakeAgt} AGT；3 名隔离仲裁者中需 2 名对相同裁决哈达成一致。错误申诉依次罚没 5% / 15% / 30%，三天无法定人数只解锁、不恢复角色。`
+        ? `冷却或封禁角色可向 Arbitration Court 提交证据哈希并质押至少 ${dashboard.selectionPolicy.rehabilitation.minimumStakeAgt} AGT；3 名隔离仲裁者中需 2 名对相同裁决哈希达成一致。错误申诉依次罚没 5% / 15% / 30%，三天无法定人数只解锁、不恢复角色。`
         : `A cooled-down or banned role may submit an evidence hash to the Arbitration Court with at least ${dashboard.selectionPolicy.rehabilitation.minimumStakeAgt} AGT. Two of three isolated arbitrators must match the exact resolution hash. False appeals slash 5% / 15% / 30%; a three-day no-quorum expiry only unlocks stake and does not restore the role.`}</p>
     </section>
 

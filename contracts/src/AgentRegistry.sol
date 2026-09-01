@@ -28,7 +28,9 @@ contract AgentRegistry {
     uint64 public constant QUALITY_COOLDOWN = 30 days;
     uint8 public constant PERMANENT_BAN_SEVERE_FAULTS = 3;
     uint8 public constant MAX_POSITIVE_OUTCOMES_PER_EPOCH = 10;
+    uint8 public constant MAX_POSITIVE_OUTCOMES_PER_RELATIONSHIP_EPOCH = 1;
     uint64 public constant QUALITY_EPOCH_DURATION = 30 days;
+    uint256 public constant MINIMUM_QUALITY_TASK_REWARD = 10 ether;
 
     struct RoleQuality {
         uint16 scoreBps;
@@ -48,6 +50,7 @@ contract AgentRegistry {
     struct QualityCheckpoint {
         uint64 version;
         RoleQuality quality;
+        uint32 independentPositiveOutcomes;
     }
 
     StakeCreditManager public immutable stakeManager;
@@ -60,6 +63,9 @@ contract AgentRegistry {
     mapping(bytes32 => bool) public consumedOutcome;
     mapping(bytes32 => bool) public consumedRehabilitation;
     mapping(address => mapping(uint8 => mapping(uint256 => uint8))) public positiveOutcomesInEpoch;
+    mapping(address => mapping(uint8 => uint32)) public independentPositiveOutcomeCount;
+    mapping(bytes32 => bool) public creditedQualityRelationship;
+    mapping(bytes32 => mapping(uint256 => uint8)) public positiveRelationshipOutcomesInEpoch;
     mapping(address => AgentStateCheckpoint[]) private agentStateCheckpoints;
     mapping(address => mapping(uint8 => QualityCheckpoint[])) private qualityCheckpoints;
     address[] private registeredAgents;
@@ -83,6 +89,10 @@ contract AgentRegistry {
         bytes32 evidenceHash
     );
     event AgentQualityOutcomeIgnored(address indexed agent, uint8 indexed role, bytes32 indexed outcomeId, bytes32 evidenceHash, bytes32 reason);
+    event AgentQualityRelationshipCredited(
+        address indexed agent, uint8 indexed role, bytes32 indexed relationshipId,
+        address publisher, uint256 taskId, uint32 independentPositiveOutcomes
+    );
     event AgentRoleRehabilitated(address indexed agent, uint8 indexed role, bytes32 indexed evidenceHash);
     event RegistrySnapshotAdvanced(uint64 indexed version, bytes32 indexed registryHash);
 
@@ -183,6 +193,23 @@ contract AgentRegistry {
         address agent, uint8 role, bytes32 contextId, bytes32 outcomeType,
         bool success, bool severe, bytes32 evidenceHash
     ) external {
+        _recordOutcome(agent, role, 0, address(0), 0, contextId, outcomeType, success, severe, evidenceHash);
+    }
+
+    /// @notice Canonical task outcomes carry publisher and economic context from
+    /// the protocol reporter. Positive quality cannot be farmed by tiny tasks or
+    /// repeated relationships; negative outcomes are never suppressed.
+    function recordTaskOutcome(
+        address agent, uint8 role, uint256 taskId, address publisher, uint256 taskReward,
+        bytes32 contextId, bytes32 outcomeType, bool success, bool severe, bytes32 evidenceHash
+    ) external {
+        _recordOutcome(agent, role, taskId, publisher, taskReward, contextId, outcomeType, success, severe, evidenceHash);
+    }
+
+    function _recordOutcome(
+        address agent, uint8 role, uint256 taskId, address publisher, uint256 taskReward,
+        bytes32 contextId, bytes32 outcomeType, bool success, bool severe, bytes32 evidenceHash
+    ) private {
         if (!_validRole(role)) revert InvalidRole();
         if ((outcomeReporterRoles[msg.sender] & role) == 0) revert Unauthorized();
         if (agentPosition[agent] == 0 || contextId == bytes32(0) || outcomeType == bytes32(0) || evidenceHash == bytes32(0) || (success && severe)) revert InvalidOutcome();
@@ -198,6 +225,25 @@ contract AgentRegistry {
         quality.outcomeCount += 1;
         if (success) {
             uint256 epoch = block.timestamp / QUALITY_EPOCH_DURATION;
+            bytes32 relationshipId = keccak256(abi.encode(block.chainid, address(this), publisher, agent, role));
+            bytes32 ignoredReason;
+            if (taskId == 0 || publisher == address(0)) ignoredReason = keccak256("TASK_CONTEXT_REQUIRED");
+            else if (publisher == agent) ignoredReason = keccak256("SELF_DEALING_RELATIONSHIP");
+            else if (taskReward < MINIMUM_QUALITY_TASK_REWARD) ignoredReason = keccak256("LOW_VALUE_TASK");
+            else if (positiveRelationshipOutcomesInEpoch[relationshipId][epoch] >= MAX_POSITIVE_OUTCOMES_PER_RELATIONSHIP_EPOCH) {
+                ignoredReason = keccak256("RELATIONSHIP_EPOCH_CAP");
+            }
+            if (ignoredReason != bytes32(0)) {
+                quality.scoreBps = score;
+                _advanceRegistry(keccak256(abi.encode("POSITIVE_RELATIONSHIP_IGNORED", agent, role, taskId, relationshipId, ignoredReason, evidenceHash)));
+                _writeQualityCheckpoint(agent, role, quality);
+                emit AgentQualityOutcomeIgnored(agent, role, outcomeId, evidenceHash, ignoredReason);
+                emit AgentQualityUpdated(
+                    agent, role, outcomeId, score, quality.outcomeCount, quality.severeFaults,
+                    quality.cooldownUntil, quality.banned, true, false, evidenceHash
+                );
+                return;
+            }
             uint8 positives = positiveOutcomesInEpoch[agent][role][epoch];
             if (positives >= MAX_POSITIVE_OUTCOMES_PER_EPOCH) {
                 quality.scoreBps = score;
@@ -211,6 +257,14 @@ contract AgentRegistry {
                 return;
             }
             positiveOutcomesInEpoch[agent][role][epoch] = positives + 1;
+            positiveRelationshipOutcomesInEpoch[relationshipId][epoch] += 1;
+            if (!creditedQualityRelationship[relationshipId]) {
+                creditedQualityRelationship[relationshipId] = true;
+                independentPositiveOutcomeCount[agent][role] += 1;
+                emit AgentQualityRelationshipCredited(
+                    agent, role, relationshipId, publisher, taskId, independentPositiveOutcomeCount[agent][role]
+                );
+            }
             uint256 increased = uint256(score) + SUCCESS_GAIN_BPS;
             quality.scoreBps = uint16(increased > BPS() ? BPS() : increased);
         } else {
@@ -285,10 +339,10 @@ contract AgentRegistry {
         (address owner, uint256 amount, , , uint256 withdrawalRequestedAt) = stakeManager.positions(state.positionId);
         if (owner != agent || amount < stakeManager.MINIMUM_STAKE() || withdrawalRequestedAt != 0) return 0;
         uint8 role = _roleForCapability(capability);
-        RoleQuality memory quality = _qualityAt(agent, role, snapshotVersion);
+        (RoleQuality memory quality, uint32 independentOutcomes) = _qualityAt(agent, role, snapshotVersion);
         uint16 score = quality.scoreBps == 0 ? INITIAL_QUALITY_BPS : quality.scoreBps;
         if (quality.banned || quality.cooldownUntil > snapshotTime || score < PAID_POOL_MINIMUM_QUALITY_BPS) return 0;
-        if (quality.outcomeCount < 3 && score > INITIAL_QUALITY_BPS) score = INITIAL_QUALITY_BPS;
+        if (independentOutcomes < 3 && score > INITIAL_QUALITY_BPS) score = INITIAL_QUALITY_BPS;
         return 1_000 + score;
     }
 
@@ -339,7 +393,11 @@ contract AgentRegistry {
     }
 
     function _writeQualityCheckpoint(address agent, uint8 role, RoleQuality storage quality) private {
-        qualityCheckpoints[agent][role].push(QualityCheckpoint({ version: registryVersion, quality: quality }));
+        qualityCheckpoints[agent][role].push(QualityCheckpoint({
+            version: registryVersion,
+            quality: quality,
+            independentPositiveOutcomes: independentPositiveOutcomeCount[agent][role]
+        }));
     }
 
     function _stateAt(address agent, uint64 version) private view returns (AgentStateCheckpoint memory checkpoint) {
@@ -354,7 +412,7 @@ contract AgentRegistry {
         if (low != 0) checkpoint = checkpoints[low - 1];
     }
 
-    function _qualityAt(address agent, uint8 role, uint64 version) private view returns (RoleQuality memory quality) {
+    function _qualityAt(address agent, uint8 role, uint64 version) private view returns (RoleQuality memory quality, uint32 independentOutcomes) {
         QualityCheckpoint[] storage checkpoints = qualityCheckpoints[agent][role];
         uint256 low;
         uint256 high = checkpoints.length;
@@ -363,7 +421,10 @@ contract AgentRegistry {
             if (checkpoints[middle].version <= version) low = middle + 1;
             else high = middle;
         }
-        if (low != 0) quality = checkpoints[low - 1].quality;
+        if (low != 0) {
+            quality = checkpoints[low - 1].quality;
+            independentOutcomes = checkpoints[low - 1].independentPositiveOutcomes;
+        }
     }
 
     function _selectionWeight(address agent, uint8 capability) private view returns (uint256) {
@@ -376,7 +437,7 @@ contract AgentRegistry {
         score = quality.scoreBps == 0 ? INITIAL_QUALITY_BPS : quality.scoreBps;
         // Fewer than three independent outcomes may reduce trust immediately,
         // but cannot enter the priority-selection or bonus-reward tier.
-        if (quality.outcomeCount < 3 && score > INITIAL_QUALITY_BPS) score = INITIAL_QUALITY_BPS;
+        if (independentPositiveOutcomeCount[agent][role] < 3 && score > INITIAL_QUALITY_BPS) score = INITIAL_QUALITY_BPS;
     }
 
     function _selected(address candidate, address[3] calldata selected, uint8 selectedCount) private pure returns (bool) {

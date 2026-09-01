@@ -86,7 +86,7 @@ export function buildAiDashboard(source: AiDashboardSource, now = new Date(), mo
   const rewards = new Map(source.rewards.map((reward) => [reward.taskId, reward]));
 
   return {
-    schemaVersion: "1.5",
+    schemaVersion: "1.6",
     generatedAt: now.toISOString(),
     mode,
     network: { name: "BSC Testnet", chainId: 97, confirmations: 5 },
@@ -114,6 +114,15 @@ export function buildAiDashboard(source: AiDashboardSource, now = new Date(), mo
       testnetRandomness: "FUTURE_BLOCK_HASH",
       mainnetRequirement: "VRF_REQUIRED",
       proofBinding: "PACKED_SNAPSHOT_INCLUDED_IN_SELECTION_PROOF",
+      qualityGain: {
+        canonicalTaskContextRequired: true,
+        minimumTaskRewardAgt: 10,
+        relationshipEpochSeconds: 2_592_000,
+        maximumPositiveGainsPerRelationshipEpoch: 1,
+        independentPublisherRelationshipsForPriority: 3,
+        negativeOutcomesAlwaysApply: true,
+        commonControlBoundary: "EXTERNAL_SYBIL_ATTESTATION_REQUIRED",
+      },
       rehabilitation: {
         entrypoint: "ON_CHAIN_VERIFICATION_ARBITRATION_COURT",
         minimumStakeAgt: 500,

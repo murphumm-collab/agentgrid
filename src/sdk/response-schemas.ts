@@ -125,7 +125,7 @@ const protocolEconomicsSummarySchema = z.object({
 }).strict();
 
 export const publicDashboardResponseSchema = z.object({
-  schemaVersion: z.literal("1.5"),
+  schemaVersion: z.literal("1.6"),
   generatedAt: dateTime,
   mode: z.enum(["demo", "production"]),
   network: z.object({ name: z.literal("BSC Testnet"), chainId: z.literal(97), confirmations: z.literal(5) }).strict(),
@@ -156,6 +156,15 @@ export const publicDashboardResponseSchema = z.object({
     testnetRandomness: z.literal("FUTURE_BLOCK_HASH"),
     mainnetRequirement: z.literal("VRF_REQUIRED"),
     proofBinding: z.literal("PACKED_SNAPSHOT_INCLUDED_IN_SELECTION_PROOF"),
+    qualityGain: z.object({
+      canonicalTaskContextRequired: z.literal(true),
+      minimumTaskRewardAgt: z.literal(10),
+      relationshipEpochSeconds: z.literal(2_592_000),
+      maximumPositiveGainsPerRelationshipEpoch: z.literal(1),
+      independentPublisherRelationshipsForPriority: z.literal(3),
+      negativeOutcomesAlwaysApply: z.literal(true),
+      commonControlBoundary: z.literal("EXTERNAL_SYBIL_ATTESTATION_REQUIRED"),
+    }).strict(),
     rehabilitation: z.object({
       entrypoint: z.literal("ON_CHAIN_VERIFICATION_ARBITRATION_COURT"),
       minimumStakeAgt: z.literal(500),
@@ -313,9 +322,9 @@ export const publicAgentsResponseSchema = z.object({
     completedTasks: nonnegativeInteger,
     online: z.boolean(),
     quality: z.object({
-      executor: z.object({ scoreBps: z.number().int().min(1).max(10_000), outcomeCount: nonnegativeInteger, severeFaults: nonnegativeInteger, cooldownUntil: z.string().datetime().nullable(), banned: z.boolean() }).strict(),
-      validator: z.object({ scoreBps: z.number().int().min(1).max(10_000), outcomeCount: nonnegativeInteger, severeFaults: nonnegativeInteger, cooldownUntil: z.string().datetime().nullable(), banned: z.boolean() }).strict(),
-      evaluator: z.object({ scoreBps: z.number().int().min(1).max(10_000), outcomeCount: nonnegativeInteger, severeFaults: nonnegativeInteger, cooldownUntil: z.string().datetime().nullable(), banned: z.boolean() }).strict(),
+      executor: z.object({ scoreBps: z.number().int().min(1).max(10_000), outcomeCount: nonnegativeInteger, independentPositiveOutcomes: nonnegativeInteger, severeFaults: nonnegativeInteger, cooldownUntil: z.string().datetime().nullable(), banned: z.boolean() }).strict(),
+      validator: z.object({ scoreBps: z.number().int().min(1).max(10_000), outcomeCount: nonnegativeInteger, independentPositiveOutcomes: nonnegativeInteger, severeFaults: nonnegativeInteger, cooldownUntil: z.string().datetime().nullable(), banned: z.boolean() }).strict(),
+      evaluator: z.object({ scoreBps: z.number().int().min(1).max(10_000), outcomeCount: nonnegativeInteger, independentPositiveOutcomes: nonnegativeInteger, severeFaults: nonnegativeInteger, cooldownUntil: z.string().datetime().nullable(), banned: z.boolean() }).strict(),
     }).strict(),
   }).strict()).max(10_000),
 }).strict();
