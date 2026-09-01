@@ -9,7 +9,10 @@ export const tokenAbi = parseAbi([
 
 export const stakeManagerAbi = parseAbi([
   "function createPosition(uint256 amount) returns (uint256)",
+  "function increaseStake(uint256 positionId,uint256 amount)",
   "function issueCredit(uint256 positionId)",
+  "function requestWithdrawal(uint256 positionId)",
+  "function executeWithdrawal(uint256 positionId)",
   "function ownerOf(uint256) view returns (address)",
   "function stakeOf(uint256) view returns (uint256)",
   "event PositionCreated(uint256 indexed positionId,address indexed owner,uint256 amount)",
@@ -201,4 +204,9 @@ export const protocolEconomicsAbi = parseAbi([
   "event LifecycleChargeRouted(uint256 indexed taskId,uint8 indexed stage,uint256 stakeBasis,uint256 amount,uint256 rewardVaultAmount,uint256 burnAmount,uint256 daoAmount,uint256 sourceAmount,uint256 securityAmount,bytes32 daoVestingId,bytes32 sourceVestingId)",
   "event VestingCreated(bytes32 indexed vestingId,address indexed recipient,uint256 amount,uint256 unlockAt)",
   "event VestingClaimed(bytes32 indexed vestingId,address indexed recipient,uint256 amount)",
+]);
+
+export const disputeResolverAbi = parseAbi([
+  "function vote(uint256 taskId,bool executorWins,bytes32 resolutionHash)",
+  "function changeVote(uint256 taskId,bool executorWins,bytes32 resolutionHash)",
 ]);

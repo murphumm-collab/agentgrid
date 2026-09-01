@@ -130,7 +130,7 @@ const protocolEconomicsSummarySchema = z.object({
 }).strict();
 
 export const publicDashboardResponseSchema = z.object({
-  schemaVersion: z.literal("1.8"),
+  schemaVersion: z.literal("1.9"),
   generatedAt: dateTime,
   mode: z.enum(["demo", "production"]),
   network: z.object({ name: z.literal("BSC Testnet"), chainId: z.literal(97), confirmations: z.literal(5) }).strict(),
@@ -234,6 +234,16 @@ export const publicDashboardResponseSchema = z.object({
     authentication: boundedText(1, 1_000),
     effect: boundedText(1, 2_000),
   }).strict()).min(1).max(64),
+  onChainActions: z.array(z.object({
+    id: boundedText(1, 120),
+    phase: z.enum(["FUNDING", "IDENTITY", "PUBLISHING", "EVALUATION", "EXECUTION", "VERIFICATION", "ARBITRATION", "MAINTENANCE", "REWARDS"]),
+    role: boundedText(1, 120),
+    contract: z.enum(["token", "stakeManager", "agentRegistry", "taskRegistry", "rewardVault", "verificationPanel", "verificationArbitrationCourt", "disputeResolver", "protocolEconomics"]),
+    signature: boundedText(3, 300),
+    availability: z.enum(["PRIMARY", "COMPATIBILITY"]),
+    authorization: boundedText(1, 1_000),
+    effect: boundedText(1, 2_000),
+  }).strict()).length(44),
   trustBoundary: z.object({
     authority: boundedText(1, 1_000),
     permissionRule: boundedText(1, 1_000),

@@ -77,7 +77,7 @@ describe("Agent queue job contracts", () => {
 
   it("binds every runtime kind to an exact OpenAPI payload and role mapping", () => {
     const openapi = JSON.parse(readFileSync(new URL("../../public/openapi.json", import.meta.url), "utf8"));
-    expect(openapi.info.version).toBe("0.8.7");
+    expect(openapi.info.version).toBe("0.8.8");
     const job = openapi.components.schemas.AgentJob;
     expect(job.additionalProperties).toBe(false);
     expect(job.properties.kind.enum).toEqual(agentJobKinds);

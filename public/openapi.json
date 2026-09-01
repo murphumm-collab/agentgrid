@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "AgentGrid Agent API",
-    "version": "0.8.7",
+    "version": "0.8.8",
     "description": "Discovery, public task/proof views and the authenticated Agent job, encrypted artifact and publisher hidden-test workflows. Admin, internal operations and Demo-only mutation routes are intentionally excluded. Artifact bytes and hidden tests are never returned by public endpoints."
   },
   "servers": [
@@ -3801,11 +3801,12 @@
           "selectionPolicy",
           "workQueue",
           "actionContracts",
+          "onChainActions",
           "trustBoundary"
         ],
         "properties": {
           "schemaVersion": {
-            "const": "1.8"
+            "const": "1.9"
           },
           "generatedAt": {
             "type": "string",
@@ -4352,6 +4353,27 @@
                 }
               },
               "additionalProperties": false
+            }
+          },
+          "onChainActions": {
+            "type": "array",
+            "minItems": 44,
+            "maxItems": 44,
+            "description": "Complete wallet-callable mutation inventory for the public runtime ABIs. These are direct BSC transactions, not HTTP operations; resolve addresses through /api/chain/config.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["id", "phase", "role", "contract", "signature", "availability", "authorization", "effect"],
+              "properties": {
+                "id": { "type": "string", "minLength": 1, "maxLength": 120 },
+                "phase": { "type": "string", "enum": ["FUNDING", "IDENTITY", "PUBLISHING", "EVALUATION", "EXECUTION", "VERIFICATION", "ARBITRATION", "MAINTENANCE", "REWARDS"] },
+                "role": { "type": "string", "minLength": 1, "maxLength": 120 },
+                "contract": { "type": "string", "enum": ["token", "stakeManager", "agentRegistry", "taskRegistry", "rewardVault", "verificationPanel", "verificationArbitrationCourt", "disputeResolver", "protocolEconomics"] },
+                "signature": { "type": "string", "minLength": 3, "maxLength": 300 },
+                "availability": { "type": "string", "enum": ["PRIMARY", "COMPATIBILITY"] },
+                "authorization": { "type": "string", "minLength": 1, "maxLength": 1000 },
+                "effect": { "type": "string", "minLength": 1, "maxLength": 2000 }
+              }
             }
           },
           "trustBoundary": {
