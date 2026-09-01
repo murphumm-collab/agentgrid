@@ -34,11 +34,10 @@ real-user pilot.
 - [ ] `pnpm contracts:compile` — current source compiles eleven deployable
   artifacts, including `ProtocolEconomics`; this focused pass is not yet part of
   the final frozen 22-command QA evidence.
-- [ ] `pnpm contracts:test` — the current-source full run executed 23 cases:
-  22 passed and one test-only event-selector assertion failed after the new
-  snapshot event preceded `AgentQualityUpdated`. The selector now matches the
-  exact event topic and its focused upheld-arbitration rerun passes; one fresh
-  uninterrupted 23/23 run remains part of the final frozen QA.
+- [ ] `pnpm contracts:test` — the current-source full run passed 25/25 cases
+  across protocol lifecycle, role quality, economics and Court arbitration,
+  including exact-event selection and public rehabilitation. It remains open
+  here because the command must run again inside the final frozen 22-command QA.
 - [x] `pnpm build` and `pnpm workers:build` (15 Web/Worker/Ops entry bundles)
 - [x] Candidate manifest v2 binds every standalone payload file/internal link,
   entry count and byte count; escaping links and changed chunks are rejected,
@@ -512,8 +511,15 @@ real-user pilot.
   bans remain fail-safe vetoes. Focused tests prove post-request score gains and
   capability additions cannot improve an old draw, while both real selection
   paths complete from the frozen snapshot.
-  The row remains open for common-control/self-dealing resistance, the public
-  rehabilitation process and final machine/dashboard projection evidence.
+  Public rehabilitation is now an Agent-initiated Court appeal that freezes at
+  least 500 AGT, requires two of three arbitrators to match the exact resolution
+  hash, restores only the 2500-bps floor when upheld, escalates rejected appeals
+  through 5/15/30% snapshot slashes, and unlocks without restoration or penalty
+  after a three-day no-quorum expiry. Deployment verification requires the Court
+  to hold replay-protected reporter authority for all three roles; Dashboard 1.5,
+  OpenAPI 0.8.2 and the shared ABI expose the policy and entrypoint. The row
+  remains open for common-control/self-dealing resistance and final frozen-source
+  packaged evidence.
 - [ ] Indexer, OpenAPI, SDK and the human/AI dashboards expose source attribution,
   vesting, lifecycle charges, treasury/burn/security routes, sponsored labels,
   role quality and 30/90-day AGT net-demand components without presenting

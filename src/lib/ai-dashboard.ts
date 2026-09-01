@@ -86,7 +86,7 @@ export function buildAiDashboard(source: AiDashboardSource, now = new Date(), mo
   const rewards = new Map(source.rewards.map((reward) => [reward.taskId, reward]));
 
   return {
-    schemaVersion: "1.4",
+    schemaVersion: "1.5",
     generatedAt: now.toISOString(),
     mode,
     network: { name: "BSC Testnet", chainId: 97, confirmations: 5 },
@@ -114,6 +114,17 @@ export function buildAiDashboard(source: AiDashboardSource, now = new Date(), mo
       testnetRandomness: "FUTURE_BLOCK_HASH",
       mainnetRequirement: "VRF_REQUIRED",
       proofBinding: "PACKED_SNAPSHOT_INCLUDED_IN_SELECTION_PROOF",
+      rehabilitation: {
+        entrypoint: "ON_CHAIN_VERIFICATION_ARBITRATION_COURT",
+        minimumStakeAgt: 500,
+        eligibleStates: ["QUALITY_COOLDOWN", "ROLE_BAN"],
+        arbitratorPanelSize: 3,
+        quorum: 2,
+        matchingResolutionHashRequired: true,
+        falseAppealSlashBps: [500, 1_500, 3_000],
+        noQuorumExpirySeconds: 259_200,
+        restoredQualityBps: 2_500,
+      },
     },
     workQueue: tasks.filter((task) => !["COMPLETED", "MAINTENANCE"].includes(task.state)).slice(0, 50).map((task) => ({
       id: task.id,

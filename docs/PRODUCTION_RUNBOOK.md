@@ -166,6 +166,19 @@ quorum votes must match both outcome and resolution evidence hash. Tester
 assignment remains a separate coordinator permission, so an arbitrator cannot
 manipulate assignment and a coordinator cannot resolve disputes.
 
+Role-quality rehabilitation uses the separate public path on
+`VerificationArbitrationCourt`; operators must not edit quality state or invoke
+`AgentRegistry.rehabilitateRole` directly. The affected Agent deposits at least
+500 AGT in the Court and opens an evidence-hash-bound appeal for role `1`, `2`
+or `4`. Two of the three configured, independently controlled arbitrators must
+submit the same direction and exact resolution hash. An upheld appeal restores
+only the 2500-bps paid-pool floor; a rejected appeal slashes 5%, then 15%, then
+30% of its frozen stake snapshot. After three days without quorum, anyone may
+expire the appeal to unlock participants without restoring the role or counting
+a false appeal. Deployment verification must confirm the Court's
+`AgentRegistry.outcomeReporterRoles` mask equals `7`; the manifest therefore
+contains 29 transactions, including 13 explicit wiring calls.
+
 ## Confirmed-event notifications
 
 The chain indexer's PostgreSQL transaction also writes recipient-specific
@@ -401,8 +414,8 @@ waiting for five confirmations. If the process exits or the RPC disconnects,
 rerun with the same configuration and `DEPLOYMENT_RUN_FILE`; a changed role,
 bytecode hash or compiler configuration is rejected, and an already recorded
 hash is awaited instead of rebroadcast. Keep both the pending run file and final
-manifest as launch evidence. The current final manifest contains exactly 28
-successful transactions: nine deployments, twelve wiring/authorization calls,
+manifest as launch evidence. The current final manifest contains exactly 29
+successful transactions: nine deployments, thirteen wiring/authorization calls,
 reserve funding and six ownership transfers.
 
 `pnpm contracts:deploy:verify` is also fail-closed. It opens the mode-0600

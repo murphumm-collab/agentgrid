@@ -64,12 +64,37 @@ contract ArbitrationPanelHarness {
 /// @dev Minimal registry/stake-manager ABI required by the court. Tests fund
 /// the validator's court stake, so the main-position slash path is inert here.
 contract ArbitrationRegistryHarness {
+    struct RoleQuality {
+        uint16 scoreBps;
+        uint32 outcomeCount;
+        uint8 severeFaults;
+        uint64 cooldownUntil;
+        bool banned;
+    }
+
     mapping(address => bool) public isEligible;
     mapping(address => uint256) public agentPosition;
     mapping(uint256 => uint256) public stakeOf;
+    mapping(address => mapping(uint8 => RoleQuality)) private qualities;
+    mapping(address => mapping(uint8 => bytes32)) public rehabilitationEvidence;
 
     function stakeManager() external view returns (address) { return address(this); }
     function setEligible(address agent, bool eligible) external { isEligible[agent] = eligible; }
+    function setQuality(address agent, uint8 role, uint64 cooldownUntil, bool banned) external {
+        qualities[agent][role] = RoleQuality(500, 3, banned ? 3 : 1, cooldownUntil, banned);
+    }
+    function qualityOf(address agent, uint8 role) external view returns (RoleQuality memory) {
+        return qualities[agent][role];
+    }
+    function rehabilitateRole(address agent, uint8 role, bytes32 evidenceHash) external {
+        RoleQuality storage quality = qualities[agent][role];
+        require(evidenceHash != bytes32(0) && (quality.banned || quality.cooldownUntil != 0), "INVALID_REHABILITATION");
+        quality.scoreBps = 2_500;
+        quality.severeFaults = 2;
+        quality.cooldownUntil = 0;
+        quality.banned = false;
+        rehabilitationEvidence[agent][role] = evidenceHash;
+    }
     function slashAgentPosition(uint256 positionId, uint256 amount, address) external {
         require(stakeOf[positionId] >= amount, "INSUFFICIENT_STAKE");
         stakeOf[positionId] -= amount;

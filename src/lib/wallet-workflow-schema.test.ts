@@ -43,7 +43,7 @@ describe("wallet workflow machine contracts", () => {
       paths: Record<string, Record<string, { operationId: string; security?: Array<Record<string, unknown>>; requestBody?: { content: { "application/json": { schema: { $ref: string } } } }; responses: Record<string, { content?: { "application/json"?: { schema?: { $ref?: string } } } }> }>>;
       components: { schemas: Record<string, { additionalProperties?: boolean; required?: string[]; properties?: Record<string, unknown>; oneOf?: Array<{ additionalProperties?: boolean }> }> };
     };
-    expect(openapi.info.version).toBe("0.8.1");
+    expect(openapi.info.version).toBe("0.8.2");
     const operations = [
       ["/api/notifications", "get", "listWalletNotifications", "200"],
       ["/api/notifications/{notificationId}/read", "post", "markWalletNotificationRead", "200"],

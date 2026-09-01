@@ -371,79 +371,99 @@
     },
     "verificationArbitrationCourt": {
       "name": "VerificationArbitrationCourt",
-      "normalizedRuntimeBytecodeHash": "0x6973d2df17bd5e6472353d099dfef3459a9421881dfc1b086ca32e05e6d03e7e",
+      "normalizedRuntimeBytecodeHash": "0xefadcb05900d42e037765f70d9de7b88bfa91de1eda4032682a803ef94be3387",
       "immutableReferences": [
         {
           "length": 32,
-          "start": 337
+          "start": 414
         },
         {
           "length": 32,
-          "start": 1164
+          "start": 2876
         },
         {
           "length": 32,
-          "start": 2181
+          "start": 3877
         },
         {
           "length": 32,
-          "start": 3347
+          "start": 5268
         },
         {
           "length": 32,
-          "start": 6149
+          "start": 9037
         },
         {
           "length": 32,
-          "start": 1203
+          "start": 9653
         },
         {
           "length": 32,
-          "start": 2560
+          "start": 2915
         },
         {
           "length": 32,
-          "start": 2890
+          "start": 4248
         },
         {
           "length": 32,
-          "start": 4171
+          "start": 4724
         },
         {
           "length": 32,
-          "start": 6451
+          "start": 6092
         },
         {
           "length": 32,
-          "start": 1518
+          "start": 9970
         },
         {
           "length": 32,
-          "start": 5280
+          "start": 576
         },
         {
           "length": 32,
-          "start": 6575
+          "start": 1656
         },
         {
           "length": 32,
-          "start": 1589
+          "start": 3223
         },
         {
           "length": 32,
-          "start": 3791
+          "start": 7180
         },
         {
           "length": 32,
-          "start": 1131
+          "start": 8590
         },
         {
           "length": 32,
-          "start": 2148
+          "start": 10094
         },
         {
           "length": 32,
-          "start": 3151
+          "start": 3294
+        },
+        {
+          "length": 32,
+          "start": 5712
+        },
+        {
+          "length": 32,
+          "start": 2843
+        },
+        {
+          "length": 32,
+          "start": 3844
+        },
+        {
+          "length": 32,
+          "start": 4985
+        },
+        {
+          "length": 32,
+          "start": 9004
         }
       ]
     },

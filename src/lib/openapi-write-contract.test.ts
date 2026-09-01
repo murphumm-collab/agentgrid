@@ -63,7 +63,7 @@ describe("OpenAPI JSON write contracts", () => {
   });
 
   it("enumerates every runtime field needed to sign evaluation and test evidence", () => {
-    expect(openapi.info.version).toBe("0.8.1");
+    expect(openapi.info.version).toBe("0.8.2");
     const evaluation = openapi.components.schemas.TaskEvaluationReport;
     expect(Object.keys(evaluation.properties ?? {}).sort()).toEqual([...taskEvaluationReportSchema.keyof().options].sort());
     expect([...(evaluation.required ?? [])].sort()).toEqual([...taskEvaluationReportSchema.keyof().options].sort());

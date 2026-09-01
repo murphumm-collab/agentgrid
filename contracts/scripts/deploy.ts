@@ -149,6 +149,7 @@ async function main() {
   await write("wire.rewardVaultEconomics", rewardVault, "RewardVault", "setProtocolEconomics", [protocolEconomics]);
   await write("wire.taskRegistryEconomics", taskRegistry, "TaskRegistry", "setProtocolEconomics", [protocolEconomics]);
   await write("wire.agentQualityReporter", agentRegistry, "AgentRegistry", "setOutcomeReporter", [verificationPanel, 7]);
+  await write("wire.arbitrationQualityReporter", agentRegistry, "AgentRegistry", "setOutcomeReporter", [verificationArbitrationCourt, 7]);
   await write("fund.rewardReserve", token, "TestToken", "mintRewardReserve", [rewardVault, parseEther("100000")]);
   for (const [name, address] of Object.entries({ TestToken: token, StakeCreditManager: stakeManager, RewardVault: rewardVault, TaskRegistry: taskRegistry, DisputeResolver: disputeResolver, ProtocolEconomics: protocolEconomics })) {
     await write(`ownership.${name}`, address as Address, name, "transferOwnership", [owner]);

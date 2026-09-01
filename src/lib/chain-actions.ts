@@ -2,7 +2,7 @@
 
 import { createPublicClient, createWalletClient, custom, decodeEventLog, keccak256, parseEther, stringToHex, type EIP1193Provider, type Hash, type Hex } from "viem";
 import { bscTestnet } from "viem/chains";
-import { agentRegistryAbi, rewardVaultAbi, stakeManagerAbi, taskRegistryAbi, tokenAbi } from "./contracts";
+import { agentRegistryAbi, rewardVaultAbi, stakeManagerAbi, taskRegistryAbi, tokenAbi, verificationArbitrationCourtAbi } from "./contracts";
 import { loadBrowserChainConfig } from "./browser-chain-config";
 import { browserWalletProvider } from "./browser-wallet";
 import { agentRegistrationRequiresTransaction, assertWalletSessionAccount } from "./agent-management";
@@ -31,6 +31,35 @@ export async function setAgentActive(active: boolean, sessionOwner?: string) {
   const hash = await wallet.writeContract({ account, address: contracts.agentRegistry, abi: agentRegistryAbi, functionName: "setActive", args: [active] });
   await confirmed(hash, publicClient, confirmations);
   return { account, hash, active };
+}
+
+export async function openRoleRehabilitationAppeal(role: 1 | 2 | 4, evidence: string, sessionOwner?: string) {
+  const normalizedEvidence = evidence.trim();
+  if (normalizedEvidence.length < 20) throw new Error("REHABILITATION_EVIDENCE_TOO_SHORT");
+  const { account, wallet, publicClient, contracts, confirmations } = await clients(sessionOwner);
+  const minimumStake = parseEther("500");
+  const [courtStake, courtLocked] = await Promise.all([
+    publicClient.readContract({ address: contracts.verificationArbitrationCourt, abi: verificationArbitrationCourtAbi, functionName: "stake", args: [account] }),
+    publicClient.readContract({ address: contracts.verificationArbitrationCourt, abi: verificationArbitrationCourtAbi, functionName: "lockedStake", args: [account] }),
+  ]);
+  const available = courtStake - courtLocked;
+  if (available < minimumStake) {
+    const topUp = minimumStake - available;
+    const allowance = await publicClient.readContract({ address: contracts.token, abi: tokenAbi, functionName: "allowance", args: [account, contracts.verificationArbitrationCourt] });
+    if (allowance < topUp) {
+      await confirmed(await wallet.writeContract({ account, address: contracts.token, abi: tokenAbi, functionName: "approve", args: [contracts.verificationArbitrationCourt, topUp] }), publicClient, confirmations);
+    }
+    await confirmed(await wallet.writeContract({ account, address: contracts.verificationArbitrationCourt, abi: verificationArbitrationCourtAbi, functionName: "deposit", args: [topUp] }), publicClient, confirmations);
+  }
+  const hash = await wallet.writeContract({
+    account,
+    address: contracts.verificationArbitrationCourt,
+    abi: verificationArbitrationCourtAbi,
+    functionName: "openRehabilitationAppeal",
+    args: [role, evidenceHash(normalizedEvidence)],
+  });
+  await confirmed(hash, publicClient, confirmations);
+  return { account, hash, role, evidenceHash: evidenceHash(normalizedEvidence) };
 }
 
 async function clients(expectedAccount?: string) {

@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "AgentGrid Agent API",
-    "version": "0.8.1",
+    "version": "0.8.2",
     "description": "Discovery, public task/proof views and the authenticated Agent job, encrypted artifact and publisher hidden-test workflows. Admin, internal operations and Demo-only mutation routes are intentionally excluded. Artifact bytes and hidden tests are never returned by public endpoints."
   },
   "servers": [
@@ -3803,7 +3803,7 @@
         ],
         "properties": {
           "schemaVersion": {
-            "const": "1.4"
+            "const": "1.5"
           },
           "generatedAt": {
             "type": "string",
@@ -3978,7 +3978,8 @@
               "fairnessFloorTickets",
               "testnetRandomness",
               "mainnetRequirement",
-              "proofBinding"
+              "proofBinding",
+              "rehabilitation"
             ],
             "properties": {
               "snapshot": { "const": "REQUEST_TIME_REGISTRY_VERSION_AND_TIMESTAMP" },
@@ -3998,7 +3999,43 @@
               "fairnessFloorTickets": { "const": 1000 },
               "testnetRandomness": { "const": "FUTURE_BLOCK_HASH" },
               "mainnetRequirement": { "const": "VRF_REQUIRED" },
-              "proofBinding": { "const": "PACKED_SNAPSHOT_INCLUDED_IN_SELECTION_PROOF" }
+              "proofBinding": { "const": "PACKED_SNAPSHOT_INCLUDED_IN_SELECTION_PROOF" },
+              "rehabilitation": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "entrypoint",
+                  "minimumStakeAgt",
+                  "eligibleStates",
+                  "arbitratorPanelSize",
+                  "quorum",
+                  "matchingResolutionHashRequired",
+                  "falseAppealSlashBps",
+                  "noQuorumExpirySeconds",
+                  "restoredQualityBps"
+                ],
+                "properties": {
+                  "entrypoint": { "const": "ON_CHAIN_VERIFICATION_ARBITRATION_COURT" },
+                  "minimumStakeAgt": { "const": 500 },
+                  "eligibleStates": {
+                    "type": "array",
+                    "prefixItems": [{ "const": "QUALITY_COOLDOWN" }, { "const": "ROLE_BAN" }],
+                    "minItems": 2,
+                    "maxItems": 2
+                  },
+                  "arbitratorPanelSize": { "const": 3 },
+                  "quorum": { "const": 2 },
+                  "matchingResolutionHashRequired": { "const": true },
+                  "falseAppealSlashBps": {
+                    "type": "array",
+                    "prefixItems": [{ "const": 500 }, { "const": 1500 }, { "const": 3000 }],
+                    "minItems": 3,
+                    "maxItems": 3
+                  },
+                  "noQuorumExpirySeconds": { "const": 259200 },
+                  "restoredQualityBps": { "const": 2500 }
+                }
+              }
             }
           },
           "workQueue": {

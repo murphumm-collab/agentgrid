@@ -72,20 +72,17 @@ The current source also adds `ProtocolEconomics` and is migrating the legacy
 fixed evaluation/publication fees to immutable source attribution, 95/3/2 gross
 reward routing, DAO/source vesting and idempotent 20/30/70/30-bps lifecycle
 charges. Compilation, isolated economics tests, focused lifecycle regressions,
-the OpenAPI 0.8.1 machine surface and economics dashboard projection pass locally. The
+the OpenAPI 0.8.2 machine surface and economics dashboard projection pass locally. The
 role-separated quality path now records validator and executor results plus a
 permissionless, one-shot evaluator settlement, freezes fixed-pool executor
 quality multipliers and caps positive gains per role/30-day epoch. Maintenance
 now has only the three-member shard commit/reveal queue path; the unused
 single-validator `MAINTENANCE_VALIDATION` contract was removed. Common-control
 self-dealing resistance, deployment verification and final QA remain open. The
-latest current-source full contract run executed 23 cases: 22 passed, while one
-test-only log selector chose the newly preceding snapshot event instead of the
-quality event. The selector now matches the exact quality-event topic and the
-focused upheld-arbitration rerun passes, including the 100/60/40 delta. A fresh
-uninterrupted 23/23 run remains required by final QA. This is current-source
-contract evidence, not the fixed release QA. Therefore previous QA reports are
-historical evidence only.
+latest current-source full contract run passes all 25 cases across four files,
+including the corrected exact quality-event selector and the four-case Court
+penalty/rehabilitation suite. This is current-source regression evidence, not
+the fixed release QA. Therefore previous QA reports are historical evidence only.
 
 Quality-weighted evaluator and validator selection now binds a request-time
 registry version/timestamp checkpoint into the future-block proof. Subsequent
@@ -93,9 +90,13 @@ positive scores, reactivation and added capabilities cannot improve an old
 draw; current withdrawal, deactivation, capability removal, cooldown and bans
 remain safety vetoes. The focused five-case quality suite and both real panel
 selection paths pass, all eleven deployables remain below EIP-170, and AI
-Dashboard 1.4/OpenAPI 0.8.1 expose the closed anti-manipulation policy. Common-
-control resistance, public rehabilitation and final packaged evidence remain
-open. GitHub push also remains an external credential handoff: the local
+Dashboard 1.5/OpenAPI 0.8.2 expose the closed anti-manipulation and public
+rehabilitation policies. The Agent-initiated Court path freezes at least 500 AGT,
+requires an exact matching 2-of-3 resolution, restores only the 2500-bps floor,
+slashes rejected appeals by 5/15/30%, and expires no-quorum cases after three
+days without restoration or penalty; its focused four-case Court suite passes.
+Common-control resistance and final frozen-source packaged evidence remain open.
+GitHub push also remains an external credential handoff: the local
 branch carries unpushed commits and HTTPS authentication is unavailable on this
 machine.
 

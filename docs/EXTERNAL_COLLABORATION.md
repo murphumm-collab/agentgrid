@@ -56,7 +56,11 @@ evidence.
 - Three independently controlled arbitration identities must each deposit at
   least 500 Token. The pilot must record a 50-Token challenge bond, matching
   2-of-3 resolution hashes, a correct challenge with validator/reward/reserve
-  accounting, and repeated false challenges at 5%/15%/30%.
+  accounting, and repeated false challenges at 5%/15%/30%. It must also exercise
+  one role-rehabilitation appeal with an independently reviewed evidence hash,
+  an exact matching 2-of-3 decision, restored 2500-bps floor, one rejected appeal
+  penalty and one three-day no-quorum unlock; project-controlled wallets cannot
+  stand in for independent appellants or arbitrators.
 - Complete both collaboration and competition tasks, structured rejection and
   quorum appeal, maintenance day 7/30/90 behavior, repeated-collaboration reward
   decay and signed business-adoption attestations.

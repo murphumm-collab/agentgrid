@@ -143,4 +143,54 @@ describe("VerificationArbitrationCourt penalty and recovery", () => {
     expect(await read(court, "VerificationArbitrationCourt", "falseChallengeCount", [challenger.account!.address])).toBe(0);
     expect((await read(panel, "ArbitrationPanelHarness", "getPanel", [9n]) as { status: number }).status).toBe(3);
   });
+
+  it("rehabilitates a banned role only after two arbitrators match the exact resolution", async () => {
+    await write(owner, registry, "ArbitrationRegistryHarness", "setQuality", [challenger.account!.address, 2, 0, true]);
+    const evidenceHash = keccak256(stringToHex("isolated-rehabilitation-task-proof"));
+    await write(challenger, court, "VerificationArbitrationCourt", "openRehabilitationAppeal", [2, evidenceHash]);
+    await expect(write(challenger, court, "VerificationArbitrationCourt", "withdraw", [1n])).rejects.toThrow();
+    const acceptedResolution = keccak256(stringToHex("rehabilitation-evidence-upheld"));
+    await write(arbitrators[0], court, "VerificationArbitrationCourt", "voteRehabilitationAppeal", [
+      challenger.account!.address, 2, true, acceptedResolution,
+    ]);
+    await write(arbitrators[1], court, "VerificationArbitrationCourt", "voteRehabilitationAppeal", [
+      challenger.account!.address, 2, true, keccak256(stringToHex("conflicting-rehabilitation-reason")),
+    ]);
+    expect((await read(registry, "ArbitrationRegistryHarness", "qualityOf", [challenger.account!.address, 2]) as { banned: boolean }).banned).toBe(true);
+    await write(arbitrators[2], court, "VerificationArbitrationCourt", "voteRehabilitationAppeal", [
+      challenger.account!.address, 2, true, acceptedResolution,
+    ]);
+    expect(await read(registry, "ArbitrationRegistryHarness", "qualityOf", [challenger.account!.address, 2])).toMatchObject({
+      scoreBps: 2_500, severeFaults: 2, cooldownUntil: 0n, banned: false,
+    });
+    expect(await read(registry, "ArbitrationRegistryHarness", "rehabilitationEvidence", [challenger.account!.address, 2])).not.toBe(`0x${"0".repeat(64)}`);
+    expect(await read(court, "VerificationArbitrationCourt", "stake", [challenger.account!.address])).toBe(parseEther("1000"));
+    expect(await read(court, "VerificationArbitrationCourt", "lockedStake", [challenger.account!.address])).toBe(0n);
+  });
+
+  it("slashes a rejected rehabilitation appeal and expires a later no-quorum appeal without another penalty", async () => {
+    await write(owner, registry, "ArbitrationRegistryHarness", "setQuality", [challenger.account!.address, 1, 1, false]);
+    await write(challenger, court, "VerificationArbitrationCourt", "openRehabilitationAppeal", [
+      1, keccak256(stringToHex("unsupported-rehabilitation-claim")),
+    ]);
+    const rejectedResolution = keccak256(stringToHex("claim-does-not-prove-rehabilitation"));
+    await write(arbitrators[0], court, "VerificationArbitrationCourt", "voteRehabilitationAppeal", [challenger.account!.address, 1, false, rejectedResolution]);
+    await write(arbitrators[1], court, "VerificationArbitrationCourt", "voteRehabilitationAppeal", [challenger.account!.address, 1, false, rejectedResolution]);
+    expect(await read(court, "VerificationArbitrationCourt", "stake", [challenger.account!.address])).toBe(parseEther("950"));
+    expect(await read(court, "VerificationArbitrationCourt", "falseRehabilitationAppealCount", [challenger.account!.address])).toBe(1);
+
+    await write(challenger, court, "VerificationArbitrationCourt", "openRehabilitationAppeal", [
+      1, keccak256(stringToHex("second-rehabilitation-claim")),
+    ]);
+    await write(arbitrators[0], court, "VerificationArbitrationCourt", "voteRehabilitationAppeal", [
+      challenger.account!.address, 1, true, keccak256(stringToHex("only-one-vote")),
+    ]);
+    await provider.request({ method: "evm_increaseTime", params: [3 * 24 * 60 * 60 + 1] });
+    await provider.request({ method: "evm_mine", params: [] });
+    await write(owner, court, "VerificationArbitrationCourt", "expireRehabilitationAppeal", [challenger.account!.address, 1]);
+    expect(await read(court, "VerificationArbitrationCourt", "stake", [challenger.account!.address])).toBe(parseEther("950"));
+    expect(await read(court, "VerificationArbitrationCourt", "lockedStake", [challenger.account!.address])).toBe(0n);
+    expect(await read(court, "VerificationArbitrationCourt", "lockedStake", [arbitrators[0].account!.address])).toBe(0n);
+    expect(await read(court, "VerificationArbitrationCourt", "falseRehabilitationAppealCount", [challenger.account!.address])).toBe(1);
+  });
 });

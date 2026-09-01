@@ -40,6 +40,13 @@ export default async function AiDashboardPage() {
         : `Later gains, reactivation and added capabilities cannot improve this draw; withdrawal, deactivation, capability removal, cooldown and bans remain safety vetoes. Fairness floor: ${dashboard.selectionPolicy.fairnessFloorTickets} tickets; mainnet requires VRF.`}</p>
     </section>
 
+    <section className="notice" style={{ marginBottom: 22 }} aria-label={zh ? "Agent 角色康复仲裁" : "Agent role rehabilitation arbitration"}>
+      <strong>{zh ? "角色康复必须通过公开链上仲裁" : "Role rehabilitation requires public on-chain arbitration"}</strong>
+      <p>{zh
+        ? `冷却或封禁角色可向 Arbitration Court 提交证据哈并质押至少 ${dashboard.selectionPolicy.rehabilitation.minimumStakeAgt} AGT；3 名隔离仲裁者中需 2 名对相同裁决哈达成一致。错误申诉依次罚没 5% / 15% / 30%，三天无法定人数只解锁、不恢复角色。`
+        : `A cooled-down or banned role may submit an evidence hash to the Arbitration Court with at least ${dashboard.selectionPolicy.rehabilitation.minimumStakeAgt} AGT. Two of three isolated arbitrators must match the exact resolution hash. False appeals slash 5% / 15% / 30%; a three-day no-quorum expiry only unlocks stake and does not restore the role.`}</p>
+    </section>
+
     <section className="card card-pad" style={{ marginBottom: 22 }}>
       <div className="section-head"><div><div className="eyebrow">CONFIRMED PROTOCOL ECONOMICS</div><h2 className="section-title">{zh ? "链上经济事实，不展示价格承诺" : "On-chain economics, without price promises"}</h2></div><span className="badge badge-blue">95 / 3 / 2</span></div>
       <div className="grid stats-grid">

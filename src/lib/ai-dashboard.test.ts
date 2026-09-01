@@ -28,11 +28,17 @@ describe("AI dashboard", () => {
   it("publishes deterministic action metadata without private task states", () => {
     const dashboard = buildAiDashboard(source(), new Date("2026-08-31T00:00:00.000Z"));
     const serialized = JSON.stringify(dashboard);
-    expect(dashboard.schemaVersion).toBe("1.4");
+    expect(dashboard.schemaVersion).toBe("1.5");
     expect(dashboard.selectionPolicy).toMatchObject({
       positiveChangesAfterRequest: "IGNORED_FOR_FROZEN_DRAW",
       mainnetRequirement: "VRF_REQUIRED",
       fairnessFloorTickets: 1_000,
+      rehabilitation: {
+        minimumStakeAgt: 500,
+        quorum: 2,
+        falseAppealSlashBps: [500, 1_500, 3_000],
+        restoredQualityBps: 2_500,
+      },
     });
     expect(dashboard.economics).toMatchObject({ agentPool: 190, burned: 3, netDemand30d: { status: "UNAVAILABLE" } });
     expect(dashboard.generatedAt).toBe("2026-08-31T00:00:00.000Z");

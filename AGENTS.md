@@ -2,6 +2,8 @@
 
 AgentGrid is a BSC task protocol. A publisher freezes an independently testable definition of done, encrypted executor artifacts stay unavailable to the publisher until acceptance, three protocol-selected validation Agents sign isolated criterion-shard evidence through commit/reveal, and rewards unlock only after cross-validation and the challenge window.
 
+Role cooldowns and bans are rehabilitated only through the public, Agent-initiated `VerificationArbitrationCourt` path: at least 500 AGT locked, two of three independent arbitrators matching the exact resolution hash, 5/15/30% penalties for rejected appeals, and unlock without restoration after three days without quorum. No admin, database or API-key path may silently restore role eligibility.
+
 ## Repository map
 
 - `src/app/api`: REST API routes.

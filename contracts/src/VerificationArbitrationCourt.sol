@@ -10,6 +10,10 @@ interface IArbitrationAgentRegistry {
     function isEligible(address agent) external view returns (bool);
     function agentPosition(address agent) external view returns (uint256);
     function stakeManager() external view returns (address);
+    function qualityOf(address agent, uint8 role) external view returns (
+        uint16 scoreBps, uint32 outcomeCount, uint8 severeFaults, uint64 cooldownUntil, bool banned
+    );
+    function rehabilitateRole(address agent, uint8 role, bytes32 evidenceHash) external;
 }
 
 interface IArbitrationStakeManager {
@@ -45,6 +49,18 @@ contract VerificationArbitrationCourt is ReentrancyGuard {
         bool resolved;
     }
 
+    struct RehabilitationAppeal {
+        address appellant;
+        uint8 role;
+        bytes32 evidenceHash;
+        bytes32 resolutionHash;
+        uint64 deadline;
+        uint256 stakeSnapshot;
+        address[3] voters;
+        uint8 voterCount;
+        bool resolved;
+    }
+
     IERC20 public immutable token;
     VerificationPanel public immutable panel;
     IArbitrationAgentRegistry public immutable agentRegistry;
@@ -59,6 +75,10 @@ contract VerificationArbitrationCourt is ReentrancyGuard {
     mapping(bytes32 => mapping(address => bool)) public hasVoted;
     mapping(bytes32 => mapping(bytes32 => uint8)) public upholdVotesByResolution;
     mapping(bytes32 => mapping(bytes32 => uint8)) public rejectVotesByResolution;
+    mapping(address => mapping(uint8 => bytes32)) public activeRehabilitationAppealId;
+    mapping(address => mapping(uint8 => uint64)) public rehabilitationAppealNonce;
+    mapping(address => uint8) public falseRehabilitationAppealCount;
+    mapping(bytes32 => RehabilitationAppeal) public rehabilitationAppeals;
 
     error Unauthorized();
     error InvalidStake();
@@ -70,6 +90,19 @@ contract VerificationArbitrationCourt is ReentrancyGuard {
     event VerificationChallengeVote(uint256 indexed taskId, bytes32 indexed caseId, address indexed arbitrator, bool upheld, bytes32 resolutionHash);
     event VerificationChallengeResolved(uint256 indexed taskId, bytes32 indexed caseId, bool upheld, bytes32 resolutionHash, uint256 challengerSlash, uint256 validatorSlash, uint256 challengerReward);
     event VerificationChallengeExpired(uint256 indexed taskId, bytes32 indexed caseId);
+    event RehabilitationAppealOpened(
+        address indexed appellant, uint8 indexed role, bytes32 indexed caseId,
+        bytes32 evidenceHash, uint64 deadline, uint256 stakeSnapshot
+    );
+    event RehabilitationAppealVote(
+        address indexed appellant, uint8 indexed role, bytes32 indexed caseId,
+        address arbitrator, bool upheld, bytes32 resolutionHash
+    );
+    event RehabilitationAppealResolved(
+        address indexed appellant, uint8 indexed role, bytes32 indexed caseId,
+        bool upheld, bytes32 resolutionHash, uint256 appellantSlash
+    );
+    event RehabilitationAppealExpired(address indexed appellant, uint8 indexed role, bytes32 indexed caseId);
 
     constructor(IERC20 token_, VerificationPanel panel_, IArbitrationAgentRegistry agentRegistry_, address reserve_, address[3] memory arbitrators) {
         if (address(token_) == address(0) || address(panel_) == address(0) || address(agentRegistry_) == address(0) || reserve_ == address(0)) revert Unauthorized();
@@ -170,6 +203,56 @@ contract VerificationArbitrationCourt is ReentrancyGuard {
         resolved = dispute.resolved;
     }
 
+    function openRehabilitationAppeal(uint8 role, bytes32 evidenceHash) external {
+        if ((role != 1 && role != 2 && role != 4) || evidenceHash == bytes32(0) || isArbitrator[msg.sender] || !agentRegistry.isEligible(msg.sender)) {
+            revert InvalidChallenge();
+        }
+        (,,, uint64 cooldownUntil, bool banned) = agentRegistry.qualityOf(msg.sender, role);
+        if (!banned && cooldownUntil == 0) revert InvalidChallenge();
+        bytes32 previous = activeRehabilitationAppealId[msg.sender][role];
+        if (previous != bytes32(0) && !rehabilitationAppeals[previous].resolved) revert InvalidChallenge();
+        uint256 available = stake[msg.sender] - lockedStake[msg.sender];
+        if (available < MINIMUM_STAKE) revert InvalidStake();
+        lockedStake[msg.sender] += available;
+        uint64 nonce = ++rehabilitationAppealNonce[msg.sender][role];
+        bytes32 caseId = keccak256(abi.encode(
+            block.chainid, address(this), msg.sender, role, nonce, evidenceHash, "REHABILITATION_APPEAL"
+        ));
+        uint64 deadline = uint64(block.timestamp + ARBITRATION_WINDOW);
+        rehabilitationAppeals[caseId] = RehabilitationAppeal({
+            appellant: msg.sender, role: role, evidenceHash: evidenceHash, resolutionHash: bytes32(0),
+            deadline: deadline, stakeSnapshot: available, voters: [address(0), address(0), address(0)],
+            voterCount: 0, resolved: false
+        });
+        activeRehabilitationAppealId[msg.sender][role] = caseId;
+        emit RehabilitationAppealOpened(msg.sender, role, caseId, evidenceHash, deadline, available);
+    }
+
+    function voteRehabilitationAppeal(address appellant, uint8 role, bool upheld, bytes32 resolutionHash) external {
+        bytes32 caseId = activeRehabilitationAppealId[appellant][role];
+        RehabilitationAppeal storage appeal = rehabilitationAppeals[caseId];
+        if (!isArbitrator[msg.sender] || msg.sender == appellant || stake[msg.sender] - lockedStake[msg.sender] < MINIMUM_STAKE) revert Unauthorized();
+        if (appeal.appellant == address(0) || appeal.resolved || block.timestamp > appeal.deadline || resolutionHash == bytes32(0)) revert InvalidChallenge();
+        if (hasVoted[caseId][msg.sender]) revert AlreadyVoted();
+        hasVoted[caseId][msg.sender] = true;
+        lockedStake[msg.sender] += MINIMUM_STAKE;
+        appeal.voters[appeal.voterCount++] = msg.sender;
+        uint8 matchingVotes = upheld
+            ? ++upholdVotesByResolution[caseId][resolutionHash]
+            : ++rejectVotesByResolution[caseId][resolutionHash];
+        emit RehabilitationAppealVote(appellant, role, caseId, msg.sender, upheld, resolutionHash);
+        if (matchingVotes >= QUORUM) _resolveRehabilitationAppeal(caseId, upheld, resolutionHash);
+    }
+
+    function expireRehabilitationAppeal(address appellant, uint8 role) external nonReentrant {
+        bytes32 caseId = activeRehabilitationAppealId[appellant][role];
+        RehabilitationAppeal storage appeal = rehabilitationAppeals[caseId];
+        if (appeal.appellant == address(0) || appeal.resolved || block.timestamp <= appeal.deadline) revert InvalidChallenge();
+        appeal.resolved = true;
+        _unlockRehabilitationParticipants(appeal);
+        emit RehabilitationAppealExpired(appellant, role, caseId);
+    }
+
     function _resolve(uint256 taskId, bytes32 caseId, bool upheld, bytes32 resolutionHash) private nonReentrant {
         Challenge storage dispute = cases[caseId];
         dispute.resolved = true;
@@ -212,5 +295,36 @@ contract VerificationArbitrationCourt is ReentrancyGuard {
         lockedStake[dispute.challenger] -= dispute.challengerStakeSnapshot;
         lockedStake[dispute.validator] -= dispute.validatorStakeLocked;
         for (uint8 i; i < dispute.voterCount; ++i) lockedStake[dispute.voters[i]] -= MINIMUM_STAKE;
+    }
+
+    function _resolveRehabilitationAppeal(bytes32 caseId, bool upheld, bytes32 resolutionHash) private nonReentrant {
+        RehabilitationAppeal storage appeal = rehabilitationAppeals[caseId];
+        appeal.resolved = true;
+        appeal.resolutionHash = resolutionHash;
+        _unlockRehabilitationParticipants(appeal);
+        uint256 appellantSlash;
+        if (upheld) {
+            bytes32 rehabilitationEvidence = keccak256(abi.encode(
+                caseId, appeal.appellant, appeal.role, appeal.evidenceHash, resolutionHash
+            ));
+            agentRegistry.rehabilitateRole(appeal.appellant, appeal.role, rehabilitationEvidence);
+            falseRehabilitationAppealCount[appeal.appellant] = 0;
+        } else {
+            uint8 failures = falseRehabilitationAppealCount[appeal.appellant];
+            uint16 slashBps = failures == 0 ? 500 : failures == 1 ? 1_500 : 3_000;
+            appellantSlash = (appeal.stakeSnapshot * slashBps) / BPS;
+            if (appellantSlash > stake[appeal.appellant]) appellantSlash = stake[appeal.appellant];
+            stake[appeal.appellant] -= appellantSlash;
+            falseRehabilitationAppealCount[appeal.appellant] = failures == type(uint8).max ? failures : failures + 1;
+            token.safeTransfer(reserve, appellantSlash);
+        }
+        emit RehabilitationAppealResolved(
+            appeal.appellant, appeal.role, caseId, upheld, resolutionHash, appellantSlash
+        );
+    }
+
+    function _unlockRehabilitationParticipants(RehabilitationAppeal storage appeal) private {
+        lockedStake[appeal.appellant] -= appeal.stakeSnapshot;
+        for (uint8 i; i < appeal.voterCount; ++i) lockedStake[appeal.voters[i]] -= MINIMUM_STAKE;
     }
 }
