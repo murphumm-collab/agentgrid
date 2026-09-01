@@ -88,6 +88,15 @@ run also directly proves the 100/60/40 target-slash/challenger-reward/reserve
 delta. This is current-source contract evidence, not the fixed release QA.
 Therefore previous QA reports are historical evidence only.
 
+The next quality-selection hardening must bind request-time eligibility and
+quality weights to an on-chain historical snapshot (or an equivalently
+verifiable commitment/proof). The current candidate-set hash freezes registry
+state in the entropy commitment but finalization still reads live weights;
+simply requiring the live hash to remain unchanged would let unrelated valid
+outcomes deny service to every pending selection. GitHub push also remains an
+external credential handoff: the local branch carries unpushed commits and
+HTTPS authentication is unavailable on this machine.
+
 Governed source froze after adding visible failure, busy state and duplicate-
 safe boundaries to language, clipboard and Demo mutations. Discovery
 schema 1.1 and OpenAPI 0.6.9 expose explicit single-task,

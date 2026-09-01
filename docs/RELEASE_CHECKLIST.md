@@ -502,8 +502,10 @@ real-user pilot.
   neutral. Executor role-quality multipliers are frozen with the panel and
   renormalize contribution weights inside the unchanged fixed pool. A 30-day,
   per-role ten-positive-outcome cap prevents unlimited score gain in one epoch.
-  The row remains open for common-control/self-dealing resistance and the public
-  rehabilitation process.
+  The row remains open for common-control/self-dealing resistance, the public
+  rehabilitation process and request-time historical eligibility/quality
+  snapshots. A frozen candidate-set hash alone is insufficient while weighted
+  selection still reads mutable live quality at finalization.
 - [ ] Indexer, OpenAPI, SDK and the human/AI dashboards expose source attribution,
   vesting, lifecycle charges, treasury/burn/security routes, sponsored labels,
   role quality and 30/90-day AGT net-demand components without presenting

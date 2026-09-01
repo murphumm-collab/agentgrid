@@ -7,6 +7,14 @@ evidence.
 
 ## Frontend and production edge
 
+- **GitHub handoff needed:** the current local branch is
+  `codex/verification-arbitration` and carries commits not present on
+  `origin/main`. HTTPS
+  push currently fails because this machine has no readable GitHub credential.
+  The product owner must authenticate Git for
+  `https://github.com/murphumm-collab/agentgrid.git` or provide an approved SSH
+  remote; no token may be committed or pasted into ordinary project files.
+
 - **Needed from product owner:** choose Vercel, Cloudflare or an owned server;
   authorize the account/project and identify the production or preview domain.
 - **Then required:** deploy the exact candidate, configure TLS, WAF/rate limits
