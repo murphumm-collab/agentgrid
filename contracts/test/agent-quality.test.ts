@@ -208,6 +208,9 @@ describe("AgentRegistry role quality", () => {
     expect(await read("AgentRegistry", "selectionWeightAt", [
       agent.account!.address, 2, snapshotVersion, snapshotTime,
     ])).toBe(6_000n);
+    expect(await read("AgentRegistry", "frozenSelectionWeightAt", [
+      agent.account!.address, 2, snapshotVersion, snapshotTime,
+    ])).toBe(6_000n);
 
     for (let index = 0; index < 3; index += 1) await write(owner, qualityReporter, "QualityReporterHarness", "recordTask", [
       agent.account!.address, 2, BigInt(index + 1), publisher(index), parseEther("100"), keccak256(stringToHex(`snapshot-success-${index}`)),
@@ -223,6 +226,9 @@ describe("AgentRegistry role quality", () => {
     expect(await read("AgentRegistry", "selectionWeightAt", [
       agent.account!.address, 2, snapshotVersion, snapshotTime,
     ])).toBe(0n);
+    expect(await read("AgentRegistry", "frozenSelectionWeightAt", [
+      agent.account!.address, 2, snapshotVersion, snapshotTime,
+    ])).toBe(6_000n);
     await write(agent, agentRegistry, "AgentRegistry", "setActive", [true]);
     expect(await read("AgentRegistry", "selectionWeightAt", [
       agent.account!.address, 2, snapshotVersion, snapshotTime,
@@ -238,5 +244,15 @@ describe("AgentRegistry role quality", () => {
     expect(await read("AgentRegistry", "selectionWeightAt", [
       agent.account!.address, 2, noTestVersion, noTestTime,
     ])).toBe(0n);
+    expect(await read("AgentRegistry", "frozenSelectionWeightAt", [
+      agent.account!.address, 2, noTestVersion, noTestTime,
+    ])).toBe(0n);
+    await write(agent, stakeManager, "StakeCreditManager", "requestWithdrawal", [1n]);
+    expect(await read("AgentRegistry", "selectionWeightAt", [
+      agent.account!.address, 2, snapshotVersion, snapshotTime,
+    ])).toBe(0n);
+    expect(await read("AgentRegistry", "frozenSelectionWeightAt", [
+      agent.account!.address, 2, snapshotVersion, snapshotTime,
+    ])).toBe(6_000n);
   });
 });

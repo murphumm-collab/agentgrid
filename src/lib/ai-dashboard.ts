@@ -88,7 +88,7 @@ export function buildAiDashboard(source: AiDashboardSource, now = new Date(), mo
   const rewards = new Map(source.rewards.map((reward) => [reward.taskId, reward]));
 
   return {
-    schemaVersion: "2.1",
+    schemaVersion: "2.2",
     generatedAt: now.toISOString(),
     mode,
     network: { name: "BSC Testnet", chainId: 97, confirmations: 5 },
@@ -128,6 +128,14 @@ export function buildAiDashboard(source: AiDashboardSource, now = new Date(), mo
       testnetRandomness: "FUTURE_BLOCK_HASH",
       mainnetRequirement: "VRF_REQUIRED",
       proofBinding: "PACKED_SNAPSHOT_INCLUDED_IN_SELECTION_PROOF",
+      scalability: {
+        status: "LOCAL_RELEASE_GATE_OPEN",
+        frozenWeightEntrypoint: "AgentRegistry.frozenSelectionWeightAt(address,uint8,uint64,uint64)",
+        liveSafetyWeightEntrypoint: "AgentRegistry.selectionWeightAt(address,uint8,uint64,uint64)",
+        currentSelectionComplexity: "LINEAR_TWO_PASSES_PER_SELECTED_SLOT",
+        requiredReplacement: "PERMISSIONLESS_BOUNDED_ALL_CANDIDATE_WEIGHTED_CONSTRUCTION",
+        randomWindowAccepted: false,
+      },
       liveness: {
         coordinator: "OPTIONAL_AUTOMATION_NO_EXCLUSIVE_AUTHORITY",
         callerSelectionAuthority: "NONE",

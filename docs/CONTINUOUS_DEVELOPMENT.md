@@ -72,19 +72,19 @@ The current source also adds `ProtocolEconomics` and is migrating the legacy
 fixed evaluation/publication fees to immutable source attribution, 95/3/2 gross
 reward routing, DAO/source vesting and idempotent 20/30/70/30-bps lifecycle
 charges. Compilation, isolated economics tests, focused lifecycle regressions,
-the OpenAPI 0.8.10 machine surface and economics dashboard projection pass locally. The
+the OpenAPI 0.8.11 machine surface and economics dashboard projection pass locally. The
 role-separated quality path now records validator and executor results plus a
 permissionless, one-shot evaluator settlement, freezes fixed-pool executor
 quality multipliers and caps positive gains per role/30-day epoch. Maintenance
 now has only the three-member shard commit/reveal queue path; the unused
 single-validator `MAINTENANCE_VALIDATION` contract was removed. The legacy Demo
 HTTP route and Demo SDK method that could directly submit one
-validator result are now removed as well; OpenAPI 0.8.10 uses `testerIds`,
+validator result are now removed as well; OpenAPI 0.8.11 uses `testerIds`,
 `reportHashes` and `aggregateEvidenceHash` as the panel projection while marking
 the first-member aliases deprecated. Canonical task quality gains now reject
 sub-10-AGT, same-address and repeated publisher-Agent-role relationship farming,
 require three distinct credited publisher relationships for priority status,
-and never suppress failures. Dashboard 2.1/OpenAPI 0.8.10 publish this boundary.
+and never suppress failures. Dashboard 2.2/OpenAPI 0.8.11 publish this boundary.
 Wallet-level common-control still requires external Sybil attestation;
 deployment verification and final QA remain open. The current-source full
 contract run now passes all 26 cases across four files in one uninterrupted run,
@@ -99,7 +99,7 @@ positive scores, reactivation and added capabilities cannot improve an old
 draw; current withdrawal, deactivation, capability removal, cooldown and bans
 remain safety vetoes. The focused five-case quality suite and both real panel
 selection paths pass, all eleven deployables remain below EIP-170, and AI
-Dashboard 2.1/OpenAPI 0.8.10 expose the closed anti-manipulation and public
+Dashboard 2.2/OpenAPI 0.8.11 expose the closed anti-manipulation and public
 rehabilitation policies. The Agent-initiated Court path freezes at least 500 AGT,
 requires an exact matching 2-of-3 resolution, restores only the 2500-bps floor,
 slashes rejected appeals by 5/15/30%, and expires no-quorum cases after three
@@ -113,7 +113,7 @@ Maintenance checkpoints now clear the acceptance assignment and enter the same
 current-registry, future-block, quality-weighted three-validator selection used
 for initial acceptance. Coordinator retries are chain-state idempotent, and a
 redraw is allowed only after the recorded 256-block blockhash window expires;
-an RPC or write failure can no longer silently replace validators. OpenAPI 0.8.10
+an RPC or write failure can no longer silently replace validators. OpenAPI 0.8.11
 publishes the matching idempotent coordinator completion results. This is
 current-source regression scope and does not revive the historical fixed QA.
 
@@ -136,7 +136,7 @@ current bytecode and ABI; the uninterrupted current-source contract run passes
 application suite includes nine fail-closed Pilot qualification cases.
 Fixed release QA remains historical and must run again only after source freeze.
 
-Dashboard schema 2.1/OpenAPI 0.8.10 now separate the complete 37-operation HTTP
+Dashboard schema 2.2/OpenAPI 0.8.11 now separate the complete 37-operation HTTP
 contract from the compiled chain surface. All 97 mutable signatures across the
 nine deployment artifacts are partitioned into 44 supported participant actions
 and 53 explicit governance-only, protocol-internal or generic-token exclusions.
@@ -155,7 +155,7 @@ wallet. Inactive-executor eviction, validator-draw request/finalization and due
 maintenance-panel request are permissionless while retaining all existing state,
 deadline, frozen-snapshot, conflict and future-block checks. The coordinator
 worker remains an optional idempotent automation operator and has no authority
-to submit or prune candidates. Dashboard schema 2.1/OpenAPI 0.8.10 publish the
+to submit or prune candidates. Dashboard schema 2.2/OpenAPI 0.8.11 publish the
 exact permissionless action set and `callerSelectionAuthority: NONE`; contract
 regression executes each changed path from a non-coordinator wallet. Previous
 fixed release QA remains historical after this governed Solidity change.
@@ -170,6 +170,16 @@ random scan window would improve gas by silently weakening open access and is no
 accepted as completion. No fixed release QA is warranted before this governed
 state-machine gap is closed.
 
+The first prerequisite for that replacement is now on chain. Dashboard schema
+2.2/OpenAPI 0.8.11 expose `AgentRegistry.frozenSelectionWeightAt` as the
+deterministic registry-version/time input for permissionless page construction,
+and retain `selectionWeightAt` as the final live-safety check. The latter now
+reads the current stake position once instead of re-reading it after the frozen
+checkpoint lookup. Focused quality regression proves later gains do not change
+the frozen value, while deactivation, capability removal and withdrawal zero
+the final value without erasing the historical weight. The accumulator/tree and
+worst-case gas gate are still required; this prerequisite does not close them.
+
 Advertising and sponsorship accounting now has a deterministic, settlement-
 asset-scoped local reconciliation state machine. It separates unconfirmed
 revenue, confirmed platform cash, available allocation, submitted-unconfirmed
@@ -179,7 +189,7 @@ future timestamps, excessive TWAP deviation and per-period cap overflow. It is
 explicitly simulation-only and does not activate or pretend to execute a DEX
 route, oracle, buyback or burn.
 
-Dashboard schema 2.1 and OpenAPI 0.8.10 now expose the exact advertising and
+Dashboard schema 2.2 and OpenAPI 0.8.11 now expose the exact advertising and
 sponsorship allocation basis points, supported settlement assets, five ledger
 states and required replay/TWAP/slippage/period/minimum-output controls. Both the
 JSON API and bilingual human panel say realized revenue is unavailable and live
@@ -479,7 +489,7 @@ not remove the trusted-proxy secret. The runner now derives all direct and
 stopped at command one; a later attempt correctly reached command sixteen and
 rejected an unnecessary direct proxy secret supplied by the QA invocation. None
 produced a report or candidate. The current clean run supersedes all of them.
-Dashboard schema 2.1/OpenAPI 0.8.10 additionally expose receipt-bound signed
+Dashboard schema 2.2/OpenAPI 0.8.11 additionally expose receipt-bound signed
 task placements. Production imports use `promotion:import`, a unique settlement
 receipt hash, an overlap-locked PostgreSQL window and a configured
 `PROMOTION_ATTESTATION_SIGNER`; invalid or expired rows are omitted. Human and

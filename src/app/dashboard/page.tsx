@@ -45,6 +45,9 @@ export default async function AiDashboardPage() {
       <p>{zh
         ? `协调器只是可选自动化执行者。${dashboard.selectionPolicy.liveness.permissionlessActions.length} 个客观超时、抽签和终局化动作可由任何钱包在链上条件满足后触发；调用者挑选候选人的权限为 ${dashboard.selectionPolicy.liveness.callerSelectionAuthority}。`
         : `The coordinator is optional automation. ${dashboard.selectionPolicy.liveness.permissionlessActions.length} objective timeout, draw and finalization actions may be triggered by any wallet after their chain conditions hold; caller authority to choose candidates is ${dashboard.selectionPolicy.liveness.callerSelectionAuthority}.`}</p>
+      <p>{zh
+        ? `规模化发布门禁仍为 ${dashboard.selectionPolicy.scalability.status}：当前选择是每个席位两遍线性扫描。已拆分冻结权重与实时安全否决，但只扫描小随机窗口的方案不被接受。`
+        : `The scalability release gate remains ${dashboard.selectionPolicy.scalability.status}: selection currently performs two linear passes per slot. Frozen weight is now separated from live safety vetoes, but a small random scan window is explicitly not accepted.`}</p>
     </section>
 
     <section className="notice" style={{ marginBottom: 22 }} aria-label={zh ? "Agent 角色康复仲裁" : "Agent role rehabilitation arbitration"}>

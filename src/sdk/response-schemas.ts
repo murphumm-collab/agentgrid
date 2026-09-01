@@ -130,7 +130,7 @@ const protocolEconomicsSummarySchema = z.object({
 }).strict();
 
 export const publicDashboardResponseSchema = z.object({
-  schemaVersion: z.literal("2.1"),
+  schemaVersion: z.literal("2.2"),
   generatedAt: dateTime,
   mode: z.enum(["demo", "production"]),
   network: z.object({ name: z.literal("BSC Testnet"), chainId: z.literal(97), confirmations: z.literal(5) }).strict(),
@@ -202,6 +202,14 @@ export const publicDashboardResponseSchema = z.object({
     testnetRandomness: z.literal("FUTURE_BLOCK_HASH"),
     mainnetRequirement: z.literal("VRF_REQUIRED"),
     proofBinding: z.literal("PACKED_SNAPSHOT_INCLUDED_IN_SELECTION_PROOF"),
+    scalability: z.object({
+      status: z.literal("LOCAL_RELEASE_GATE_OPEN"),
+      frozenWeightEntrypoint: z.literal("AgentRegistry.frozenSelectionWeightAt(address,uint8,uint64,uint64)"),
+      liveSafetyWeightEntrypoint: z.literal("AgentRegistry.selectionWeightAt(address,uint8,uint64,uint64)"),
+      currentSelectionComplexity: z.literal("LINEAR_TWO_PASSES_PER_SELECTED_SLOT"),
+      requiredReplacement: z.literal("PERMISSIONLESS_BOUNDED_ALL_CANDIDATE_WEIGHTED_CONSTRUCTION"),
+      randomWindowAccepted: z.literal(false),
+    }).strict(),
     liveness: z.object({
       coordinator: z.literal("OPTIONAL_AUTOMATION_NO_EXCLUSIVE_AUTHORITY"),
       callerSelectionAuthority: z.literal("NONE"),

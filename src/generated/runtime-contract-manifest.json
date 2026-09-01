@@ -39,35 +39,31 @@
     },
     "agentRegistry": {
       "name": "AgentRegistry",
-      "normalizedRuntimeBytecodeHash": "0x40cc635fdc8b32bec5c0a8650b6bf40eec39d64e74fb8475df5e05a234a2decd",
+      "normalizedRuntimeBytecodeHash": "0x863238d64c56d9102c00ab92916ca2f11108d0d260eb6bcecba298522fb0df35",
       "immutableReferences": [
         {
           "length": 32,
-          "start": 646
+          "start": 657
         },
         {
           "length": 32,
-          "start": 3033
+          "start": 3080
         },
         {
           "length": 32,
-          "start": 5134
+          "start": 5204
         },
         {
           "length": 32,
-          "start": 6167
+          "start": 6091
         },
         {
           "length": 32,
-          "start": 7038
+          "start": 7473
         },
         {
           "length": 32,
-          "start": 7692
-        },
-        {
-          "length": 32,
-          "start": 8664
+          "start": 8445
         }
       ]
     },
@@ -119,7 +115,7 @@
     },
     "taskRegistry": {
       "name": "TaskRegistry",
-      "normalizedRuntimeBytecodeHash": "0x4ae35f5e5c2ae73344ae1935b1f881f56e509ce381b5c92d5737d90de0e520f9",
+      "normalizedRuntimeBytecodeHash": "0x1465ba7d0beaf66f022564bbd09788f01cacbc8d583e3ba2e7961e88de5febd4",
       "immutableReferences": [
         {
           "length": 32,

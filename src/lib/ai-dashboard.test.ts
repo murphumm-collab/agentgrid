@@ -28,11 +28,16 @@ describe("AI dashboard", () => {
   it("publishes deterministic action metadata without private task states", () => {
     const dashboard = buildAiDashboard(source(), new Date("2026-08-31T00:00:00.000Z"));
     const serialized = JSON.stringify(dashboard);
-    expect(dashboard.schemaVersion).toBe("2.1");
+    expect(dashboard.schemaVersion).toBe("2.2");
     expect(dashboard.selectionPolicy).toMatchObject({
       positiveChangesAfterRequest: "IGNORED_FOR_FROZEN_DRAW",
       mainnetRequirement: "VRF_REQUIRED",
       fairnessFloorTickets: 1_000,
+      scalability: {
+        status: "LOCAL_RELEASE_GATE_OPEN",
+        currentSelectionComplexity: "LINEAR_TWO_PASSES_PER_SELECTED_SLOT",
+        randomWindowAccepted: false,
+      },
       liveness: {
         coordinator: "OPTIONAL_AUTOMATION_NO_EXCLUSIVE_AUTHORITY",
         callerSelectionAuthority: "NONE",
@@ -85,7 +90,10 @@ describe("AI dashboard", () => {
         required: string[];
         properties: {
           revenuePolicy: { properties: { realizedRevenueStatus: { const: string }; protocolInfluence: { properties: Record<string, { const: string }> } } };
-          selectionPolicy: { required: string[]; properties: { liveness: { properties: { coordinator: { const: string }; callerSelectionAuthority: { const: string }; permissionlessActions: { minItems: number; maxItems: number } } } } };
+          selectionPolicy: { required: string[]; properties: {
+            scalability: { properties: { status: { const: string }; randomWindowAccepted: { const: boolean } } };
+            liveness: { properties: { coordinator: { const: string }; callerSelectionAuthority: { const: string }; permissionlessActions: { minItems: number; maxItems: number } } };
+          } };
           actionContracts: { items: { properties: { method: { enum: string[] } } } };
           onChainActions: { minItems: number; maxItems: number; items: { properties: { contract: { enum: string[] }; availability: { enum: string[] } } } };
           onChainActionExclusions: { minItems: number; maxItems: number; items: { properties: { classification: { enum: string[] } } } };
@@ -94,6 +102,10 @@ describe("AI dashboard", () => {
     };
     expect(openapi.components.schemas.AiDashboard.required).toContain("revenuePolicy");
     expect(openapi.components.schemas.AiDashboard.properties.selectionPolicy.required).toContain("liveness");
+    expect(openapi.components.schemas.AiDashboard.properties.selectionPolicy.required).toContain("scalability");
+    expect(openapi.components.schemas.AiDashboard.properties.selectionPolicy.properties.scalability.properties).toMatchObject({
+      status: { const: "LOCAL_RELEASE_GATE_OPEN" }, randomWindowAccepted: { const: false },
+    });
     expect(openapi.components.schemas.AiDashboard.properties.selectionPolicy.properties.liveness.properties).toMatchObject({
       coordinator: { const: "OPTIONAL_AUTOMATION_NO_EXCLUSIVE_AUTHORITY" },
       callerSelectionAuthority: { const: "NONE" },

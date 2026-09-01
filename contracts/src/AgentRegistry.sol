@@ -323,27 +323,36 @@ contract AgentRegistry {
         return 1_000 + _effectiveScore(agent, role);
     }
 
-    /// @notice Returns the request-time weight while preserving a current-state
-    /// safety veto. Positive changes after the snapshot cannot increase the
-    /// draw probability; withdrawal, deactivation, capability removal, cooldown
-    /// or a ban can still remove an unsafe/unavailable candidate.
-    function selectionWeightAt(
+    /// @notice Returns only the registry-derived request-time weight. This is
+    /// deterministic for a frozen version/time and deliberately does not apply
+    /// later stake, active, capability or quality safety vetoes, allowing a
+    /// paginated accumulator to be built without timing-dependent omissions.
+    function frozenSelectionWeightAt(
         address agent, uint8 capability, uint64 snapshotVersion, uint64 snapshotTime
     ) public view returns (uint256) {
         if (
             snapshotVersion == 0 || snapshotVersion > registryVersion || snapshotTime > block.timestamp ||
-            !isEligibleFor(agent, capability)
+            capability == 0
         ) return 0;
         AgentStateCheckpoint memory state = _stateAt(agent, snapshotVersion);
         if (!state.active || state.positionId == 0 || (state.capabilities & capability) != capability) return 0;
-        (address owner, uint256 amount, , , uint256 withdrawalRequestedAt) = stakeManager.positions(state.positionId);
-        if (owner != agent || amount < stakeManager.MINIMUM_STAKE() || withdrawalRequestedAt != 0) return 0;
         uint8 role = _roleForCapability(capability);
         (RoleQuality memory quality, uint32 independentOutcomes) = _qualityAt(agent, role, snapshotVersion);
         uint16 score = quality.scoreBps == 0 ? INITIAL_QUALITY_BPS : quality.scoreBps;
         if (quality.banned || quality.cooldownUntil > snapshotTime || score < PAID_POOL_MINIMUM_QUALITY_BPS) return 0;
         if (independentOutcomes < 3 && score > INITIAL_QUALITY_BPS) score = INITIAL_QUALITY_BPS;
         return 1_000 + score;
+    }
+
+    /// @notice Applies current safety vetoes to the immutable request-time
+    /// weight. Positive changes cannot improve an old draw; withdrawal,
+    /// deactivation, capability removal, cooldown or a ban can still remove an
+    /// unsafe/unavailable candidate. The current stake position is read once.
+    function selectionWeightAt(
+        address agent, uint8 capability, uint64 snapshotVersion, uint64 snapshotTime
+    ) public view returns (uint256) {
+        if (!isEligibleFor(agent, capability)) return 0;
+        return frozenSelectionWeightAt(agent, capability, snapshotVersion, snapshotTime);
     }
 
     /// @notice Deterministic quality-weighted sampling with a fairness floor.

@@ -39,6 +39,7 @@ export const agentRegistryAbi = parseAbi([
   "function positiveRelationshipOutcomesInEpoch(bytes32,uint256) view returns (uint8)",
   "function creditedQualityRelationship(bytes32) view returns (bool)",
   "function selectionWeight(address,uint8) view returns (uint256)",
+  "function frozenSelectionWeightAt(address,uint8,uint64,uint64) view returns (uint256)",
   "function selectionWeightAt(address,uint8,uint64,uint64) view returns (uint256)",
   "function registryVersion() view returns (uint64)",
   "function outcomeReporterRoles(address) view returns (uint8)",
