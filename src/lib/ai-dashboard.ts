@@ -88,7 +88,7 @@ export function buildAiDashboard(source: AiDashboardSource, now = new Date(), mo
   const rewards = new Map(source.rewards.map((reward) => [reward.taskId, reward]));
 
   return {
-    schemaVersion: "2.0",
+    schemaVersion: "2.1",
     generatedAt: now.toISOString(),
     mode,
     network: { name: "BSC Testnet", chainId: 97, confirmations: 5 },
@@ -128,6 +128,23 @@ export function buildAiDashboard(source: AiDashboardSource, now = new Date(), mo
       testnetRandomness: "FUTURE_BLOCK_HASH",
       mainnetRequirement: "VRF_REQUIRED",
       proofBinding: "PACKED_SNAPSHOT_INCLUDED_IN_SELECTION_PROOF",
+      liveness: {
+        coordinator: "OPTIONAL_AUTOMATION_NO_EXCLUSIVE_AUTHORITY",
+        callerSelectionAuthority: "NONE",
+        permissionlessActions: [
+          "evictInactiveExecutor(uint256,address)",
+          "requestTester(uint256)",
+          "finalizeTester(uint256)",
+          "requestMaintenancePanel(uint256,uint8)",
+          "finalizeEvaluationPanel(uint256)",
+          "finalizeTaskEvaluation(uint256)",
+          "expireTaskEvaluation(uint256)",
+          "settleEvaluationOutcomes(uint256)",
+          "finalize(uint256)",
+          "expire(uint256)",
+          "expireChallenge(uint256)",
+        ],
+      },
       qualityGain: {
         canonicalTaskContextRequired: true,
         minimumTaskRewardAgt: 10,

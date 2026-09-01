@@ -504,7 +504,9 @@ contract TaskRegistry is Ownable {
         _emitTeamReadyIfComplete(taskId, task);
     }
 
-    function evictInactiveExecutor(uint256 taskId, address executor) external onlyCoordinator {
+    /// @notice Anyone may advance this objective timeout. The configured
+    /// coordinator is an automation convenience, not a liveness gate.
+    function evictInactiveExecutor(uint256 taskId, address executor) external {
         Task storage task = tasks[taskId];
         if ((task.state != State.Claimed && task.state != State.Correction) || !isTaskExecutor[taskId][executor]) revert InvalidState();
         if (contributionRound[taskId][executor] == task.workRound || block.timestamp < executorClaimedAt[taskId][executor] + EXECUTOR_INACTIVITY_WINDOW) revert InvalidState();
@@ -576,7 +578,9 @@ contract TaskRegistry is Ownable {
 
     /// @dev Locks the append-only registered-agent set before future entropy exists.
     /// BSC mainnet production should replace blockhash entropy with VRF.
-    function requestTester(uint256 taskId) external onlyCoordinator {
+    /// @notice Permissionless because the candidate snapshot, future block and
+    /// task state fully determine the draw. No caller chooses a validator.
+    function requestTester(uint256 taskId) external {
         Task storage task = tasks[taskId];
         _requestTester(taskId, task);
     }
@@ -595,7 +599,9 @@ contract TaskRegistry is Ownable {
         emit TesterRequested(taskId, task.testerSelectionBlock, task.candidateSetHash, count);
     }
 
-    function finalizeTester(uint256 taskId) external onlyCoordinator {
+    /// @notice Permissionless finalization prevents a coordinator outage from
+    /// stranding a valid future-block draw.
+    function finalizeTester(uint256 taskId) external {
         Task storage task = tasks[taskId];
         uint256 selectionBlock = task.testerSelectionBlock;
         if (task.state != State.Submitted || selectionBlock == 0 || block.number <= selectionBlock || block.number > selectionBlock + 256) revert InvalidState();
@@ -757,7 +763,9 @@ contract TaskRegistry is Ownable {
         );
     }
 
-    function requestMaintenancePanel(uint256 taskId, uint8 checkpoint) external onlyCoordinator {
+    /// @notice Anyone may start an ordered, due maintenance checkpoint. The
+    /// chain enforces due time, order and one active panel.
+    function requestMaintenancePanel(uint256 taskId, uint8 checkpoint) external {
         Task storage task = tasks[taskId];
         if (task.state != State.Maintenance || checkpoint == 0 || checkpoint > 3) revert InvalidState();
         if (maintenanceEvidence[taskId][checkpoint] != bytes32(0)) revert InvalidState();

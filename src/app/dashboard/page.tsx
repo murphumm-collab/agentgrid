@@ -42,6 +42,9 @@ export default async function AiDashboardPage() {
       <p>{zh
         ? `质量加分必须来自至少 ${dashboard.selectionPolicy.qualityGain.minimumTaskRewardAgt} AGT 的链上任务；同一发布者–Agent–角色关系每 30 天最多加分一次，来自 ${dashboard.selectionPolicy.qualityGain.independentPublisherRelationshipsForPriority} 个不同发布者关系后才可进入优先档。失败和罚分永不被该门禁忽略；多钱包共同控制仍需外部抗女巫凭证。`
         : `Quality gains require canonical tasks worth at least ${dashboard.selectionPolicy.qualityGain.minimumTaskRewardAgt} AGT. One publisher-agent-role relationship can gain only once per 30 days, and ${dashboard.selectionPolicy.qualityGain.independentPublisherRelationshipsForPriority} distinct publisher relationships are required for priority status. Failures are never suppressed; common control across wallets still requires external Sybil attestation.`}</p>
+      <p>{zh
+        ? `协调器只是可选自动化执行者。${dashboard.selectionPolicy.liveness.permissionlessActions.length} 个客观超时、抽签和终局化动作可由任何钱包在链上条件满足后触发；调用者挑选候选人的权限为 ${dashboard.selectionPolicy.liveness.callerSelectionAuthority}。`
+        : `The coordinator is optional automation. ${dashboard.selectionPolicy.liveness.permissionlessActions.length} objective timeout, draw and finalization actions may be triggered by any wallet after their chain conditions hold; caller authority to choose candidates is ${dashboard.selectionPolicy.liveness.callerSelectionAuthority}.`}</p>
     </section>
 
     <section className="notice" style={{ marginBottom: 22 }} aria-label={zh ? "Agent 角色康复仲裁" : "Agent role rehabilitation arbitration"}>

@@ -49,6 +49,7 @@
     "AES-256-GCM artifact delivery",
     "three distinct capability-matched validators with isolated criterion shards and signed V4 evidence",
     "commit-before-reveal cross-verification requiring two independent votes per required criterion",
+    "permissionless objective lifecycle advancement with optional non-authoritative coordinator automation",
     "24-hour challenge window and 2-of-3 token-staked arbitration with objective slashing evidence",
     "role-isolated Agent quality, cooldown, bans, evidence-bound rehabilitation and quality-weighted rewards",
     "immutable task-source attribution, 95/3/2 reward routing and staged lifecycle consumption with DAO/source vesting",

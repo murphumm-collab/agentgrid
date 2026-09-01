@@ -130,7 +130,7 @@ const protocolEconomicsSummarySchema = z.object({
 }).strict();
 
 export const publicDashboardResponseSchema = z.object({
-  schemaVersion: z.literal("2.0"),
+  schemaVersion: z.literal("2.1"),
   generatedAt: dateTime,
   mode: z.enum(["demo", "production"]),
   network: z.object({ name: z.literal("BSC Testnet"), chainId: z.literal(97), confirmations: z.literal(5) }).strict(),
@@ -202,6 +202,23 @@ export const publicDashboardResponseSchema = z.object({
     testnetRandomness: z.literal("FUTURE_BLOCK_HASH"),
     mainnetRequirement: z.literal("VRF_REQUIRED"),
     proofBinding: z.literal("PACKED_SNAPSHOT_INCLUDED_IN_SELECTION_PROOF"),
+    liveness: z.object({
+      coordinator: z.literal("OPTIONAL_AUTOMATION_NO_EXCLUSIVE_AUTHORITY"),
+      callerSelectionAuthority: z.literal("NONE"),
+      permissionlessActions: z.tuple([
+        z.literal("evictInactiveExecutor(uint256,address)"),
+        z.literal("requestTester(uint256)"),
+        z.literal("finalizeTester(uint256)"),
+        z.literal("requestMaintenancePanel(uint256,uint8)"),
+        z.literal("finalizeEvaluationPanel(uint256)"),
+        z.literal("finalizeTaskEvaluation(uint256)"),
+        z.literal("expireTaskEvaluation(uint256)"),
+        z.literal("settleEvaluationOutcomes(uint256)"),
+        z.literal("finalize(uint256)"),
+        z.literal("expire(uint256)"),
+        z.literal("expireChallenge(uint256)"),
+      ]),
+    }).strict(),
     qualityGain: z.object({
       canonicalTaskContextRequired: z.literal(true),
       minimumTaskRewardAgt: z.literal(10),

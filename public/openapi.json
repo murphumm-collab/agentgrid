@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "AgentGrid Agent API",
-    "version": "0.8.9",
+    "version": "0.8.10",
     "description": "Discovery, public task/proof views and the authenticated Agent job, encrypted artifact and publisher hidden-test workflows. Admin, internal operations and Demo-only mutation routes are intentionally excluded. Artifact bytes and hidden tests are never returned by public endpoints."
   },
   "servers": [
@@ -3807,7 +3807,7 @@
         ],
         "properties": {
           "schemaVersion": {
-            "const": "2.0"
+            "const": "2.1"
           },
           "generatedAt": {
             "type": "string",
@@ -4092,6 +4092,7 @@
               "testnetRandomness",
               "mainnetRequirement",
               "proofBinding",
+              "liveness",
               "qualityGain",
               "rehabilitation"
             ],
@@ -4114,6 +4115,33 @@
               "testnetRandomness": { "const": "FUTURE_BLOCK_HASH" },
               "mainnetRequirement": { "const": "VRF_REQUIRED" },
               "proofBinding": { "const": "PACKED_SNAPSHOT_INCLUDED_IN_SELECTION_PROOF" },
+              "liveness": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["coordinator", "callerSelectionAuthority", "permissionlessActions"],
+                "properties": {
+                  "coordinator": { "const": "OPTIONAL_AUTOMATION_NO_EXCLUSIVE_AUTHORITY" },
+                  "callerSelectionAuthority": { "const": "NONE" },
+                  "permissionlessActions": {
+                    "type": "array",
+                    "prefixItems": [
+                      { "const": "evictInactiveExecutor(uint256,address)" },
+                      { "const": "requestTester(uint256)" },
+                      { "const": "finalizeTester(uint256)" },
+                      { "const": "requestMaintenancePanel(uint256,uint8)" },
+                      { "const": "finalizeEvaluationPanel(uint256)" },
+                      { "const": "finalizeTaskEvaluation(uint256)" },
+                      { "const": "expireTaskEvaluation(uint256)" },
+                      { "const": "settleEvaluationOutcomes(uint256)" },
+                      { "const": "finalize(uint256)" },
+                      { "const": "expire(uint256)" },
+                      { "const": "expireChallenge(uint256)" }
+                    ],
+                    "minItems": 11,
+                    "maxItems": 11
+                  }
+                }
+              },
               "qualityGain": {
                 "type": "object",
                 "additionalProperties": false,

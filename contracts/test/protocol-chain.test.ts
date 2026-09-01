@@ -212,13 +212,13 @@ describe("AgentGrid Solidity protocol", () => {
   }
 
   async function assignTester(taskId: bigint) {
-    await write(owner, addresses.taskRegistry, "TaskRegistry", "requestTester", [taskId]);
+    await write(publisher, addresses.taskRegistry, "TaskRegistry", "requestTester", [taskId]);
     await finalizeRequestedTester(taskId);
   }
 
   async function finalizeRequestedTester(taskId: bigint) {
     for (let index = 0; index < 6; index += 1) await provider.request({ method: "evm_mine", params: [] });
-    const receipt = await write(owner, addresses.taskRegistry, "TaskRegistry", "finalizeTester", [taskId]);
+    const receipt = await write(executor, addresses.taskRegistry, "TaskRegistry", "finalizeTester", [taskId]);
     const panelStartedLog = receipt.logs.find((log) => {
       if (log.address.toLowerCase() !== addresses.verificationPanel.toLowerCase()) return false;
       try { return decodeEventLog({ abi: artifacts.VerificationPanel.abi as Abi, data: log.data, topics: log.topics }).eventName === "PanelStarted"; }
@@ -680,10 +680,7 @@ describe("AgentGrid Solidity protocol", () => {
     await expect(
       write(owner, addresses.taskRegistry, "TaskRegistry", "requestMaintenancePanel", [1n, 3]),
     ).rejects.toThrow();
-    await expect(
-      write(executor, addresses.taskRegistry, "TaskRegistry", "requestMaintenancePanel", [1n, 1]),
-    ).rejects.toThrow();
-    await write(owner, addresses.taskRegistry, "TaskRegistry", "requestMaintenancePanel", [1n, 1]);
+    await write(executor, addresses.taskRegistry, "TaskRegistry", "requestMaintenancePanel", [1n, 1]);
     const pendingMaintenance = (await read(addresses.taskRegistry, "TaskRegistry", "tasks", [1n])) as readonly unknown[];
     expect(pendingMaintenance[19]).toBe(4);
     await finalizeRequestedTester(1n);
@@ -693,7 +690,7 @@ describe("AgentGrid Solidity protocol", () => {
     await expect(write(owner, addresses.taskRegistry, "TaskRegistry", "evictInactiveExecutor", [1n, executor.account!.address])).rejects.toThrow();
     await provider.request({ method: "evm_increaseTime", params: [6 * 60 * 60 + 1] });
     await provider.request({ method: "evm_mine", params: [] });
-    await write(owner, addresses.taskRegistry, "TaskRegistry", "evictInactiveExecutor", [1n, executor.account!.address]);
+    await write(testerB, addresses.taskRegistry, "TaskRegistry", "evictInactiveExecutor", [1n, executor.account!.address]);
     await write(executor, addresses.stakeManager, "StakeCreditManager", "requestWithdrawal", [5n]);
     await write(tester, addresses.stakeManager, "StakeCreditManager", "requestWithdrawal", [6n]);
     await write(replacement, addresses.taskRegistry, "TaskRegistry", "claimTask", [1n]);
@@ -725,7 +722,7 @@ describe("AgentGrid Solidity protocol", () => {
     await write(owner, addresses.rewardVault, "RewardVault", "claim", [1n, 0]);
     await write(owner, addresses.rewardVault, "RewardVault", "claim", [1n, 1]);
     for (const checkpoint of [2, 3] as const) {
-      await write(owner, addresses.taskRegistry, "TaskRegistry", "requestMaintenancePanel", [1n, checkpoint]);
+      await write(testerC, addresses.taskRegistry, "TaskRegistry", "requestMaintenancePanel", [1n, checkpoint]);
       await finalizeRequestedTester(1n);
       await completeVerificationPanel(1n, true, [10_000]);
       await write(owner, addresses.rewardVault, "RewardVault", "claim", [1n, checkpoint]);

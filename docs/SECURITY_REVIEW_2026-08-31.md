@@ -328,7 +328,7 @@ wallets. The production Compose file binds the Web service only to
   `contracts/src/RewardVault.sol`, `contracts/test/protocol-chain.test.ts`,
   `src/lib/chain-projection.ts`
 - **Evidence:** A failed verification advances the task to `Correction`. The
-  coordinator can evict an executor who has not committed in the current work
+  any caller can execute the objective timeout for an executor who has not committed in the current work
   round, and a replacement execution-capable Agent may now claim directly from
   `Correction`. After the replacement artifact passes a newly selected tester,
   the Vault records a checkpoint-specific executor vector and tester for the

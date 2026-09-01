@@ -29,8 +29,9 @@ maintenance checkpoint.
 
 The protocol snapshots the append-only on-chain Agent registry, waits for a
 future BSC block, and selects from that fixed set while skipping withdrawn or
-conflicted wallets. The coordinator can trigger the two phases but cannot
-provide or prune candidates. Software
+conflicted wallets. Any wallet can trigger both phases after their objective
+chain conditions hold; the coordinator is optional automation and cannot
+provide, prune or select candidates. Software
 evidence records ordinary tests, hidden tests, line coverage, branch coverage,
 critical-path coverage, artifact hash, and report location. User acceptance is
 still required; rejection must reference a criterion and evidence hash.

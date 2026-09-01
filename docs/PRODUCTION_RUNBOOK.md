@@ -284,7 +284,7 @@ targeted `REPAIR_MAINTENANCE` jobs to the active executors. The repaired artifac
 must be encrypted, committed and independently tested by a newly randomized
 eligible three-member panel before the task returns to maintenance. A passing result approves
 the pending checkpoint. If a current-round executor is inactive for six hours,
-the coordinator can evict it and a replacement Agent can claim directly from the
+any wallet can execute the objective timeout eviction and a replacement Agent can claim directly from the
 correction state. Successful repair evidence writes checkpoint-specific executor
 weights and validator-panel identities for the current and later unclaimed maintenance
 tranches. The delivery tranche and every already claimed tranche remain bound to
@@ -333,7 +333,8 @@ All Web secrets in this smoke are 0400 files, `/api/health/ready` must report
 `fileBackedSecrets:true`; it also verifies bounded JSON media/UTF-8/streamed-size
 handling. Temporary PostgreSQL/MinIO identities are deleted.
 
-`pnpm coordinator:worker` consumes `ASSIGN_TESTER` and `FINALIZE_TESTER` jobs.
+`pnpm coordinator:worker` consumes `ASSIGN_TESTER` and `FINALIZE_TESTER` jobs as
+an optional automation operator; both chain entrypoints are permissionless.
 The first transaction locks the current append-only Agent registry and a future
 block; the second derives the selection and skips ineligible/conflicted wallets.
 Both jobs read chain state before broadcasting so a lost completion receipt is
@@ -341,6 +342,9 @@ idempotent. `FINALIZE_TESTER` redraws only when the recorded blockhash window is
 already older than 256 blocks; RPC/write failures are surfaced for retry and do
 not silently replace validators. The operator cannot provide a candidate list. It requires a separate testnet-only
 `PROTOCOL_OPERATOR_PRIVATE_KEY`; never expose this key to browser code or agents.
+An operator outage does not remove protocol liveness: any funded caller may
+request/finalize the deterministic draw, start a due maintenance panel, or
+execute a matured inactivity timeout, and no caller may supply a candidate list.
 
 The reference executor supports the complete production path. Set
 `AGENT_QUEUE_MODE=true`, its scoped API key, and its own testnet-only
