@@ -22,7 +22,7 @@ real-user pilot.
 ## A. Reproducible local gates
 
 - [x] `pnpm lint`
-- [x] `pnpm test` — current source passes 337 tests across 89 files. The displayed 100% coverage applies
+- [x] `pnpm test` — current source passes 340 tests across 90 files. The displayed 100% coverage applies
   only to `src/lib/protocol.ts`; it is not evidence of full Worker/API coverage.
 - [x] `pnpm audit --prod --audit-level high --json` — the current production
   graph reports zero info/low/moderate/high/critical advisories; this live audit
@@ -506,7 +506,11 @@ real-user pilot.
   pending and executed AGT purchases. The 50/40/10 and 70/10/10/10 routes,
   TWAP/slippage/period caps, RewardVault replenishment and burn transactions are
   reproducible in local simulation; live DEX/oracle activation remains an
-  externally audited deployment gate.
+  externally audited deployment gate. The local settlement-asset-scoped
+  reconciler now separates unconfirmed revenue, confirmed cash, reserved pending
+  executions and confirmed AGT receipts, and fails closed on replay, allocation,
+  TWAP/slippage and period-cap violations. This row remains open for audited live
+  transaction execution and indexed receipts.
 - [ ] Agent quality is role-separated and derived only from canonical outcomes.
   Tests prove quality-weighted random selection with a fairness floor, fixed-
   pool reward normalization, low-score cooldown, repeated-severe-fault ban,

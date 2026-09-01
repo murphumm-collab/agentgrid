@@ -117,7 +117,7 @@ an RPC or write failure can no longer silently replace validators. OpenAPI 0.8.5
 publishes the matching idempotent coordinator completion results. This is
 current-source regression scope and does not revive the historical fixed QA.
 
-The current application suite passes 337/337 tests across 89 files; typecheck,
+The current application suite passes 340/340 tests across 90 files; typecheck,
 lint, all 15 Worker/Ops bundles and the production Web build pass. The Demo and
 homepage participant split now matches RewardVault's post-network Agent pool:
 80% executors, 20% three-validator panel and only rounding dust to reserve. This
@@ -133,8 +133,17 @@ amount, applied penalty tier and resulting false-challenge count needed for an
 independent replay. The regenerated nine-contract runtime manifest matches the
 current bytecode and ABI; the uninterrupted current-source contract run passes
 26/26 cases across four files, including decoded event assertions. The refreshed
-337/337 application suite includes nine fail-closed Pilot qualification cases.
+The application suite includes nine fail-closed Pilot qualification cases.
 Fixed release QA remains historical and must run again only after source freeze.
+
+Advertising and sponsorship accounting now has a deterministic, settlement-
+asset-scoped local reconciliation state machine. It separates unconfirmed
+revenue, confirmed platform cash, available allocation, submitted-unconfirmed
+buybacks and confirmed AGT receipts; enforces the 50/40/10 and 70/10/10/10
+routes; and rejects duplicate receipts/transactions, allocation overspend,
+future timestamps, excessive TWAP deviation and per-period cap overflow. It is
+explicitly simulation-only and does not activate or pretend to execute a DEX
+route, oracle, buyback or burn.
 
 The superseded application source froze after adding visible failure, busy state and duplicate-
 safe boundaries to language, clipboard and Demo mutations. Discovery
