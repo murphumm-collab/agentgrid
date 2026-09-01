@@ -1,6 +1,7 @@
 import { keccak256, recoverMessageAddress, stringToHex, type Hex } from "viem";
 import { z } from "zod";
-import { assessTaskDefinition, type TaskDefinition } from "./task-definition";
+import { walletAddressSchema } from "./auth-schema";
+import { assessTaskDefinition, collaborationPlanBlockers, verificationPlanBlockers, type TaskDefinition } from "./task-definition";
 
 export const taskEvaluationReportSchema = z.object({
   category: z.string().trim().min(2).max(64),
@@ -14,6 +15,14 @@ export const taskEvaluationReportSchema = z.object({
 }).strict();
 
 export type TaskEvaluationReport = z.infer<typeof taskEvaluationReportSchema>;
+export const taskEvaluationSigningVersion = "AgentGrid Task Evaluation V2" as const;
+
+export const signedTaskEvaluationSubmissionSchema = z.object({
+  chainId: z.literal(97),
+  taskRegistry: walletAddressSchema,
+  report: taskEvaluationReportSchema,
+  signature: z.string().regex(/^0x[0-9a-fA-F]{130}$/),
+}).strict();
 
 function canonical(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonical);
@@ -21,13 +30,47 @@ function canonical(value: unknown): unknown {
   return value;
 }
 
-export function taskEvaluationMessage(input: { taskId: string; report: TaskEvaluationReport }) {
-  const report = taskEvaluationReportSchema.parse(input.report);
-  const reportHash = keccak256(stringToHex(JSON.stringify(canonical(report))));
-  return { reportHash, message: `AgentGrid Task Evaluation\nTask: ${input.taskId}\nReport: ${reportHash}` };
+export function taskEvaluationReportHash(raw: unknown) {
+  const report = taskEvaluationReportSchema.parse(raw);
+  return keccak256(stringToHex(JSON.stringify(canonical(report))));
 }
 
-export async function verifyTaskEvaluationSignature(input: { taskId: string; report: TaskEvaluationReport; signature: Hex; expectedAddress: string }) {
+export function taskEvaluationMessage(input: { chainId: 97; taskRegistry: string; taskId: string; report: TaskEvaluationReport }) {
+  const taskRegistry = walletAddressSchema.parse(input.taskRegistry);
+  const report = taskEvaluationReportSchema.parse(input.report);
+  const reportHash = taskEvaluationReportHash(report);
+  return {
+    reportHash,
+    message: `${taskEvaluationSigningVersion}\nChain ID: ${input.chainId}\nTaskRegistry: ${taskRegistry.toLowerCase()}\nTask: ${input.taskId}\nReport: ${reportHash}`,
+  };
+}
+
+export async function verifyStoredTaskEvaluation(input: {
+  taskId: string; evaluatorAddress: string; reportHash: string; report: unknown; signature: string;
+  signingVersion: string | null; signingMessage: string | null; expectedTaskRegistry: string; allowLegacy?: boolean;
+}) {
+  try {
+    const report = taskEvaluationReportSchema.parse(input.report);
+    if (JSON.stringify(canonical(report)) !== JSON.stringify(canonical(input.report))) return false;
+    const reportHash = taskEvaluationReportHash(report);
+    if (reportHash.toLowerCase() !== input.reportHash.toLowerCase() || !/^0x[0-9a-fA-F]{130}$/.test(input.signature)) return false;
+    let message: string;
+    if (input.signingVersion === null && input.signingMessage === null) {
+      if (!input.allowLegacy) return false;
+      message = `AgentGrid Task Evaluation\nTask: ${input.taskId}\nReport: ${reportHash}`;
+    } else {
+      if (input.signingVersion !== taskEvaluationSigningVersion || !input.signingMessage) return false;
+      const match = input.signingMessage.match(/^AgentGrid Task Evaluation V2\nChain ID: (97)\nTaskRegistry: (0x[0-9a-f]{40})\nTask: ([0-9]+)\nReport: (0x[0-9a-f]{64})$/);
+      if (!match || match[2] !== input.expectedTaskRegistry.toLowerCase() || match[3] !== input.taskId || match[4] !== reportHash) return false;
+      message = taskEvaluationMessage({ chainId: 97, taskRegistry: match[2], taskId: input.taskId, report }).message;
+      if (message !== input.signingMessage) return false;
+    }
+    const signer = await recoverMessageAddress({ message, signature: input.signature as Hex });
+    return signer.toLowerCase() === input.evaluatorAddress.toLowerCase();
+  } catch { return false; }
+}
+
+export async function verifyTaskEvaluationSignature(input: { chainId: 97; taskRegistry: string; taskId: string; report: TaskEvaluationReport; signature: Hex; expectedAddress: string }) {
   const commitment = taskEvaluationMessage(input);
   const signer = await recoverMessageAddress({ message: commitment.message, signature: input.signature });
   if (signer.toLowerCase() !== input.expectedAddress.toLowerCase()) throw new Error("TASK_EVALUATION_SIGNATURE_INVALID");
@@ -36,6 +79,7 @@ export async function verifyTaskEvaluationSignature(input: { taskId: string; rep
 
 export function deterministicTaskEvaluation(spec: {
   title: string; description: string; category: string; maxExecutors: number; declaredDurationHours: number;
+  executionMode?: "COLLABORATION" | "COMPETITION";
   criteria: string[]; requestedReward: number;
   completionDefinition?: TaskDefinition;
 }): TaskEvaluationReport {
@@ -54,12 +98,16 @@ export function deterministicTaskEvaluation(spec: {
   ];
   const risks: string[] = [];
   const definitionAssessment = spec.completionDefinition ? assessTaskDefinition(spec.completionDefinition) : { ready: false, score: 0, blockers: ["COMPLETION_DEFINITION_MISSING"], warnings: [] };
+  const collaborationBlockers = spec.completionDefinition ? collaborationPlanBlockers(spec.completionDefinition, spec.executionMode ?? "COLLABORATION", spec.maxExecutors) : [];
+  const verificationBlockers = spec.completionDefinition ? verificationPlanBlockers(spec.completionDefinition) : [];
   if (spec.description.length < 120) risks.push("The business description is short and may leave implementation assumptions unresolved.");
   if (testabilityBps < 5_000) risks.push("Acceptance criteria are not sufficiently machine-verifiable for independent validation.");
   risks.push(...definitionAssessment.blockers.map((item) => `Completion definition blocker: ${item}`));
   risks.push(...definitionAssessment.warnings.map((item) => `Completion definition warning: ${item}`));
+  risks.push(...collaborationBlockers.map((item) => `Collaboration plan blocker: ${item}`));
+  risks.push(...verificationBlockers.map((item) => `Verification panel blocker: ${item}`));
   reasons.push(`The committed completion definition scored ${definitionAssessment.score}/100 for independent verification readiness.`);
-  const approve = spec.description.length >= 60 && spec.criteria.length >= 2 && testabilityBps >= 5_000 && definitionAssessment.ready;
+  const approve = spec.description.length >= 60 && spec.criteria.length >= 2 && testabilityBps >= 5_000 && definitionAssessment.ready && collaborationBlockers.length === 0 && verificationBlockers.length === 0;
   if (!approve) reasons.push("The task is rejected until its scope and independently testable acceptance criteria are strengthened.");
   return taskEvaluationReportSchema.parse({ category: spec.category, difficultyBps, estimatedHours, testabilityBps, recommendedReward, approve, reasons, risks });
 }

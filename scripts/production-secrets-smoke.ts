@@ -22,8 +22,9 @@ function secretSources(service: Service) {
 }
 
 async function main() {
+  const authOrigin = process.env.AUTH_ORIGIN ?? "http://127.0.0.1:3000";
   const { stdout } = await exec("docker", ["compose", "--profile", "agents", "--profile", "ops", "-f", "docker-compose.production.yml", "config", "--format", "json"], {
-    cwd: process.cwd(), env: { ...process.env, EVALUATOR_AGENT_ID: process.env.EVALUATOR_AGENT_ID ?? "production-evaluator" }, maxBuffer: 4 * 1024 * 1024,
+    cwd: process.cwd(), env: { ...process.env, AUTH_ORIGIN: authOrigin, EVALUATOR_AGENT_ID: process.env.EVALUATOR_AGENT_ID ?? "production-evaluator" }, maxBuffer: 4 * 1024 * 1024,
   });
   const config = JSON.parse(stdout) as { services: Record<string, Service>; secrets: Record<string, { external?: boolean }> };
   const forbiddenDirect = [
@@ -37,6 +38,7 @@ async function main() {
       assert(service.environment.REQUIRE_FILE_SECRETS === "true", `FILE_SECRET_POLICY_DISABLED_${name}`);
       assert(service.environment.DATABASE_URL_FILE === "/run/secrets/database_url", `DATABASE_URL_FILE_MISSING_${name}`);
       assert(service.environment.AUTH_SECRET_FILE === "/run/secrets/auth_secret", `AUTH_SECRET_FILE_MISSING_${name}`);
+      assert(service.environment.AUTH_ORIGIN === authOrigin, `AUTH_ORIGIN_MISSING_${name}`);
       const sources = secretSources(service);
       assert(sources.has("database_url") && sources.has("auth_secret"), `BASE_SECRET_MOUNTS_MISSING_${name}`);
     }
@@ -93,6 +95,7 @@ async function main() {
     const childEnvironment: NodeJS.ProcessEnv = {
       ...process.env,
       PROTOCOL_MODE: "production",
+      AUTH_ORIGIN: "http://127.0.0.1:3000",
       REQUIRE_FILE_SECRETS: "true",
       DATABASE_URL_FILE: databaseFile,
       AUTH_SECRET_FILE: authFile,

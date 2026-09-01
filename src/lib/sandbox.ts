@@ -4,9 +4,20 @@ import { promises as fs } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
+import { readBoundedResponseBytes } from "./outbound-response";
 
 const exec = promisify(execFile);
 const maxOutput = 200_000;
+
+async function sandboxTemporaryRoot() {
+  const configured = process.env.SANDBOX_TEMP_DIRECTORY;
+  if (!configured) return tmpdir();
+  if (!path.isAbsolute(configured) || configured === path.parse(configured).root) throw new Error("SANDBOX_TEMP_DIRECTORY_INVALID");
+  await fs.mkdir(configured, { recursive: true, mode: 0o700 });
+  const metadata = await fs.lstat(configured);
+  if (!metadata.isDirectory() || metadata.isSymbolicLink() || (metadata.mode & 0o022) !== 0) throw new Error("SANDBOX_TEMP_DIRECTORY_UNSAFE");
+  return configured;
+}
 
 export interface SandboxReport {
   passed: boolean;
@@ -24,12 +35,18 @@ export interface SandboxReport {
   sandbox: { network: "none"; readOnlyRoot: true; memoryMb: number; cpus: number; pids: number; image: string };
 }
 
-type EncryptedDownload = { downloadUrl: string; artifactHash: string; ciphertextHash: string; decryptionKey: string; contentIv: string };
+type EncryptedDownload = { downloadUrl: string; artifactHash: string; ciphertextHash: string; decryptionKey: string; contentIv: string; sizeBytes: number };
 
 export async function decryptArtifactDownload(input: EncryptedDownload) {
-  const response = await fetch(input.downloadUrl, { signal: AbortSignal.timeout(30_000) });
+  if (!Number.isSafeInteger(input.sizeBytes) || input.sizeBytes <= 16 || input.sizeBytes > 100 * 1024 * 1024) throw new Error("ARTIFACT_DOWNLOAD_SIZE_INVALID");
+  const response = await fetch(input.downloadUrl, { redirect: "error", signal: AbortSignal.timeout(30_000) });
   if (!response.ok) throw new Error(`ARTIFACT_DOWNLOAD_FAILED_${response.status}`);
-  const encrypted = Buffer.from(await response.arrayBuffer());
+  const encrypted = Buffer.from(await readBoundedResponseBytes(response, input.sizeBytes, {
+    missingBody: "ARTIFACT_DOWNLOAD_EMPTY",
+    tooLarge: "ARTIFACT_DOWNLOAD_TOO_LARGE",
+    invalidContentLength: "ARTIFACT_DOWNLOAD_INVALID_CONTENT_LENGTH",
+  }));
+  if (encrypted.byteLength !== input.sizeBytes) throw new Error("ARTIFACT_DOWNLOAD_SIZE_MISMATCH");
   const cipherHash = createHash("sha256").update(encrypted).digest("hex");
   if (`sha256:${cipherHash}` !== input.ciphertextHash) throw new Error("DOWNLOADED_CIPHERTEXT_HASH_MISMATCH");
   if (encrypted.length < 17) throw new Error("ENCRYPTED_ARTIFACT_INVALID");
@@ -62,7 +79,7 @@ async function assertSafeArchive(archivePath: string, kind: "delivery" | "hidden
 }
 
 export async function runSandboxArchive(bytes: Uint8Array, hiddenTestBytes?: Uint8Array): Promise<SandboxReport> {
-  const root = await fs.mkdtemp(path.join(tmpdir(), "agentgrid-sandbox-"));
+  const root = await fs.mkdtemp(path.join(await sandboxTemporaryRoot(), "agentgrid-sandbox-"));
   const inputDir = path.join(root, "input");
   const verifierDir = path.join(root, "verifier");
   await fs.mkdir(inputDir, { mode: 0o755 });

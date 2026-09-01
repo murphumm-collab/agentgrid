@@ -6,6 +6,7 @@ import { runtimeContractKeys, runtimeContractManifest, verifyRuntimeContractCode
 const artifactNames = {
   token: "TestToken", stakeManager: "StakeCreditManager", agentRegistry: "AgentRegistry",
   rewardVault: "RewardVault", taskRegistry: "TaskRegistry", disputeResolver: "DisputeResolver",
+  verificationPanel: "VerificationPanel", verificationArbitrationCourt: "VerificationArbitrationCourt",
 } as const;
 const artifacts = compileContracts();
 

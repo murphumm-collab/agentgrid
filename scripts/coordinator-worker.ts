@@ -1,16 +1,18 @@
-import { createPublicClient, createWalletClient, http, type Hex } from "viem";
+import { createPublicClient, createWalletClient, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { bscTestnet } from "viem/chains";
 import { completeAgentJob, heartbeatAgentJob, leaseAgentJob } from "../src/lib/agent-queue";
 import { taskRegistryAbi } from "../src/lib/contracts";
 import { chainContractAddresses, runtimeConfig } from "../src/lib/env";
 import { requiredSecret } from "../src/lib/secrets";
+import { bscRpcTransport } from "../src/lib/bsc-rpc";
 
 const privateKey = requiredSecret("PROTOCOL_OPERATOR_PRIVATE_KEY") as Hex;
 const account = privateKeyToAccount(privateKey);
 const config = runtimeConfig();
-const publicClient = createPublicClient({ chain: bscTestnet, transport: http(config.BSC_TESTNET_RPC_URL) });
-const wallet = createWalletClient({ account, chain: bscTestnet, transport: http(config.BSC_TESTNET_RPC_URL) });
+const transport = bscRpcTransport(config.BSC_TESTNET_RPC_URL);
+const publicClient = createPublicClient({ chain: bscTestnet, transport });
+const wallet = createWalletClient({ account, chain: bscTestnet, transport });
 const registry = chainContractAddresses().taskRegistry;
 const evaluationCoordinatorAbi = [
   { type: "function", name: "finalizeEvaluationPanel", stateMutability: "nonpayable", inputs: [{ name: "taskId", type: "uint256" }], outputs: [] },
@@ -41,6 +43,20 @@ async function coordinate() {
   try {
     const taskId = String(leased.job.payload.taskId ?? "");
     if (!/^\d+$/.test(taskId)) throw new Error("COORDINATOR_JOB_TASK_ID_INVALID");
+    if (leased.job.kind === "START_MAINTENANCE_PANEL") {
+      const task = await publicClient.readContract({ address: registry, abi: evaluationCoordinatorAbi, functionName: "tasks", args: [BigInt(taskId)] });
+      if (task[19] !== 8) {
+        await completeAgentJob(leased.job.id, "protocol-coordinator", { phase: "requestMaintenancePanel", alreadyFinalized: true });
+        return true;
+      }
+      const checkpoint = Number(leased.job.payload.checkpoint);
+      await heartbeatAgentJob(leased.job.id, "protocol-coordinator");
+      const hash = await wallet.writeContract({ address: registry, abi: taskRegistryAbi, functionName: "requestMaintenancePanel", args: [BigInt(taskId), checkpoint] });
+      const receipt = await publicClient.waitForTransactionReceipt({ hash, confirmations: config.CHAIN_CONFIRMATIONS });
+      if (receipt.status !== "success") throw new Error("START_MAINTENANCE_PANEL_TRANSACTION_REVERTED");
+      await completeAgentJob(leased.job.id, "protocol-coordinator", { transactionHash: hash, phase: "requestMaintenancePanel" });
+      return true;
+    }
     if (leased.job.kind === "FINALIZE_EVALUATION_PANEL" || leased.job.kind === "FINALIZE_TASK_EVALUATION") {
       const functionName = leased.job.kind === "FINALIZE_EVALUATION_PANEL" ? "finalizeEvaluationPanel" : "finalizeTaskEvaluation";
       if (functionName === "finalizeEvaluationPanel") {

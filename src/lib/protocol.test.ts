@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
 import {
   DEFAULT_CONFIG,
+  REWARD_SPLIT_BPS,
   addDays,
   calculateDifficulty,
   collaborationKey,
@@ -16,6 +18,14 @@ import {
 import type { Agent, ProtocolConfig, SoftwareEvidence, StakePosition, Task, TestResult } from "./types";
 
 const now = "2026-08-30T00:00:00.000Z";
+
+it("keeps the participant reward split complete and aligned with RewardVault", () => {
+  expect(REWARD_SPLIT_BPS).toEqual({ executors: 6_500, tester: 1_500, reserve: 2_000 });
+  expect(Object.values(REWARD_SPLIT_BPS).reduce((sum, value) => sum + value, 0)).toBe(10_000);
+  const rewardVault = readFileSync(new URL("../../contracts/src/RewardVault.sol", import.meta.url), "utf8");
+  expect(rewardVault).toContain("EXECUTOR_BPS = 6_500");
+  expect(rewardVault).toContain("TESTER_BPS = 1_500");
+});
 
 function position(overrides: Partial<StakePosition> = {}): StakePosition {
   return { id: "position-1", owner: "publisher", amount: 2_000, activeTaskId: "task-1", creditExpiresAt: null, ...overrides };
@@ -83,6 +93,7 @@ describe("tester selection and evidence", () => {
     const agents = [
       agent({ id: "executor-1", role: "BOTH", owner: "executor-owner" }),
       agent({ id: "offline", online: false }),
+      agent({ id: "revoked", revokedAt: new Date().toISOString() }),
       agent({ id: "low-stake", stake: 10 }),
       agent({ id: "executor-only", role: "EXECUTOR" }),
       agent({ id: "evaluator-only", role: "EVALUATOR" }),

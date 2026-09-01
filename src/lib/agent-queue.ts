@@ -1,9 +1,9 @@
 import { createClient, type RedisClientType } from "redis";
 import { runtimeConfig } from "./env";
 import { canonicalChainJobEvent, markJobOutboxDispatched, pendingJobOutbox } from "./store-postgres";
+import { agentJobSchema, parseAgentJobCompletionResult, type AgentJob, type AgentJobRole } from "./agent-job-schema";
 
-export type AgentJobRole = "EXECUTOR" | "TESTER" | "EVALUATOR" | "COORDINATOR";
-export interface AgentJob { id: string; role: AgentJobRole; kind: string; payload: Record<string, unknown>; createdAt: string }
+export type { AgentJob, AgentJobRole } from "./agent-job-schema";
 
 let client: RedisClientType | undefined;
 async function redis() {
@@ -23,9 +23,16 @@ const leaseKey = (id: string) => `agentgrid:lease:${id}`;
 const doneKey = (id: string) => `agentgrid:done:${id}`;
 const leasesKey = "agentgrid:leases";
 const completedJobRetentionSeconds = 30 * 24 * 60 * 60;
+const maximumStoredJobBytes = 64 * 1024;
+
+function parseStoredJob(raw: string) {
+  if (Buffer.byteLength(raw) > maximumStoredJobBytes) throw new Error("AGENT_JOB_INVALID");
+  try { return agentJobSchema.parse(JSON.parse(raw)); }
+  catch { throw new Error("AGENT_JOB_INVALID"); }
+}
 
 function chainJobSource(job: AgentJob) {
-  const { transactionHash, blockNumber, chainId, logIndex } = job.payload;
+  const { transactionHash, blockNumber, chainId, logIndex } = job.payload as Record<string, unknown>;
   if (typeof transactionHash !== "string" || typeof blockNumber !== "string") return null;
   return {
     transactionHash,
@@ -33,6 +40,12 @@ function chainJobSource(job: AgentJob) {
     chainId: typeof chainId === "number" && Number.isInteger(chainId) ? chainId : undefined,
     logIndex: typeof logIndex === "number" && Number.isInteger(logIndex) ? logIndex : undefined,
   };
+}
+
+function jobTarget(job: AgentJob) {
+  if ((job.role === "TESTER" || job.role === "EVALUATOR") && "tester" in job.payload) return job.payload.tester;
+  if (job.role === "EXECUTOR" && "executor" in job.payload) return job.payload.executor;
+  return undefined;
 }
 
 async function chainJobIsCanonical(job: AgentJob) {
@@ -64,17 +77,41 @@ async function assertCanonicalLease(id: string, agentId: string) {
   if (await r.get(leaseKey(id)) !== agentId) throw new Error("JOB_LEASE_NOT_OWNED");
   const raw = await r.get(jobKey(id));
   if (!raw) throw new Error("JOB_NOT_FOUND");
-  const job = JSON.parse(raw) as AgentJob;
+  let job: AgentJob;
+  try { job = parseStoredJob(raw); }
+  catch (error) {
+    await finishLease(id, agentId, { discarded: "AGENT_JOB_INVALID" });
+    throw error;
+  }
+  if (job.id !== id) {
+    await finishLease(id, agentId, { discarded: "AGENT_JOB_ID_MISMATCH" });
+    throw new Error("AGENT_JOB_INVALID");
+  }
   if (await chainJobIsCanonical(job)) return job;
   const source = chainJobSource(job);
   await finishLease(id, agentId, { discarded: "CHAIN_EVENT_REWOUND", ...source });
   throw new Error("JOB_SOURCE_REWOUND");
 }
 
-export async function enqueueAgentJob(job: AgentJob) {
+async function completedResultMatches(id: string, agentId: string, input: unknown) {
   const r = await redis();
-  const target = (job.role === "TESTER" || job.role === "EVALUATOR") && typeof job.payload.tester === "string" ? job.payload.tester
-    : job.role === "EXECUTOR" && typeof job.payload.executor === "string" ? job.payload.executor : undefined;
+  const [rawJob, rawDone] = await Promise.all([r.get(jobKey(id)), r.get(doneKey(id))]);
+  if (!rawJob || !rawDone || Buffer.byteLength(rawDone) > maximumStoredJobBytes) return false;
+  try {
+    const job = parseStoredJob(rawJob);
+    if (job.id !== id || !await chainJobIsCanonical(job)) return false;
+    const expected = parseAgentJobCompletionResult(job.kind, input);
+    const stored = JSON.parse(rawDone) as { agentId?: unknown; result?: unknown };
+    if (stored.agentId !== agentId) return false;
+    const actual = parseAgentJobCompletionResult(job.kind, stored.result);
+    return JSON.stringify(actual) === JSON.stringify(expected);
+  } catch { return false; }
+}
+
+export async function enqueueAgentJob(input: AgentJob) {
+  const job = agentJobSchema.parse(input);
+  const r = await redis();
+  const target = jobTarget(job);
   const created = await r.eval(
     "if redis.call('SET',KEYS[1],ARGV[1],'NX') then redis.call('LPUSH',KEYS[2],ARGV[2]); return 1 else return 0 end",
     { keys: [jobKey(job.id), queueKey(job.role, target)], arguments: [JSON.stringify(job), job.id] },
@@ -85,7 +122,9 @@ export async function enqueueAgentJob(job: AgentJob) {
 export async function dispatchJobOutbox() {
   const rows = await pendingJobOutbox();
   for (const row of rows) {
-    await enqueueAgentJob(row as AgentJob);
+    const createdAt = new Date(row.createdAt);
+    if (Number.isNaN(createdAt.getTime())) throw new Error("AGENT_JOB_INVALID");
+    await enqueueAgentJob(agentJobSchema.parse({ ...row, createdAt: createdAt.toISOString() }));
     await markJobOutboxDispatched(row.id);
   }
   return rows.length;
@@ -98,10 +137,15 @@ async function recoverExpiredLeases() {
     if (!await r.exists(leaseKey(id)) && !await r.exists(doneKey(id))) {
       const raw = await r.get(jobKey(id));
       if (raw) {
-        const job = JSON.parse(raw) as AgentJob;
-        const target = (job.role === "TESTER" || job.role === "EVALUATOR") && typeof job.payload.tester === "string" ? job.payload.tester
-          : job.role === "EXECUTOR" && typeof job.payload.executor === "string" ? job.payload.executor : undefined;
-        await r.lPush(queueKey(job.role, target), id);
+        try {
+          const job = parseStoredJob(raw);
+          if (job.id !== id) throw new Error("AGENT_JOB_ID_MISMATCH");
+          const target = jobTarget(job);
+          await r.lPush(queueKey(job.role, target), id);
+        } catch {
+          await r.set(doneKey(id), JSON.stringify({ discarded: "AGENT_JOB_INVALID", completedAt: new Date().toISOString() }), { EX: completedJobRetentionSeconds });
+          await r.del(jobKey(id));
+        }
       }
     }
     await r.zRem(leasesKey, id);
@@ -131,7 +175,16 @@ export async function leaseAgentJob(agentId: string, role: AgentJobRole, owner: 
     arguments: [agentId, "agentgrid:lease:", String(leaseMs), "agentgrid:done:", "agentgrid:job:", String(Date.now() + leaseMs)],
   }) as [string, string] | null;
   if (!leased) return null;
-  const job = JSON.parse(leased[1]) as AgentJob;
+  let job: AgentJob;
+  try { job = parseStoredJob(leased[1]); }
+  catch {
+    await finishLease(leased[0], agentId, { discarded: "AGENT_JOB_INVALID" });
+    return discarded < 20 ? leaseAgentJob(agentId, role, owner, discarded + 1) : null;
+  }
+  if (job.id !== leased[0] || job.role !== role) {
+    await finishLease(leased[0], agentId, { discarded: "AGENT_JOB_ID_OR_ROLE_MISMATCH" });
+    return discarded < 20 ? leaseAgentJob(agentId, role, owner, discarded + 1) : null;
+  }
   if (!await chainJobIsCanonical(job)) {
     await finishLease(job.id, agentId, { discarded: "CHAIN_EVENT_REWOUND", ...chainJobSource(job) });
     return discarded < 20 ? leaseAgentJob(agentId, role, owner, discarded + 1) : null;
@@ -149,8 +202,19 @@ export async function heartbeatAgentJob(id: string, agentId: string) {
 }
 
 export async function completeAgentJob(id: string, agentId: string, result: unknown) {
-  await assertCanonicalLease(id, agentId);
-  await finishLease(id, agentId, result);
+  let job: AgentJob;
+  try { job = await assertCanonicalLease(id, agentId); }
+  catch (error) {
+    if (error instanceof Error && error.message === "JOB_LEASE_NOT_OWNED" && await completedResultMatches(id, agentId, result)) {
+      return { completed: true };
+    }
+    throw error;
+  }
+  const parsedResult = parseAgentJobCompletionResult(job.kind, result);
+  try { await finishLease(id, agentId, parsedResult); }
+  catch (error) {
+    if (!(error instanceof Error && error.message === "JOB_LEASE_NOT_OWNED" && await completedResultMatches(id, agentId, parsedResult))) throw error;
+  }
   return { completed: true };
 }
 

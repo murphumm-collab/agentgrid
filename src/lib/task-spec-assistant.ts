@@ -1,5 +1,6 @@
 import { approvedAiBaseUrl } from "./ai-provider-policy";
 import { isProductionMode } from "./env";
+import { readBoundedResponseText } from "./outbound-response";
 import { configuredSecret } from "./secrets";
 import {
   definitionFromReview,
@@ -84,9 +85,10 @@ function extractJson(raw: string) {
   try { return JSON.parse(cleaned) as unknown; } catch { throw new Error("SPEC_ASSISTANT_AI_INVALID_JSON"); }
 }
 
-async function aiReview(draft: TaskClarificationDraft, role: ReviewRole, baseUrl: string, model: string, apiKey: string) {
+async function aiReview(draft: TaskClarificationDraft, role: ReviewRole, baseUrl: string, model: string, apiKey: string, proposedDefinition?: TaskDefinition) {
   const response = await fetch(`${baseUrl}/chat/completions`, {
     method: "POST",
+    redirect: "error",
     headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
     signal: AbortSignal.timeout(25_000),
     body: JSON.stringify({
@@ -101,14 +103,20 @@ async function aiReview(draft: TaskClarificationDraft, role: ReviewRole, baseUrl
           "A completion criterion must name an observable result, a verifier-controlled method, required evidence, and a binary or numeric pass condition.",
           "Reject subjective words unless the pass condition makes them measurable. Never add payment, token, private-key, credential, personal-data, or legal claims.",
           "Ask blocking questions when the business owner, deliverable, boundary, test input, threshold, evidence source, or failure condition is missing.",
+          role === "VALIDATION_CRITIC" ? "The user payload includes the exact proposedDefinition that will be frozen. Inspect its collaborationPlan and ask a blocking question if work-package count, criterion ownership, dependencies, shared interfaces, assembly strategy, or integration checks are incomplete or contradictory." : "",
         ].join(" "),
-      }, { role: "user", content: JSON.stringify(draft) }],
+      }, { role: "user", content: JSON.stringify({ draft, ...(proposedDefinition ? { proposedDefinition } : {}) }) }],
     }),
   });
   if (!response.ok) throw new Error(`SPEC_ASSISTANT_AI_REQUEST_FAILED_${response.status}`);
-  const text = await response.text();
-  if (text.length > 256_000) throw new Error("SPEC_ASSISTANT_AI_RESPONSE_TOO_LARGE");
-  const envelope = JSON.parse(text) as { choices?: Array<{ message?: { content?: string } }> };
+  const text = await readBoundedResponseText(response, 256_000, {
+    missingBody: "SPEC_ASSISTANT_AI_EMPTY_RESPONSE",
+    tooLarge: "SPEC_ASSISTANT_AI_RESPONSE_TOO_LARGE",
+    invalidContentLength: "SPEC_ASSISTANT_AI_INVALID_CONTENT_LENGTH",
+    invalidUtf8: "SPEC_ASSISTANT_AI_INVALID_UTF8",
+  });
+  let envelope: { choices?: Array<{ message?: { content?: string } }> };
+  try { envelope = JSON.parse(text) as typeof envelope; } catch { throw new Error("SPEC_ASSISTANT_AI_ENVELOPE_INVALID_JSON"); }
   const content = envelope.choices?.[0]?.message?.content;
   if (!content) throw new Error("SPEC_ASSISTANT_AI_EMPTY_RESPONSE");
   return taskClarificationReviewSchema.parse({ ...(extractJson(content) as object), role });
@@ -150,11 +158,25 @@ export async function clarifyTaskSpecification(raw: unknown): Promise<TaskSpecAs
   const reviews: TaskSpecAssistantResult["reviews"] = [];
   if (configured) {
     const baseUrl = approvedAiBaseUrl(rawBaseUrl!, isProductionMode(), process.env.SPEC_ASSISTANT_AI_ALLOWED_ORIGINS);
-    const settled = await Promise.allSettled(rawModels.map((model, index) => aiReview(draft, roles[index], baseUrl, model, key.value!)));
-    settled.forEach((result, index) => {
-      if (result.status !== "fulfilled") return;
-      reviews.push({ role: roles[index], provider: new URL(baseUrl).origin, model: rawModels[index], reportHash: reviewReportHash(result.value), review: result.value });
-    });
+    let proposedWriter = deterministicClarificationReview(draft, "REQUIREMENTS_WRITER");
+    try {
+      const review = await aiReview(draft, roles[0], baseUrl, rawModels[0], key.value!);
+      proposedWriter = review;
+      reviews.push({ role: roles[0], provider: new URL(baseUrl).origin, model: rawModels[0], reportHash: reviewReportHash(review), review });
+    } catch { /* Production readiness records the missing external writer below. */ }
+    const proposedDefinition = definitionFromReview(proposedWriter, [], draft);
+    if (rawModels[1]) {
+      try {
+        const review = await aiReview(draft, roles[1], baseUrl, rawModels[1], key.value!, proposedDefinition);
+        reviews.push({ role: roles[1], provider: new URL(baseUrl).origin, model: rawModels[1], reportHash: reviewReportHash(review), review });
+      } catch { /* Production readiness records the missing external critic below. */ }
+    }
+    if (rawModels[2]) {
+      try {
+        const review = await aiReview(draft, roles[2], baseUrl, rawModels[2], key.value!, proposedDefinition);
+        reviews.push({ role: roles[2], provider: new URL(baseUrl).origin, model: rawModels[2], reportHash: reviewReportHash(review), review });
+      } catch { /* Domain review is optional. */ }
+    }
   }
   for (const role of ["REQUIREMENTS_WRITER", "VALIDATION_CRITIC"] as const) {
     if (reviews.some((item) => item.role === role)) continue;
@@ -170,5 +192,5 @@ export async function clarifyTaskSpecification(raw: unknown): Promise<TaskSpecAs
     risks: [...writer.review.risks, ...(critic?.review.risks ?? [])].filter((item, index, all) => all.indexOf(item) === index).slice(0, 12),
   });
   const aiReviews: TaskDefinition["aiReviews"] = reviews.map(({ role, provider, model, reportHash }) => ({ role, provider, model, reportHash }));
-  return { aiAvailable: reviews.some((item) => item.provider !== "agentgrid-rule-engine"), reviews, recommendation: definitionFromReview(combined, aiReviews) };
+  return { aiAvailable: reviews.some((item) => item.provider !== "agentgrid-rule-engine"), reviews, recommendation: definitionFromReview(combined, aiReviews, draft) };
 }

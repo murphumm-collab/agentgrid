@@ -8,6 +8,7 @@ import { bscTestnet } from "viem/chains";
 import { businessAdoptionMessage, type BusinessAdoptionReport } from "@/lib/business-adoption";
 import { browserWalletProvider } from "@/lib/browser-wallet";
 import type { Locale } from "@/lib/i18n";
+import { ActionNotice, type ActionResult } from "./action-notice";
 
 type ReleaseChallenge = {
   chainId: number;
@@ -29,11 +30,11 @@ export function BusinessAdoptionForm({ taskId, publisher, locale }: { taskId: st
   const [workflowType, setWorkflowType] = useState<BusinessAdoptionReport["workflowType"]>("PRODUCTION_DEPLOYED");
   const [evidenceReference, setEvidenceReference] = useState("");
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<string>();
+  const [result, setResult] = useState<ActionResult>();
 
   async function submit() {
     setBusy(true);
-    setMessage(undefined);
+    setResult(undefined);
     try {
       const challengeResponse = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/business-adoption`, { cache: "no-store", credentials: "same-origin" });
       const challenge = await responseBody(challengeResponse);
@@ -76,13 +77,13 @@ export function BusinessAdoptionForm({ taskId, publisher, locale }: { taskId: st
       });
       const body = await responseBody(response);
       if (!response.ok) throw new Error(body.error ?? "BUSINESS_ADOPTION_FAILED");
-      setMessage(locale === "zh" ? "业务采用证明已记录，且不能覆盖。" : "Business adoption attestation recorded immutably.");
+      setResult({ tone: "success", message: locale === "zh" ? "业务采用证明已记录，且不能覆盖。" : "Business adoption attestation recorded immutably." });
       router.refresh();
     } catch (error) {
       const code = error instanceof Error ? error.message : "BUSINESS_ADOPTION_FAILED";
-      setMessage(code === "ARTIFACT_RELEASE_REQUIRED"
+      setResult({ tone: "error", message: code === "ARTIFACT_RELEASE_REQUIRED"
         ? (locale === "zh" ? "请先下载并核验已验收交付物，再确认业务采用。" : "Download and verify the accepted delivery before attesting adoption.")
-        : code);
+        : code });
     } finally {
       setBusy(false);
     }
@@ -110,7 +111,7 @@ export function BusinessAdoptionForm({ taskId, publisher, locale }: { taskId: st
         {busy ? <Loader2 className="spin" size={15} /> : <ShieldCheck size={15} />}
         {locale === "zh" ? "钱包签名确认业务采用" : "Sign business adoption"}
       </button>
-      {message && <div className={`notice ${message.includes("已记录") || message.includes("recorded") ? "success" : "error"}`}>{message}</div>}
+      {result && <ActionNotice tone={result.tone}>{result.message}</ActionNotice>}
     </div>
   );
 }

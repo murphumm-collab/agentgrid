@@ -1,17 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
 import { sealArtifactObject, verifyArtifactObject, verifyEncryptedArtifactPlaintext } from "@/lib/artifacts";
 import { apiError } from "@/lib/http";
 import { authenticateAgent, protocolSnapshot } from "@/lib/service";
 import { artifactManifest, finalizeArtifactManifest } from "@/lib/store-postgres";
 import { readJsonBody } from "@/lib/request-body";
-
-const schema = z.object({ agentId: z.string().min(3).max(120) });
+import { agentIdBodySchema } from "@/lib/agent-delivery-schema";
+import { uuidPathParameterSchema } from "@/lib/path-parameters";
 
 export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   try {
-    const { id } = await context.params;
-    const input = schema.parse(await readJsonBody(request));
+    const id = uuidPathParameterSchema.parse((await context.params).id);
+    const input = agentIdBodySchema.parse(await readJsonBody(request));
     const agent = await authenticateAgent(input.agentId, request.headers.get("x-agent-key"), "tasks:submit");
     const manifest = await artifactManifest(id, input.agentId);
     const task = (await protocolSnapshot()).tasks.find((item) => item.id === manifest.taskId);

@@ -14,18 +14,28 @@
     },
     "agentRegistry": {
       "name": "AgentRegistry",
-      "normalizedRuntimeBytecodeHash": "0x9a00c87b74a21d8144c5e59d60cc9690cdd9e1617f84a15d1947ea6c90b98334",
-      "immutableReferences": [{ "length": 32, "start": 333 }, { "length": 32, "start": 1651 }, { "length": 32, "start": 1857 }, { "length": 32, "start": 2945 }]
+      "normalizedRuntimeBytecodeHash": "0x70c5f6f7632f7d51603cd3692c6a3fcb91c82e4a439b7331891db8942535607b",
+      "immutableReferences": [{ "length": 32, "start": 911 }, { "length": 32, "start": 1459 }, { "length": 32, "start": 1929 }, { "length": 32, "start": 2266 }, { "length": 32, "start": 3202 }]
     },
     "rewardVault": {
       "name": "RewardVault",
-      "normalizedRuntimeBytecodeHash": "0x78320e33fc76202420cc69fcde80124a324fa92edae1893c6cfc92c704c714d4",
-      "immutableReferences": [{ "length": 32, "start": 343 }, { "length": 32, "start": 4442 }, { "length": 32, "start": 5756 }, { "length": 32, "start": 5808 }, { "length": 32, "start": 820 }, { "length": 32, "start": 4615 }, { "length": 32, "start": 5723 }, { "length": 32, "start": 890 }, { "length": 32, "start": 3107 }]
+      "normalizedRuntimeBytecodeHash": "0x81c0fe0b9607f393d93cbfc94ac4d71ed94df337eac79f371e84d188ce3999f1",
+      "immutableReferences": [{ "length": 32, "start": 1057 }, { "length": 32, "start": 5218 }, { "length": 32, "start": 6792 }, { "length": 32, "start": 6844 }, { "length": 32, "start": 1501 }, { "length": 32, "start": 5624 }, { "length": 32, "start": 6759 }, { "length": 32, "start": 1571 }, { "length": 32, "start": 3865 }]
     },
     "taskRegistry": {
       "name": "TaskRegistry",
-      "normalizedRuntimeBytecodeHash": "0xb1b32a1bc6ce8891111391f6221e7ca8ef1c981f3088269368f9dd55172e463d",
-      "immutableReferences": [{ "length": 32, "start": 4416 }, { "length": 32, "start": 7148 }, { "length": 32, "start": 7577 }, { "length": 32, "start": 9745 }, { "length": 32, "start": 15010 }, { "length": 32, "start": 15979 }, { "length": 32, "start": 16810 }, { "length": 32, "start": 17797 }, { "length": 32, "start": 21075 }, { "length": 32, "start": 21638 }, { "length": 32, "start": 6996 }, { "length": 32, "start": 10875 }, { "length": 32, "start": 15404 }, { "length": 32, "start": 16567 }, { "length": 32, "start": 19159 }, { "length": 32, "start": 20803 }, { "length": 32, "start": 22863 }, { "length": 32, "start": 912 }, { "length": 32, "start": 1841 }, { "length": 32, "start": 2747 }, { "length": 32, "start": 8074 }, { "length": 32, "start": 11441 }, { "length": 32, "start": 11599 }, { "length": 32, "start": 13087 }, { "length": 32, "start": 17929 }]
+      "normalizedRuntimeBytecodeHash": "0x3f59b533f71b418190ee0fa69bc9e3f91414891238f4d4e6ecc9b5bb86567b66",
+      "immutableReferences": [{ "length": 32, "start": 4722 }, { "length": 32, "start": 7537 }, { "length": 32, "start": 7966 }, { "length": 32, "start": 9831 }, { "length": 32, "start": 17028 }, { "length": 32, "start": 17979 }, { "length": 32, "start": 18957 }, { "length": 32, "start": 21596 }, { "length": 32, "start": 22617 }, { "length": 32, "start": 7385 }, { "length": 32, "start": 10141 }, { "length": 32, "start": 12666 }, { "length": 32, "start": 17422 }, { "length": 32, "start": 20319 }, { "length": 32, "start": 21318 }, { "length": 32, "start": 23842 }, { "length": 32, "start": 934 }, { "length": 32, "start": 1908 }, { "length": 32, "start": 3093 }, { "length": 32, "start": 8463 }, { "length": 32, "start": 13343 }, { "length": 32, "start": 13501 }, { "length": 32, "start": 14984 }, { "length": 32, "start": 19089 }]
+    },
+    "verificationPanel": {
+      "name": "VerificationPanel",
+      "normalizedRuntimeBytecodeHash": "0xdf3eb523a26dc1b5ac8f84945a57388ea9f2dedf3c703f4109a46f64dd067591",
+      "immutableReferences": [{ "length": 32, "start": 2263 }, { "length": 32, "start": 3753 }, { "length": 32, "start": 5673 }, { "length": 32, "start": 5877 }, { "length": 32, "start": 9030 }, { "length": 32, "start": 7859 }, { "length": 32, "start": 9314 }, { "length": 32, "start": 753 }, { "length": 32, "start": 9928 }]
+    },
+    "verificationArbitrationCourt": {
+      "name": "VerificationArbitrationCourt",
+      "normalizedRuntimeBytecodeHash": "0x2494cd8e85cdc76ca44c5ee359bd2ad957f1ce1e8b74c04b2ba9d4f590a447ac",
+      "immutableReferences": [{ "length": 32, "start": 315 }, { "length": 32, "start": 1119 }, { "length": 32, "start": 1625 }, { "length": 32, "start": 2783 }, { "length": 32, "start": 5468 }, { "length": 32, "start": 1158 }, { "length": 32, "start": 2004 }, { "length": 32, "start": 2334 }, { "length": 32, "start": 3446 }, { "length": 32, "start": 5770 }, { "length": 32, "start": 4559 }, { "length": 32, "start": 5894 }, { "length": 32, "start": 1086 }, { "length": 32, "start": 1592 }, { "length": 32, "start": 2587 }]
     },
     "disputeResolver": {
       "name": "DisputeResolver",

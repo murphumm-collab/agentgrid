@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Check, ExternalLink } from "lucide-react";
 import type { NotificationRow } from "@/lib/store-postgres";
 import type { Locale } from "@/lib/i18n";
+import { ActionNotice, type ActionResult } from "./action-notice";
 
 const labels: Record<string, { en: string; zh: string }> = {
   TaskEvaluationRequested: { en: "Pre-publication evaluation requested", zh: "已申请发布前评估" },
@@ -28,19 +29,52 @@ const labels: Record<string, { en: string; zh: string }> = {
   RewardClaimed: { en: "Reward tranche claimed", zh: "阶段奖励已领取" },
 };
 
+export function applyNotificationRead(items: NotificationRow[], id: string, readAt: string) {
+  return items.map((item) => item.id === id ? { ...item, readAt } : item);
+}
+
 export function NotificationList({ initial, locale }: { initial: NotificationRow[]; locale: Locale }) {
   const [items, setItems] = useState(initial);
+  const [pendingIds, setPendingIds] = useState<ReadonlySet<string>>(new Set());
+  const [result, setResult] = useState<ActionResult | null>(null);
+  const inFlightIds = useRef(new Set<string>());
+
   async function markRead(id: string) {
-    const response = await fetch(`/api/notifications/${id}/read`, { method: "POST" });
-    if (response.ok) setItems((current) => current.map((item) => item.id === id ? { ...item, readAt: new Date().toISOString() } : item));
+    if (inFlightIds.current.has(id)) return;
+    inFlightIds.current.add(id);
+    setPendingIds((current) => new Set(current).add(id));
+    setResult(null);
+    try {
+      const response = await fetch(`/api/notifications/${encodeURIComponent(id)}/read`, { method: "POST" });
+      const body = await response.json().catch(() => null) as { error?: unknown } | null;
+      if (!response.ok) {
+        throw new Error(typeof body?.error === "string" ? body.error : (locale === "zh" ? "标记通知失败，请重试。" : "Unable to mark the notification as read. Try again."));
+      }
+      setItems((current) => applyNotificationRead(current, id, new Date().toISOString()));
+      setResult({ tone: "success", message: locale === "zh" ? "通知已标记为已读。" : "Notification marked as read." });
+    } catch (error) {
+      setResult({
+        tone: "error",
+        message: error instanceof Error ? error.message : (locale === "zh" ? "标记通知失败，请重试。" : "Unable to mark the notification as read. Try again."),
+      });
+    } finally {
+      inFlightIds.current.delete(id);
+      setPendingIds((current) => {
+        const next = new Set(current);
+        next.delete(id);
+        return next;
+      });
+    }
   }
   if (!items.length) return <div className="card card-pad">{locale === "zh" ? "当前没有链上业务通知。" : "No on-chain business notifications yet."}</div>;
-  return <div className="action-stack">{items.map((item) => <div className="card card-pad" key={item.id} style={{ opacity: item.readAt ? 0.68 : 1 }}>
+  return <div className="action-stack">
+    {result && <ActionNotice tone={result.tone}>{result.message}</ActionNotice>}
+    {items.map((item) => <div className="card card-pad" key={item.id} style={{ opacity: item.readAt ? 0.68 : 1 }}>
     <div className="eyebrow">{item.kind}</div><h3>{labels[item.kind]?.[locale] ?? item.kind}</h3>
     <p>{new Date(item.createdAt).toLocaleString(locale === "zh" ? "zh-CN" : "en")}</p>
     <div className="form-actions">
       {item.taskId && <Link className="button button-secondary" href={`/tasks/${item.taskId}`}><ExternalLink size={14} />{locale === "zh" ? "查看任务" : "View task"}</Link>}
-      {!item.readAt && <button className="button button-secondary" onClick={() => markRead(item.id)}><Check size={14} />{locale === "zh" ? "标记已读" : "Mark read"}</button>}
+      {!item.readAt && <button type="button" className="button button-secondary" disabled={pendingIds.has(item.id)} aria-busy={pendingIds.has(item.id)} onClick={() => void markRead(item.id)}><Check size={14} />{pendingIds.has(item.id) ? (locale === "zh" ? "正在标记…" : "Marking…") : (locale === "zh" ? "标记已读" : "Mark read")}</button>}
     </div>
   </div>)}</div>;
 }

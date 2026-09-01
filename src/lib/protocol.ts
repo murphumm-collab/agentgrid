@@ -9,6 +9,8 @@ import type {
   TestResult,
 } from "./types";
 
+export const REWARD_SPLIT_BPS = Object.freeze({ executors: 6_500, tester: 1_500, reserve: 2_000 });
+
 export const DEFAULT_CONFIG: ProtocolConfig = {
   epochId: "epoch-001",
   epochRewardBudget: 100_000,
@@ -69,6 +71,7 @@ export function selectRandomTester(
   const candidates = agents.filter(
     (agent) =>
       agent.online &&
+      !agent.revokedAt &&
       agent.stake >= DEFAULT_CONFIG.minAgentStake &&
       (agent.role === "TESTER" || agent.role === "BOTH") &&
       (task.requiredTesterCapabilities ?? []).every((capability) => agent.capabilities.includes(capability)) &&

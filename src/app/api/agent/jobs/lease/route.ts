@@ -5,8 +5,12 @@ import { apiError } from "@/lib/http";
 import { authenticateAgent } from "@/lib/service";
 import { readJsonBody } from "@/lib/request-body";
 import { roleCanLease } from "@/lib/agent-roles";
+import { agentJobLeaseSchema } from "@/lib/agent-job-schema";
 
-const schema = z.object({ agentId: z.string().min(3), role: z.enum(["EXECUTOR", "TESTER", "EVALUATOR"]) });
+const schema = z.object({
+  agentId: z.string().min(3).max(120),
+  role: z.enum(["EXECUTOR", "TESTER", "EVALUATOR"]),
+}).strict();
 
 export async function POST(request: NextRequest) {
   try {
@@ -14,6 +18,6 @@ export async function POST(request: NextRequest) {
     const scope = input.role === "EXECUTOR" ? "tasks:claim" : input.role === "TESTER" ? "tests:submit" : "evaluations:submit";
     const agent = await authenticateAgent(input.agentId, request.headers.get("x-agent-key"), scope);
     if (!roleCanLease(agent.role, input.role)) throw new Error("AGENT_ROLE_DENIED");
-    return NextResponse.json(await leaseAgentJob(input.agentId, input.role, agent.owner));
+    return NextResponse.json(agentJobLeaseSchema.parse(await leaseAgentJob(input.agentId, input.role, agent.owner)));
   } catch (error) { return apiError(error); }
 }

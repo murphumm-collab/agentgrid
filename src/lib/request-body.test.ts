@@ -64,4 +64,15 @@ describe("bounded JSON request bodies", () => {
       "content-type": "application/octet-stream", "content-length": "11",
     }), 10)).rejects.toThrow("REQUEST_BODY_TOO_LARGE");
   });
+
+  it("classifies empty, malformed-length, and exact-length binary failures", async () => {
+    await expect(readBinaryBody(request("", { "content-type": "application/octet-stream" }), 10, 8))
+      .rejects.toThrow("BINARY_BODY_REQUIRED");
+    await expect(readBinaryBody(request(new Uint8Array([1]), {
+      "content-type": "application/octet-stream", "content-length": "invalid",
+    }), 10, 8)).rejects.toThrow("CONTENT_LENGTH_INVALID");
+    await expect(readBinaryBody(request(new Uint8Array([1, 2, 3]), {
+      "content-type": "application/octet-stream",
+    }), 10, 8)).rejects.toThrow("BINARY_CONTENT_LENGTH_MISMATCH");
+  });
 });

@@ -67,6 +67,7 @@ async function main() {
     PROTOCOL_MODE: "production",
     REQUIRE_FILE_SECRETS: "true",
     TRUST_PROXY: "true",
+    AUTH_ORIGIN: `http://127.0.0.1:${originPort}`,
     PORT: String(originPort),
     HOSTNAME: "127.0.0.1",
   };

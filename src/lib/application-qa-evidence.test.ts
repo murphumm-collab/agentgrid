@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  applicationQaBindingBlockers, requiredApplicationQaCommands, validateApplicationQaRuntimeEnvironment, verifyApplicationQaReport,
+  applicationQaBindingBlockers, applicationQaCommandEnvironment, requiredApplicationQaCommands,
+  validateApplicationQaRuntimeEnvironment, verifyApplicationQaReport,
 } from "./application-qa-evidence";
 
 const start = Date.parse("2026-08-31T00:00:00.000Z");
@@ -36,16 +37,49 @@ describe("application QA evidence", () => {
       REORG_SMOKE_DATABASE_URL: "postgresql://agentgrid:secret@127.0.0.1:5432/agentgrid",
       REORG_SMOKE_REDIS_URL: "redis://127.0.0.1:6379/14",
       AUTH_SECRET: "a".repeat(32),
+      AUTH_ORIGIN: "http://127.0.0.1:3000",
       ARTIFACT_MASTER_KEY: "b".repeat(64),
       BACKUP_DIRECTORY: "/tmp/agentgrid-qa-backups",
     };
-    expect(() => validateApplicationQaRuntimeEnvironment(environment, "/workspace/agentgrid")).not.toThrow();
-    expect(() => validateApplicationQaRuntimeEnvironment({ ...environment, REORG_SMOKE_REDIS_URL: environment.REDIS_URL }, "/workspace/agentgrid"))
+    expect(() => validateApplicationQaRuntimeEnvironment(environment, "/workspace/agentgrid", "linux")).not.toThrow();
+    expect(() => validateApplicationQaRuntimeEnvironment({ ...environment, REORG_SMOKE_REDIS_URL: environment.REDIS_URL }, "/workspace/agentgrid", "linux"))
       .toThrow("APPLICATION_QA_REORG_REDIS_MUST_BE_ISOLATED");
-    expect(() => validateApplicationQaRuntimeEnvironment({ ...environment, REORG_SMOKE_DATABASE_URL: "" }, "/workspace/agentgrid"))
+    expect(() => validateApplicationQaRuntimeEnvironment({ ...environment, REORG_SMOKE_DATABASE_URL: "" }, "/workspace/agentgrid", "linux"))
       .toThrow("APPLICATION_QA_REORG_SMOKE_DATABASE_URL_REQUIRED");
-    expect(() => validateApplicationQaRuntimeEnvironment({ ...environment, BACKUP_DIRECTORY: "/workspace/agentgrid/.backups" }, "/workspace/agentgrid"))
+    expect(() => validateApplicationQaRuntimeEnvironment({ ...environment, BACKUP_DIRECTORY: "/workspace/agentgrid/.backups" }, "/workspace/agentgrid", "linux"))
       .toThrow("APPLICATION_QA_BACKUP_DIRECTORY_MUST_BE_OUTSIDE_WORKSPACE");
+    expect(() => validateApplicationQaRuntimeEnvironment({ ...environment, AUTH_ORIGIN: "https://agentgrid.example/app" }, "/workspace/agentgrid", "linux"))
+      .toThrow("APPLICATION_QA_AUTH_ORIGIN_INVALID");
+    expect(() => validateApplicationQaRuntimeEnvironment({ ...environment, AUTH_ORIGIN: "not-a-url" }, "/workspace/agentgrid", "linux"))
+      .toThrow("APPLICATION_QA_AUTH_ORIGIN_INVALID");
+    expect(() => validateApplicationQaRuntimeEnvironment(environment, "/workspace/agentgrid", "darwin"))
+      .toThrow("APPLICATION_QA_SANDBOX_TEMP_DIRECTORY_REQUIRED_ON_DARWIN");
+  });
+
+  it("inherits the QA database for the file-secret smoke without leaking direct secrets", () => {
+    const environment = {
+      DATABASE_URL: "postgresql://agentgrid:secret@127.0.0.1:55433/agentgrid",
+      AUTH_SECRET: "a".repeat(32),
+      S3_SECRET_KEY: "storage-secret",
+    };
+    const isolated = applicationQaCommandEnvironment(environment, "file-secret-isolation");
+    expect(isolated.SECRET_SMOKE_DATABASE_URL).toBe(environment.DATABASE_URL);
+    expect(isolated.DATABASE_URL).toBeUndefined();
+    expect(isolated.AUTH_SECRET).toBeUndefined();
+    expect(isolated.S3_SECRET_KEY).toBeUndefined();
+    expect(isolated.PROTOCOL_MODE).toBe("production");
+  });
+
+  it("removes every direct and file-backed runtime secret from isolated unit commands", () => {
+    const environment = {
+      TRUSTED_PROXY_SHARED_SECRET: "proxy-secret-that-must-not-reach-tests",
+      TRUSTED_PROXY_SHARED_SECRET_FILE: "/run/secrets/proxy",
+      SPEC_ASSISTANT_AI_API_KEY: "ai-secret-that-must-not-reach-tests",
+      SPEC_ASSISTANT_AI_API_KEY_FILE: "/run/secrets/ai",
+      REDIS_URL: "redis://production.internal:6379",
+    };
+    const isolated = applicationQaCommandEnvironment(environment, "demo-test-isolation");
+    for (const name of Object.keys(environment)) expect(isolated[name]).toBeUndefined();
   });
 
   it("accepts the exact ordered production QA command set", () => {
@@ -58,13 +92,13 @@ describe("application QA evidence", () => {
     expect(() => verifyApplicationQaReport(missing, new Date(start + 60_000))).toThrow("APPLICATION_QA_COMMAND_SET_INCOMPLETE");
     const reordered = fixture();
     [reordered.commands[0], reordered.commands[1]] = [reordered.commands[1]!, reordered.commands[0]!];
-    expect(() => verifyApplicationQaReport(reordered, new Date(start + 60_000))).toThrow("APPLICATION_QA_COMMAND_MISMATCH_UNIT_TESTS");
+    expect(() => verifyApplicationQaReport(reordered, new Date(start + 60_000))).toThrow("APPLICATION_QA_COMMAND_MISMATCH_UNIT_TESTS_AND_DEPENDENCY_AUDIT");
     const substituted = fixture();
     substituted.commands[0]!.args = ["test:watch"];
-    expect(() => verifyApplicationQaReport(substituted, new Date(start + 60_000))).toThrow("APPLICATION_QA_COMMAND_MISMATCH_UNIT_TESTS");
+    expect(() => verifyApplicationQaReport(substituted, new Date(start + 60_000))).toThrow("APPLICATION_QA_COMMAND_MISMATCH_UNIT_TESTS_AND_DEPENDENCY_AUDIT");
     const wrongEnvironment = fixture();
     wrongEnvironment.commands[0]!.environmentProfile = "qa-production-runtime";
-    expect(() => verifyApplicationQaReport(wrongEnvironment, new Date(start + 60_000))).toThrow("APPLICATION_QA_COMMAND_MISMATCH_UNIT_TESTS");
+    expect(() => verifyApplicationQaReport(wrongEnvironment, new Date(start + 60_000))).toThrow("APPLICATION_QA_COMMAND_MISMATCH_UNIT_TESTS_AND_DEPENDENCY_AUDIT");
     const failed = fixture() as ReturnType<typeof fixture> & { commands: Array<Record<string, unknown>> };
     failed.commands[0]!.exitCode = 1;
     expect(() => verifyApplicationQaReport(failed, new Date(start + 60_000))).toThrow();

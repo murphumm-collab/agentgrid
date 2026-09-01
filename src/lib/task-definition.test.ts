@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assessTaskDefinition, definitionFromReview, reviewReportHash, taskDefinitionHash, taskDefinitionReviewBindingHash, taskDefinitionSchema } from "./task-definition";
+import { assessTaskDefinition, collaborationPlanBlockers, definitionFromReview, reviewReportHash, taskDefinitionHash, taskDefinitionReviewBindingHash, taskDefinitionSchema } from "./task-definition";
 
 const review = {
   role: "REQUIREMENTS_WRITER" as const,
@@ -27,10 +27,12 @@ describe("task completion definition", () => {
 
   it("binds a server review to the exact business outcome and completion definition", () => {
     const definition = definitionFromReview(review);
-    const reviewed = { title: "Build settlement monitor", businessOutcome: "Alert operations before failed settlement breaches the service-level objective.", category: "Automation", completionDefinition: definition };
+    const reviewed = { title: "Build settlement monitor", businessOutcome: "Alert operations before failed settlement breaches the service-level objective.", category: "Automation", executionMode: "COLLABORATION" as const, maxExecutors: 1, completionDefinition: definition };
     expect(taskDefinitionReviewBindingHash(reviewed)).toMatch(/^0x[0-9a-f]{64}$/);
     expect(taskDefinitionReviewBindingHash(reviewed)).toBe(taskDefinitionReviewBindingHash({ ...reviewed }));
     expect(taskDefinitionReviewBindingHash({ ...reviewed, businessOutcome: `${reviewed.businessOutcome} Changed after review.` })).not.toBe(taskDefinitionReviewBindingHash(reviewed));
+    expect(taskDefinitionReviewBindingHash({ ...reviewed, maxExecutors: 2 })).not.toBe(taskDefinitionReviewBindingHash(reviewed));
+    expect(taskDefinitionReviewBindingHash({ ...reviewed, executionMode: "COMPETITION" })).not.toBe(taskDefinitionReviewBindingHash(reviewed));
   });
 
   it("rejects reordered, duplicate and entirely optional criteria", () => {
@@ -48,5 +50,15 @@ describe("task completion definition", () => {
     const result = assessTaskDefinition(definition);
     expect(result.ready).toBe(false);
     expect(result.blockers).toContain("CRITERION_criterion-1_SUBJECTIVE");
+  });
+
+  it("covers every required criterion and executor with a closed collaboration plan", () => {
+    const definition = definitionFromReview(review, [], { executionMode: "COLLABORATION", maxExecutors: 4 });
+    expect(definition.collaborationPlan?.workPackages).toHaveLength(4);
+    expect(new Set(definition.collaborationPlan?.workPackages.flatMap((item) => item.criterionIds))).toEqual(new Set(["criterion-1", "criterion-2"]));
+    expect(collaborationPlanBlockers(definition, "COLLABORATION", 4)).toEqual([]);
+    expect(collaborationPlanBlockers(definition, "COLLABORATION", 3)).toEqual(["COLLABORATION_WORK_PACKAGE_COUNT_MISMATCH"]);
+    expect(collaborationPlanBlockers(definition, "COMPETITION", 4)).toEqual(["COLLABORATION_PLAN_FORBIDDEN_IN_COMPETITION"]);
+    expect(() => taskDefinitionSchema.parse({ ...definition, collaborationPlan: { ...definition.collaborationPlan!, workPackages: definition.collaborationPlan!.workPackages.map((item, index) => index === 1 ? { ...item, dependsOn: [2] } : item) } })).toThrow("WORK_PACKAGE_DEPENDENCY_MUST_PRECEDE_SLOT");
   });
 });

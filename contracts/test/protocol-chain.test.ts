@@ -39,8 +39,10 @@ describe("AgentGrid Solidity protocol", () => {
   let publisher: Wallet;
   let executor: Wallet;
   let tester: Wallet;
+  let testerB: Wallet;
+  let testerC: Wallet;
   let reserveAccount: ReturnType<typeof mnemonicToAccount>;
-  let addresses: Record<"token" | "stakeManager" | "agentRegistry" | "rewardVault" | "taskRegistry", Address>;
+  let addresses: Record<"token" | "stakeManager" | "agentRegistry" | "rewardVault" | "taskRegistry" | "verificationPanel", Address>;
 
   beforeAll(() => {
     artifacts = compileContracts();
@@ -50,7 +52,7 @@ describe("AgentGrid Solidity protocol", () => {
     provider = ganache.provider({
       logging: { quiet: true },
       chain: { chainId: localChain.id },
-      wallet: { mnemonic, totalAccounts: 10, defaultBalance: 1_000 },
+      wallet: { mnemonic, totalAccounts: 20, defaultBalance: 1_000 },
     });
     const transport = custom(provider as never);
     publicClient = createPublicClient({ chain: localChain, transport });
@@ -58,6 +60,8 @@ describe("AgentGrid Solidity protocol", () => {
     publisher = createWalletClient({ account: mnemonicToAccount(mnemonic, { addressIndex: 1 }), chain: localChain, transport });
     executor = createWalletClient({ account: mnemonicToAccount(mnemonic, { addressIndex: 2 }), chain: localChain, transport });
     tester = createWalletClient({ account: mnemonicToAccount(mnemonic, { addressIndex: 3 }), chain: localChain, transport });
+    testerB = createWalletClient({ account: mnemonicToAccount(mnemonic, { addressIndex: 10 }), chain: localChain, transport });
+    testerC = createWalletClient({ account: mnemonicToAccount(mnemonic, { addressIndex: 11 }), chain: localChain, transport });
     reserveAccount = mnemonicToAccount(mnemonic, { addressIndex: 4 });
 
     const ownerAddress = owner.account!.address;
@@ -66,15 +70,18 @@ describe("AgentGrid Solidity protocol", () => {
     const agentRegistry = await deploy(owner, "AgentRegistry", [stakeManager]);
     const rewardVault = await deploy(owner, "RewardVault", [token, reserveAccount.address, parseEther("100000"), ownerAddress]);
     const taskRegistry = await deploy(owner, "TaskRegistry", [stakeManager, rewardVault, agentRegistry, ownerAddress, ownerAddress]);
-    addresses = { token, stakeManager, agentRegistry, rewardVault, taskRegistry };
+    const verificationPanel = await deploy(owner, "VerificationPanel", [taskRegistry, rewardVault, ownerAddress]);
+    addresses = { token, stakeManager, agentRegistry, rewardVault, taskRegistry, verificationPanel };
 
     for (const [name, address] of Object.entries(addresses)) {
-      const artifactName = ({ token: "TestToken", stakeManager: "StakeCreditManager", agentRegistry: "AgentRegistry", rewardVault: "RewardVault", taskRegistry: "TaskRegistry" } as const)[name as keyof typeof addresses];
+      const artifactName = ({ token: "TestToken", stakeManager: "StakeCreditManager", agentRegistry: "AgentRegistry", rewardVault: "RewardVault", taskRegistry: "TaskRegistry", verificationPanel: "VerificationPanel" } as const)[name as keyof typeof addresses];
       verifyRuntimeBytecode(name, await publicClient.getCode({ address }), artifacts[artifactName]);
     }
 
     await write(owner, stakeManager, "StakeCreditManager", "setTaskRegistry", [taskRegistry]);
     await write(owner, rewardVault, "RewardVault", "setTaskRegistry", [taskRegistry]);
+    await write(owner, taskRegistry, "TaskRegistry", "setVerificationPanel", [verificationPanel]);
+    await write(owner, rewardVault, "RewardVault", "setVerificationPanel", [verificationPanel]);
     await write(owner, token, "TestToken", "mintRewardReserve", [rewardVault, parseEther("100000")]);
   });
 
@@ -114,7 +121,7 @@ describe("AgentGrid Solidity protocol", () => {
     ]);
     await approveEvaluation(1n, evaluators);
     await registerAgent(executor, 5n);
-    await registerAgent(tester, 6n);
+    await registerTesterPool(6n);
     await write(executor, addresses.taskRegistry, "TaskRegistry", "claimTask", [1n]);
     await write(executor, addresses.taskRegistry, "TaskRegistry", "submitContribution", [1n, keccak256(stringToHex("artifact-cid"))]);
     await write(executor, addresses.taskRegistry, "TaskRegistry", "submitWork", [
@@ -122,12 +129,7 @@ describe("AgentGrid Solidity protocol", () => {
       keccak256(stringToHex("artifact-cid")),
     ]);
     await assignTester(1n);
-    await write(tester, addresses.taskRegistry, "TaskRegistry", "submitTest", [
-      1n,
-      true,
-      keccak256(stringToHex("coverage-report-cid")),
-      [10_000],
-    ]);
+    await completeVerificationPanel(1n, true, [10_000]);
     await write(publisher, addresses.taskRegistry, "TaskRegistry", "review", [1n, true, `0x${"0".repeat(64)}`]);
   }
 
@@ -143,6 +145,12 @@ describe("AgentGrid Solidity protocol", () => {
     await write(wallet, addresses.token, "TestToken", "approve", [addresses.stakeManager, parseEther("1000")]);
     await write(wallet, addresses.stakeManager, "StakeCreditManager", "createPosition", [parseEther("1000")]);
     await write(wallet, addresses.agentRegistry, "AgentRegistry", "registerWithCapabilities", [positionId, capabilities]);
+  }
+
+  async function registerTesterPool(firstPositionId: bigint) {
+    await registerAgent(tester, firstPositionId);
+    await registerAgent(testerB, firstPositionId + 1n);
+    await registerAgent(testerC, firstPositionId + 2n);
   }
 
   async function registerEvaluationAgents() {
@@ -194,6 +202,101 @@ describe("AgentGrid Solidity protocol", () => {
     for (let index = 0; index < 6; index += 1) await provider.request({ method: "evm_mine", params: [] });
     await write(owner, addresses.taskRegistry, "TaskRegistry", "finalizeTester", [taskId]);
   }
+
+  async function revealVerificationPanel(taskId: bigint, passed: boolean, executorWeightsBps: number[], winner: Address = `0x${"0".repeat(40)}`, selectedArtifactHash: `0x${string}` = `0x${"0".repeat(64)}`) {
+    const selected = (await read(addresses.taskRegistry, "TaskRegistry", "getTaskTesters", [taskId])) as Address[];
+    const task = (await read(addresses.taskRegistry, "TaskRegistry", "tasks", [taskId])) as readonly unknown[];
+    const workRound = Number(task[17]);
+    const wallets = [tester, testerB, testerC];
+    const byAddress = new Map(wallets.map((wallet) => [wallet.account!.address.toLowerCase(), wallet]));
+    const masks = [3, 5, 6];
+    const reveals = selected.map((address, shard) => {
+      const wallet = byAddress.get(address.toLowerCase());
+      if (!wallet) throw new Error(`TEST_WALLET_NOT_MAPPED_${address}`);
+      const evidenceHash = keccak256(stringToHex(`panel-evidence-${taskId}-${shard}`));
+      const salt = keccak256(stringToHex(`panel-salt-${taskId}-${shard}`));
+      const criterionPassMask = passed ? masks[shard] : 0;
+      const weights = passed ? executorWeightsBps : [];
+      const commitment = keccak256(encodeAbiParameters([
+        { type: "uint256" }, { type: "uint32" }, { type: "uint8" }, { type: "uint8" }, { type: "uint16" }, { type: "address" }, { type: "bytes32" }, { type: "bytes32" }, { type: "uint16[]" }, { type: "bytes32" },
+      ], [taskId, workRound, 0, shard, criterionPassMask, winner, selectedArtifactHash, evidenceHash, weights, salt]));
+      return { wallet, criterionPassMask, evidenceHash, salt, weights, commitment };
+    });
+    for (const reveal of reveals) await write(reveal.wallet, addresses.verificationPanel, "VerificationPanel", "commitShard", [taskId, reveal.commitment]);
+    for (const reveal of reveals) await write(reveal.wallet, addresses.verificationPanel, "VerificationPanel", "revealShard", [taskId, reveal.criterionPassMask, winner, selectedArtifactHash, reveal.evidenceHash, reveal.weights, reveal.salt]);
+    return { selected, reveals };
+  }
+
+  async function completeVerificationPanel(taskId: bigint, passed: boolean, executorWeightsBps: number[], winner: Address = `0x${"0".repeat(40)}`, selectedArtifactHash: `0x${string}` = `0x${"0".repeat(64)}`) {
+    await revealVerificationPanel(taskId, passed, executorWeightsBps, winner, selectedArtifactHash);
+    await provider.request({ method: "evm_increaseTime", params: [24 * 60 * 60 + 1] });
+    await provider.request({ method: "evm_mine", params: [] });
+    await write(owner, addresses.verificationPanel, "VerificationPanel", "finalize", [taskId]);
+  }
+
+  it("requires staked registered challenges and exact 2-of-3 arbitration evidence before returning a voided panel to correction", async () => {
+    const transport = custom(provider as never);
+    const challenger = createWalletClient({ account: mnemonicToAccount(mnemonic, { addressIndex: 12 }), chain: localChain, transport });
+    const arbitrators = [13, 14, 15].map((addressIndex) => createWalletClient({
+      account: mnemonicToAccount(mnemonic, { addressIndex }), chain: localChain, transport,
+    }));
+    const court = await deploy(owner, "VerificationArbitrationCourt", [
+      addresses.token, addresses.verificationPanel, addresses.agentRegistry, reserveAccount.address,
+      arbitrators.map((wallet) => wallet.account!.address),
+    ]);
+    await write(owner, addresses.verificationPanel, "VerificationPanel", "setArbitrationCourt", [court]);
+
+    const evaluators = await registerEvaluationAgents();
+    await write(publisher, addresses.token, "TestToken", "faucet");
+    await write(publisher, addresses.token, "TestToken", "approve", [addresses.stakeManager, parseEther("1000")]);
+    await write(publisher, addresses.stakeManager, "StakeCreditManager", "createPosition", [parseEther("1000")]);
+    await write(publisher, addresses.stakeManager, "StakeCreditManager", "issueCredit", [4n]);
+    await write(publisher, addresses.taskRegistry, "TaskRegistry", "createTaskWithMode", [
+      4n, keccak256(stringToHex("arbitrated-panel")), parseEther("1000"), 1, 0,
+    ]);
+    await approveEvaluation(1n, evaluators);
+    await registerAgent(executor, 5n);
+    await registerTesterPool(6n);
+    await registerAgent(challenger, 9n);
+    await write(executor, addresses.taskRegistry, "TaskRegistry", "claimTask", [1n]);
+    await write(executor, addresses.taskRegistry, "TaskRegistry", "submitContribution", [1n, keccak256(stringToHex("challenged-artifact"))]);
+    await write(executor, addresses.taskRegistry, "TaskRegistry", "submitWork", [1n, keccak256(stringToHex("challenged-artifact"))]);
+    await assignTester(1n);
+    const { selected } = await revealVerificationPanel(1n, true, [10_000]);
+
+    for (const wallet of arbitrators) {
+      await write(wallet, addresses.token, "TestToken", "faucet");
+      await write(wallet, addresses.token, "TestToken", "approve", [court, parseEther("500")]);
+      await write(wallet, court, "VerificationArbitrationCourt", "deposit", [parseEther("500")]);
+    }
+    await write(challenger, addresses.token, "TestToken", "approve", [court, parseEther("500")]);
+    await write(challenger, court, "VerificationArbitrationCourt", "deposit", [parseEther("500")]);
+    const targetWallet = [tester, testerB, testerC].find((wallet) => wallet.account!.address.toLowerCase() === selected[0].toLowerCase())!;
+    await write(targetWallet, addresses.token, "TestToken", "approve", [court, parseEther("500")]);
+    await write(targetWallet, court, "VerificationArbitrationCourt", "deposit", [parseEther("500")]);
+
+    await expect(write(owner, court, "VerificationArbitrationCourt", "openChallenge", [1n, selected[0], keccak256(stringToHex("not-a-registered-agent"))])).rejects.toThrow();
+    const challengeHash = keccak256(stringToHex("validator-used-copied-report"));
+    await write(challenger, court, "VerificationArbitrationCourt", "openChallenge", [1n, selected[0], challengeHash]);
+    await expect(write(challenger, court, "VerificationArbitrationCourt", "withdraw", [parseEther("1")])).rejects.toThrow();
+    await expect(write(owner, addresses.verificationPanel, "VerificationPanel", "finalize", [1n])).rejects.toThrow();
+
+    const acceptedResolution = keccak256(stringToHex("independent-reproduction-proves-copy"));
+    const conflictingResolution = keccak256(stringToHex("different-reason"));
+    await write(arbitrators[0], court, "VerificationArbitrationCourt", "vote", [1n, true, acceptedResolution]);
+    await write(arbitrators[1], court, "VerificationArbitrationCourt", "vote", [1n, true, conflictingResolution]);
+    const caseId = await read(court, "VerificationArbitrationCourt", "activeCaseId", [1n]) as `0x${string}`;
+    expect((await read(court, "VerificationArbitrationCourt", "cases", [caseId]) as readonly unknown[]).at(-1)).toBe(false);
+    await write(arbitrators[2], court, "VerificationArbitrationCourt", "vote", [1n, true, acceptedResolution]);
+
+    const dispute = await read(court, "VerificationArbitrationCourt", "cases", [caseId]) as readonly unknown[];
+    expect(dispute.at(-1)).toBe(true);
+    expect(await read(court, "VerificationArbitrationCourt", "stake", [selected[0]])).toBe(parseEther("400"));
+    expect(await read(court, "VerificationArbitrationCourt", "stake", [challenger.account!.address])).toBe(parseEther("560"));
+    const corrected = await read(addresses.taskRegistry, "TaskRegistry", "tasks", [1n]) as readonly unknown[];
+    expect(corrected[17]).toBe(2);
+    expect(corrected[19]).toBe(6);
+  });
 
   it("selects three unique evaluators, rejects duplicate reports, and publishes only after approved consensus", async () => {
     const { evaluators, receipt } = await createEvaluatingTask();
@@ -268,7 +371,8 @@ describe("AgentGrid Solidity protocol", () => {
 
     await write(owner, addresses.rewardVault, "RewardVault", "claim", [1n, 0]);
     expect(await read(addresses.token, "TestToken", "balanceOf", [executor.account!.address])).toBe(parseEther("9052"));
-    expect(await read(addresses.token, "TestToken", "balanceOf", [tester.account!.address])).toBe(parseEther("9012"));
+    const panelBalances = await Promise.all([tester, testerB, testerC].map((wallet) => read(addresses.token, "TestToken", "balanceOf", [wallet.account!.address]) as Promise<bigint>));
+    expect(panelBalances.reduce((sum, balance) => sum + balance - parseEther("9000"), 0n)).toBe(parseEther("12"));
     expect(await read(addresses.token, "TestToken", "balanceOf", [reserveAccount.address])).toBe(parseEther("16"));
   });
 
@@ -289,13 +393,15 @@ describe("AgentGrid Solidity protocol", () => {
     await registerAgent(executor, 5n);
     await registerAgent(tester, 6n); // role-capable, but no verification speciality
     await registerAgentWithCapabilities(specialist, 7n, requiredCapabilities);
+    await registerAgentWithCapabilities(testerB, 8n, requiredCapabilities);
+    await registerAgentWithCapabilities(testerC, 9n, requiredCapabilities);
     await write(executor, addresses.taskRegistry, "TaskRegistry", "claimTask", [1n]);
     const artifact = keccak256(stringToHex("typed-verification-artifact"));
     await write(executor, addresses.taskRegistry, "TaskRegistry", "submitContribution", [1n, artifact]);
     await write(executor, addresses.taskRegistry, "TaskRegistry", "submitWork", [1n, artifact]);
     await assignTester(1n);
-    const task = (await read(addresses.taskRegistry, "TaskRegistry", "tasks", [1n])) as readonly unknown[];
-    expect(String(task[2]).toLowerCase()).toBe(specialist.account!.address.toLowerCase());
+    const selected = (await read(addresses.taskRegistry, "TaskRegistry", "getTaskTesters", [1n])) as Address[];
+    expect(new Set(selected.map((address) => address.toLowerCase()))).toEqual(new Set([specialist, testerB, testerC].map((wallet) => wallet.account!.address.toLowerCase())));
   });
 
   it("requires every executor contribution, excludes the whole team from testing, and splits executor rewards", async () => {
@@ -312,7 +418,7 @@ describe("AgentGrid Solidity protocol", () => {
     await approveEvaluation(1n, evaluators);
     await registerAgent(executor, 5n);
     await registerAgent(collaborator, 6n);
-    await registerAgent(tester, 7n);
+    await registerTesterPool(7n);
     await write(executor, addresses.taskRegistry, "TaskRegistry", "claimTask", [1n]);
     await write(collaborator, addresses.taskRegistry, "TaskRegistry", "claimTask", [1n]);
     await write(executor, addresses.taskRegistry, "TaskRegistry", "submitContribution", [1n, keccak256(stringToHex("lead-contribution"))]);
@@ -322,14 +428,14 @@ describe("AgentGrid Solidity protocol", () => {
     await write(executor, addresses.taskRegistry, "TaskRegistry", "submitWork", [1n, keccak256(stringToHex("combined-artifact"))]);
     await assignTester(1n);
     const task = (await read(addresses.taskRegistry, "TaskRegistry", "tasks", [1n])) as readonly unknown[];
-    expect(String(task[2]).toLowerCase()).toBe(tester.account!.address.toLowerCase());
+    expect(new Set(((await read(addresses.taskRegistry, "TaskRegistry", "getTaskTesters", [1n])) as Address[]).map((address) => address.toLowerCase())).size).toBe(3);
     const expectedExecutors = [executor.account!.address, collaborator.account!.address];
     const canonicalExecutors = [...expectedExecutors]
       .sort((left, right) => BigInt(left) < BigInt(right) ? -1 : 1);
     expect(await read(addresses.taskRegistry, "TaskRegistry", "getTaskExecutors", [1n])).toEqual(expectedExecutors);
     expect(task[13]).toBe(keccak256(encodeAbiParameters([{ type: "address[]" }], [canonicalExecutors])));
     await expect(write(tester, addresses.taskRegistry, "TaskRegistry", "submitTest", [1n, true, `0x${"0".repeat(64)}`, [6_000, 4_000]])).rejects.toThrow();
-    await write(tester, addresses.taskRegistry, "TaskRegistry", "submitTest", [1n, true, keccak256(stringToHex("team-evidence")), [6_000, 4_000]]);
+    await completeVerificationPanel(1n, true, [6_000, 4_000]);
     await write(publisher, addresses.taskRegistry, "TaskRegistry", "review", [1n, true, `0x${"0".repeat(64)}`]);
     expect(await read(addresses.taskRegistry, "TaskRegistry", "getTaskExecutorWeightsBps", [1n])).toEqual([6_000, 4_000]);
     const grant = (await read(addresses.rewardVault, "RewardVault", "getGrant", [1n])) as { executors: Address[]; executorWeightsBps: number[] };
@@ -358,7 +464,7 @@ describe("AgentGrid Solidity protocol", () => {
     await approveEvaluation(1n, evaluators);
     await registerAgent(executor, 5n);
     await registerAgent(competitor, 6n);
-    await registerAgent(tester, 7n);
+    await registerTesterPool(7n);
     await write(executor, addresses.taskRegistry, "TaskRegistry", "claimTask", [1n]);
     await write(competitor, addresses.taskRegistry, "TaskRegistry", "claimTask", [1n]);
     const candidateA = keccak256(stringToHex("candidate-a"));
@@ -372,9 +478,7 @@ describe("AgentGrid Solidity protocol", () => {
     await expect(write(tester, addresses.taskRegistry, "TaskRegistry", "submitCompetitionTest", [
       1n, true, executor.account!.address, candidateB, keccak256(stringToHex("invalid-selection")), [7_000, 3_000],
     ])).rejects.toThrow();
-    await write(tester, addresses.taskRegistry, "TaskRegistry", "submitCompetitionTest", [
-      1n, true, competitor.account!.address, candidateB, keccak256(stringToHex("competition-evidence")), [3_000, 7_000],
-    ]);
+    await completeVerificationPanel(1n, true, [3_000, 7_000], competitor.account!.address, candidateB);
     const reviewed = (await read(addresses.taskRegistry, "TaskRegistry", "tasks", [1n])) as readonly unknown[];
     expect(reviewed[7]).toBe(candidateB);
     expect(reviewed[19]).toBe(7);
@@ -388,6 +492,23 @@ describe("AgentGrid Solidity protocol", () => {
 
   it("rejects stake reuse, early maintenance, duplicate grant path, and double claim", async () => {
     await createAcceptedTask();
+
+    const registryHashBeforeRepeat = await read(addresses.agentRegistry, "AgentRegistry", "registryHash");
+    const agentCountBeforeRepeat = await read(addresses.agentRegistry, "AgentRegistry", "agentCount");
+    await write(executor, addresses.agentRegistry, "AgentRegistry", "register", [5n]);
+    expect(await read(addresses.agentRegistry, "AgentRegistry", "registryHash")).toBe(registryHashBeforeRepeat);
+    expect(await read(addresses.agentRegistry, "AgentRegistry", "agentCount")).toBe(agentCountBeforeRepeat);
+
+    const registryHashBeforePause = await read(addresses.agentRegistry, "AgentRegistry", "registryHash");
+    await write(executor, addresses.agentRegistry, "AgentRegistry", "setActive", [false]);
+    expect(await read(addresses.agentRegistry, "AgentRegistry", "isEligible", [executor.account!.address])).toBe(false);
+    const registryHashAfterPause = await read(addresses.agentRegistry, "AgentRegistry", "registryHash");
+    expect(registryHashAfterPause).not.toBe(registryHashBeforePause);
+    await write(executor, addresses.agentRegistry, "AgentRegistry", "setActive", [false]);
+    expect(await read(addresses.agentRegistry, "AgentRegistry", "registryHash")).toBe(registryHashAfterPause);
+    await expect(write(owner, addresses.agentRegistry, "AgentRegistry", "setActive", [false])).rejects.toThrow();
+    await write(executor, addresses.agentRegistry, "AgentRegistry", "setActive", [true]);
+    expect(await read(addresses.agentRegistry, "AgentRegistry", "isEligible", [executor.account!.address])).toBe(true);
 
     await write(executor, addresses.stakeManager, "StakeCreditManager", "requestWithdrawal", [5n]);
     expect(await read(addresses.agentRegistry, "AgentRegistry", "isEligible", [executor.account!.address])).toBe(false);
@@ -501,12 +622,12 @@ describe("AgentGrid Solidity protocol", () => {
     await write(publisher, addresses.taskRegistry, "TaskRegistry", "createTaskWithMode", [4n, keccak256(stringToHex("rejected-spec")), parseEther("1000"), 1, 0]);
     await approveEvaluation(1n, evaluators);
     await registerAgent(executor, 5n);
-    await registerAgent(tester, 6n);
+    await registerTesterPool(6n);
     await write(executor, addresses.taskRegistry, "TaskRegistry", "claimTask", [1n]);
     await write(executor, addresses.taskRegistry, "TaskRegistry", "submitContribution", [1n, keccak256(stringToHex("artifact"))]);
     await write(executor, addresses.taskRegistry, "TaskRegistry", "submitWork", [1n, keccak256(stringToHex("artifact"))]);
     await assignTester(1n);
-    await write(tester, addresses.taskRegistry, "TaskRegistry", "submitTest", [1n, true, keccak256(stringToHex("evidence")), [10_000]]);
+    await completeVerificationPanel(1n, true, [10_000]);
     await write(publisher, addresses.taskRegistry, "TaskRegistry", "review", [1n, false, keccak256(stringToHex("criterion-1-mismatch"))]);
     await expect(write(owner, addresses.taskRegistry, "TaskRegistry", "resolveRejection", [1n, false, keccak256(stringToHex("premature-resolution"))])).rejects.toThrow();
     await write(executor, addresses.taskRegistry, "TaskRegistry", "respondToRejection", [1n, keccak256(stringToHex("executor-response-proof"))]);
@@ -524,12 +645,12 @@ describe("AgentGrid Solidity protocol", () => {
     await write(publisher, addresses.taskRegistry, "TaskRegistry", "createTaskWithMode", [4n, keccak256(stringToHex("abusive-rejection")), parseEther("1000"), 1, 0]);
     await approveEvaluation(1n, evaluators);
     await registerAgent(executor, 5n);
-    await registerAgent(tester, 6n);
+    await registerTesterPool(6n);
     await write(executor, addresses.taskRegistry, "TaskRegistry", "claimTask", [1n]);
     await write(executor, addresses.taskRegistry, "TaskRegistry", "submitContribution", [1n, keccak256(stringToHex("artifact"))]);
     await write(executor, addresses.taskRegistry, "TaskRegistry", "submitWork", [1n, keccak256(stringToHex("artifact"))]);
     await assignTester(1n);
-    await write(tester, addresses.taskRegistry, "TaskRegistry", "submitTest", [1n, true, keccak256(stringToHex("evidence")), [10_000]]);
+    await completeVerificationPanel(1n, true, [10_000]);
     await write(publisher, addresses.taskRegistry, "TaskRegistry", "review", [1n, false, keccak256(stringToHex("bad-rejection"))]);
     await write(executor, addresses.taskRegistry, "TaskRegistry", "respondToRejection", [1n, keccak256(stringToHex("executor-appeal"))]);
     const transport = custom(provider as never);

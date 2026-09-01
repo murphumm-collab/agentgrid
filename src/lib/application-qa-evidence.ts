@@ -1,10 +1,13 @@
+import { lstatSync } from "node:fs";
 import path from "node:path";
 import { z } from "zod";
+import { validatedAuthOrigin } from "./auth-origin";
+import { runtimeSecretNames } from "./secrets";
 
 const sha256Schema = z.string().regex(/^sha256:[0-9a-f]{64}$/).refine((value) => !/^sha256:0{64}$/.test(value));
 
 export const requiredApplicationQaCommands = [
-  { id: "unit-tests", args: ["test"], environmentProfile: "demo-test-isolation" },
+  { id: "unit-tests-and-dependency-audit", args: ["release:test-audit"], environmentProfile: "demo-test-isolation" },
   { id: "typecheck", args: ["exec", "tsc", "--noEmit"], environmentProfile: "qa-production-runtime" },
   { id: "lint", args: ["lint"], environmentProfile: "qa-production-runtime" },
   { id: "contracts-compile", args: ["contracts:compile"], environmentProfile: "qa-production-runtime" },
@@ -67,11 +70,32 @@ export const applicationQaReportSchema = z.object({
 
 export type ApplicationQaReport = z.infer<typeof applicationQaReportSchema>;
 
-export function validateApplicationQaRuntimeEnvironment(environment: NodeJS.ProcessEnv, workspace: string) {
+export type ApplicationQaEnvironmentProfile = "demo-test-isolation" | "file-secret-isolation" | "qa-production-runtime";
+
+const isolatedTestEnvironmentKeys = [
+  "REDIS_URL",
+  ...runtimeSecretNames.flatMap((name) => [name, `${name}_FILE`]),
+] as const;
+
+export function applicationQaCommandEnvironment(environment: NodeJS.ProcessEnv, profile: ApplicationQaEnvironmentProfile) {
+  if (profile === "qa-production-runtime") return { ...environment };
+  const isolated: NodeJS.ProcessEnv = {
+    ...environment,
+    PROTOCOL_MODE: profile === "demo-test-isolation" ? "demo" : "production",
+    REQUIRE_FILE_SECRETS: "false",
+  };
+  if (profile === "file-secret-isolation" && !isolated.SECRET_SMOKE_DATABASE_URL) {
+    isolated.SECRET_SMOKE_DATABASE_URL = environment.DATABASE_URL;
+  }
+  for (const key of isolatedTestEnvironmentKeys) delete isolated[key];
+  return isolated;
+}
+
+export function validateApplicationQaRuntimeEnvironment(environment: NodeJS.ProcessEnv, workspace: string, platform = process.platform) {
   if (environment.PROTOCOL_MODE !== "production") throw new Error("APPLICATION_QA_PRODUCTION_MODE_REQUIRED");
   const required = [
     "DATABASE_URL", "REDIS_URL", "REORG_SMOKE_DATABASE_URL", "REORG_SMOKE_REDIS_URL",
-    "AUTH_SECRET", "ARTIFACT_MASTER_KEY", "BACKUP_DIRECTORY",
+    "AUTH_SECRET", "AUTH_ORIGIN", "ARTIFACT_MASTER_KEY", "BACKUP_DIRECTORY",
   ] as const;
   for (const name of required) {
     if (!environment[name]?.trim()) throw new Error(`APPLICATION_QA_${name}_REQUIRED`);
@@ -87,11 +111,26 @@ export function validateApplicationQaRuntimeEnvironment(environment: NodeJS.Proc
   }
   if (redis.href === reorgRedis.href) throw new Error("APPLICATION_QA_REORG_REDIS_MUST_BE_ISOLATED");
   if (environment.AUTH_SECRET!.length < 32) throw new Error("APPLICATION_QA_AUTH_SECRET_INVALID");
+  try { validatedAuthOrigin(environment.AUTH_ORIGIN!); }
+  catch { throw new Error("APPLICATION_QA_AUTH_ORIGIN_INVALID"); }
   if (!/^[0-9a-fA-F]{64}$/.test(environment.ARTIFACT_MASTER_KEY!)) throw new Error("APPLICATION_QA_ARTIFACT_MASTER_KEY_INVALID");
   const backupDirectory = path.resolve(environment.BACKUP_DIRECTORY!);
   const source = `${path.resolve(workspace)}${path.sep}`;
   if (backupDirectory === path.resolve(workspace) || backupDirectory.startsWith(source)) {
     throw new Error("APPLICATION_QA_BACKUP_DIRECTORY_MUST_BE_OUTSIDE_WORKSPACE");
+  }
+  const sandboxDirectory = environment.SANDBOX_TEMP_DIRECTORY?.trim();
+  if (platform === "darwin" && !sandboxDirectory) throw new Error("APPLICATION_QA_SANDBOX_TEMP_DIRECTORY_REQUIRED_ON_DARWIN");
+  if (sandboxDirectory) {
+    if (!path.isAbsolute(sandboxDirectory) || path.resolve(sandboxDirectory) === path.parse(path.resolve(sandboxDirectory)).root) {
+      throw new Error("APPLICATION_QA_SANDBOX_TEMP_DIRECTORY_INVALID");
+    }
+    let metadata;
+    try { metadata = lstatSync(sandboxDirectory); }
+    catch { throw new Error("APPLICATION_QA_SANDBOX_TEMP_DIRECTORY_MISSING"); }
+    if (!metadata.isDirectory() || metadata.isSymbolicLink() || (metadata.mode & 0o022) !== 0) {
+      throw new Error("APPLICATION_QA_SANDBOX_TEMP_DIRECTORY_UNSAFE");
+    }
   }
 }
 

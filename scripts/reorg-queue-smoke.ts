@@ -35,6 +35,7 @@ async function main() {
     process.env.DATABASE_URL = isolatedDatabaseUrl.toString();
     process.env.REDIS_URL = redisUrl;
     process.env.PROTOCOL_MODE = "production";
+    process.env.AUTH_ORIGIN = "http://127.0.0.1:3000";
     process.env.AUTH_SECRET ||= randomBytes(32).toString("hex");
 
     const store = await import("../src/lib/store-postgres");
@@ -96,7 +97,9 @@ async function main() {
       const leased = await queue.leaseAgentJob(`reorg-canonical-${index}`, "EVALUATOR", owners[index]);
       if (!leased) throw new Error("REORG_SMOKE_CANONICAL_JOB_MISSING");
       await queue.heartbeatAgentJob(leased.job.id, `reorg-canonical-${index}`);
-      await queue.completeAgentJob(leased.job.id, `reorg-canonical-${index}`, { smoke: true });
+      await queue.completeAgentJob(leased.job.id, `reorg-canonical-${index}`, {
+        reportHash: `0x${"a".repeat(64)}`, transactionHash: `0x${String(index).repeat(64)}`, approve: true,
+      });
     }
 
     const mismatched = {
@@ -124,7 +127,7 @@ async function main() {
     };
     await store.storeTaskDefinitionReview({
       id: definitionReviewId, publisher: owners[6],
-      reviewedTaskHash: taskDefinitionReviewBindingHash({ title: "Capability mismatch smoke task", businessOutcome: "Proves a chain reorganization cannot revive a task with a weaker tester capability mask.", category: "Development", completionDefinition: capabilityCompletionDefinition }),
+      reviewedTaskHash: taskDefinitionReviewBindingHash({ title: "Capability mismatch smoke task", businessOutcome: "Proves a chain reorganization cannot revive a task with a weaker tester capability mask.", category: "Development", executionMode: "COLLABORATION", maxExecutors: 1, completionDefinition: capabilityCompletionDefinition }),
       definitionHash: taskDefinitionHash(capabilityCompletionDefinition), recommendation: capabilityCompletionDefinition,
       reviewers: [], assessment: { ready: true, score: 100, blockers: [], warnings: [] }, expiresAt: new Date(Date.now() + 60_000),
     });
@@ -149,7 +152,7 @@ async function main() {
     const expiredReviewId = randomUUID();
     await store.storeTaskDefinitionReview({
       id: expiredReviewId, publisher: owners[6],
-      reviewedTaskHash: taskDefinitionReviewBindingHash({ title: capabilitySpec.title, businessOutcome: capabilitySpec.description, category: capabilitySpec.category, completionDefinition: capabilityCompletionDefinition }),
+      reviewedTaskHash: taskDefinitionReviewBindingHash({ title: capabilitySpec.title, businessOutcome: capabilitySpec.description, category: capabilitySpec.category, executionMode: capabilitySpec.executionMode, maxExecutors: capabilitySpec.maxExecutors, completionDefinition: capabilityCompletionDefinition }),
       definitionHash: taskDefinitionHash(capabilityCompletionDefinition), recommendation: capabilityCompletionDefinition,
       reviewers: [], assessment: { ready: true, score: 100, blockers: [], warnings: [] }, expiresAt: new Date(Date.now() - 1_000),
     });
@@ -162,6 +165,11 @@ async function main() {
       await store.createTaskCommitment({ id: randomUUID(), publisher: owners[6], specHash: `0x${randomBytes(32).toString("hex")}`, spec: { ...capabilitySpec, description: `${capabilitySpec.description} Altered.` } });
     } catch (error) { changedDefinitionRejected = error instanceof Error && error.message === "TASK_DEFINITION_CHANGED_AFTER_REVIEW"; }
     if (!changedDefinitionRejected) throw new Error("REORG_SMOKE_CHANGED_DEFINITION_ACCEPTED");
+    let changedExecutionRejected = false;
+    try {
+      await store.createTaskCommitment({ id: randomUUID(), publisher: owners[6], specHash: `0x${randomBytes(32).toString("hex")}`, spec: { ...capabilitySpec, executionMode: "COMPETITION" } });
+    } catch (error) { changedExecutionRejected = error instanceof Error && error.message === "TASK_DEFINITION_CHANGED_AFTER_REVIEW"; }
+    if (!changedExecutionRejected) throw new Error("REORG_SMOKE_CHANGED_EXECUTION_MODE_ACCEPTED");
     await store.createTaskCommitment({ id: randomUUID(), publisher: owners[6], specHash: capabilitySpecHash, spec: capabilitySpec });
     let reviewReplayRejected = false;
     try { await store.createTaskCommitment({ id: randomUUID(), publisher: owners[6], specHash: `0x${randomBytes(32).toString("hex")}`, spec: capabilitySpec }); }

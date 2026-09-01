@@ -1,5 +1,11 @@
 import type { RewardGrant, Task } from "./types";
 
+export function isPublicTask(task: Task) {
+  return task.state !== "EVALUATING"
+    && task.state !== "REJECTED"
+    && (!task.evaluation || task.evaluation.status === "APPROVED");
+}
+
 export function publicTaskView(task: Task, reward?: RewardGrant | null) {
   return {
     id: task.id,
@@ -20,6 +26,7 @@ export function publicTaskView(task: Task, reward?: RewardGrant | null) {
     teamClosed: task.teamClosed,
     workRound: task.workRound,
     testerId: task.testerId,
+    testerIds: task.testerIds,
     criteria: task.criteria,
     completionDefinition: task.completionDefinition,
     requiredTesterCapabilities: task.requiredTesterCapabilities,
@@ -27,7 +34,9 @@ export function publicTaskView(task: Task, reward?: RewardGrant | null) {
     verification: task.testResult ? {
       passed: task.testResult.passed,
       tester: task.testResult.testerId,
+      testerIds: task.testResult.testerIds,
       reportHash: task.testResult.reportHash,
+      reportHashes: task.testResult.reportHashes,
       testsPassed: task.testResult.testsPassed,
       hiddenTestsPassed: task.testResult.hiddenTestsPassed,
       lineCoverage: task.testResult.lineCoverage,
@@ -57,11 +66,12 @@ export function publicTaskView(task: Task, reward?: RewardGrant | null) {
 
 export function publicCompletedTask(task: Task, reward?: RewardGrant | null) {
   if (task.state !== "COMPLETED") throw new Error("TASK_NOT_COMPLETED");
+  if (!isPublicTask(task)) throw new Error("TASK_NOT_PUBLIC");
   return publicTaskView(task, reward);
 }
 
 export function publicTaskStatistics(tasks: Task[], rewards: RewardGrant[], now = new Date()) {
-  const visible = tasks.filter((task) => task.state !== "EVALUATING" && task.evaluation?.status !== "REJECTED");
+  const visible = tasks.filter(isPublicTask);
   const completed = visible.filter((task) => task.state === "COMPLETED");
   const accepted = visible.filter((task) => task.state === "MAINTENANCE" || task.state === "COMPLETED");
   const settled = tasks.filter((task) => ["COMPLETED", "REJECTED", "DISPUTED"].includes(task.state));

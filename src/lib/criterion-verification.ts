@@ -40,6 +40,23 @@ export function validateCriterionResults(definitionRaw: TaskDefinition, resultsR
   return results;
 }
 
+export function validateCriterionSubset(definitionRaw: TaskDefinition, criterionIds: string[], resultsRaw: unknown, overallPassed: boolean) {
+  const definition = taskDefinitionSchema.parse(definitionRaw);
+  const allowed = new Set(criterionIds);
+  const criteria = definition.acceptanceCriteria.filter((criterion) => allowed.has(criterion.id));
+  if (criteria.length !== criterionIds.length || criteria.some((criterion, index) => criterion.id !== criterionIds[index])) throw new Error("VERIFICATION_SHARD_CRITERIA_INVALID");
+  const results = criterionVerificationResultsSchema.parse(resultsRaw);
+  if (results.length !== criteria.length) throw new Error("CRITERION_RESULT_COUNT_MISMATCH");
+  criteria.forEach((criterion, index) => {
+    const result = results[index];
+    if (result.criterionId !== criterion.id) throw new Error("CRITERION_RESULT_ORDER_MISMATCH");
+    if (result.verificationType !== criterion.verificationType) throw new Error("CRITERION_VERIFICATION_TYPE_MISMATCH");
+    if (overallPassed && criterion.required && !result.passed) throw new Error("REQUIRED_CRITERION_NOT_PASSED");
+  });
+  if (!overallPassed && results.every((result) => result.passed)) throw new Error("OVERALL_FAILURE_WITHOUT_FAILED_CRITERION");
+  return results;
+}
+
 export function validateCriterionEvidenceBindings(resultsRaw: unknown, artifactHash: string) {
   const results = criterionVerificationResultsSchema.parse(resultsRaw);
   for (const result of results) {

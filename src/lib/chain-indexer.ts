@@ -1,11 +1,14 @@
-import { createPublicClient, decodeEventLog, http, type Address, type Hex, type Log } from "viem";
+import { createPublicClient, decodeEventLog, type Address, type Hex, type Log } from "viem";
 import { bscTestnet } from "viem/chains";
-import { chainContractAddresses, runtimeConfig } from "./env";
-import { agentRegistryAbi, rewardVaultAbi, stakeManagerAbi, taskRegistryAbi } from "./contracts";
+import { chainDeploymentAddresses, runtimeConfig } from "./env";
+import { agentRegistryAbi, rewardVaultAbi, stakeManagerAbi, taskRegistryAbi, verificationArbitrationCourtAbi, verificationPanelAbi } from "./contracts";
 import { chainCursor, persistChainBatch, rewindChain, type IndexedChainEvent } from "./store-postgres";
 import { dispatchJobOutbox } from "./agent-queue";
+import { bscRpcTransport } from "./bsc-rpc";
 
-const cursorName = "bsc-testnet-protocol-v1";
+// v2 begins at CHAIN_START_BLOCK so deployments upgraded from the legacy
+// four-address index do not silently miss historical panel/court evidence.
+const cursorName = "bsc-testnet-protocol-v2";
 const reorgRewind = BigInt(20);
 
 function jsonSafe(value: unknown): unknown {
@@ -16,7 +19,7 @@ function jsonSafe(value: unknown): unknown {
 }
 
 function decode(log: Log): Pick<IndexedChainEvent, "eventName" | "eventArgs"> {
-  for (const abi of [stakeManagerAbi, agentRegistryAbi, taskRegistryAbi, rewardVaultAbi]) {
+  for (const abi of [stakeManagerAbi, agentRegistryAbi, taskRegistryAbi, rewardVaultAbi, verificationPanelAbi, verificationArbitrationCourtAbi]) {
     try {
       const decoded = decodeEventLog({ abi, data: log.data, topics: log.topics });
       return { eventName: decoded.eventName, eventArgs: jsonSafe(decoded.args) as Record<string, string | number | boolean | Array<string | number | boolean>> };
@@ -27,9 +30,9 @@ function decode(log: Log): Pick<IndexedChainEvent, "eventName" | "eventArgs"> {
 
 export async function indexConfirmedChainEvents() {
   const config = runtimeConfig();
-  const addresses = chainContractAddresses();
+  const addresses = chainDeploymentAddresses();
   let dispatchedJobs = await dispatchJobOutbox();
-  const client = createPublicClient({ chain: bscTestnet, transport: http(config.BSC_TESTNET_RPC_URL) });
+  const client = createPublicClient({ chain: bscTestnet, transport: bscRpcTransport(config.BSC_TESTNET_RPC_URL) });
   let cursor = await chainCursor(cursorName, BigInt(config.CHAIN_START_BLOCK));
   if (cursor.nextBlock > BigInt(0) && cursor.lastBlockHash) {
     const previous = await client.getBlock({ blockNumber: cursor.nextBlock - BigInt(1) });
@@ -44,7 +47,10 @@ export async function indexConfirmedChainEvents() {
   if (latest < confirmations || cursor.nextBlock > latest - confirmations) return { indexed: 0, dispatchedJobs, nextBlock: cursor.nextBlock.toString() };
   const toBlock = [cursor.nextBlock + BigInt(1_999), latest - confirmations].sort((a, b) => a < b ? -1 : 1)[0];
   const logs = await client.getLogs({
-    address: [addresses.stakeManager, addresses.agentRegistry, addresses.taskRegistry, addresses.rewardVault] as Address[],
+    address: [
+      addresses.stakeManager, addresses.agentRegistry, addresses.taskRegistry, addresses.rewardVault,
+      addresses.verificationPanel, addresses.verificationArbitrationCourt,
+    ] as Address[],
     fromBlock: cursor.nextBlock,
     toBlock,
   });

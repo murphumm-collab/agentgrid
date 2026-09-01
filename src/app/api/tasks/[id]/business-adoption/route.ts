@@ -7,8 +7,8 @@ import {
   businessAdoptionReportSchema,
   verifyBusinessAdoptionSignature,
 } from "@/lib/business-adoption";
-import { readWalletSession, requirePublisherRequest } from "@/lib/auth";
-import { runtimeConfig } from "@/lib/env";
+import { requirePublisherRequest, requireWalletSession } from "@/lib/auth";
+import { isProductionMode, runtimeConfig } from "@/lib/env";
 import { apiError } from "@/lib/http";
 import { readJsonBody } from "@/lib/request-body";
 import { audit, enforceRateLimit, requestId } from "@/lib/security";
@@ -19,6 +19,11 @@ import {
   publisherArtifactReleaseById,
   storeBusinessAdoption,
 } from "@/lib/store-postgres";
+import {
+  businessAdoptionStatusResponseSchema,
+  businessAdoptionSubmissionResponseSchema,
+} from "@/lib/wallet-workflow-schema";
+import { onchainTaskIdPathParameterSchema } from "@/lib/path-parameters";
 
 const submissionSchema = z.object({
   report: businessAdoptionReportSchema,
@@ -29,9 +34,9 @@ const privateHeaders = { "cache-control": "private, no-store", vary: "Cookie" };
 
 export async function GET(_request: NextRequest, context: { params: Promise<{ id: string }> }) {
   try {
-    const { id } = await context.params;
-    const session = await readWalletSession();
-    if (!session) throw new Error("AUTHENTICATION_REQUIRED");
+    if (!isProductionMode()) throw new Error("BUSINESS_ADOPTION_REQUIRES_PRODUCTION_MODE");
+    const id = onchainTaskIdPathParameterSchema.parse((await context.params).id);
+    const session = await requireWalletSession();
     const task = (await protocolSnapshot()).tasks.find((item) => item.id === id);
     assertPublisherArtifactRelease({ task, sessionAddress: session.address });
     const release = await latestPublisherArtifactRelease(id, session.address);
@@ -39,7 +44,7 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ id
     assertPublisherArtifactRelease({ task, sessionAddress: session.address, plaintextSha256: release.artifactHash.slice("sha256:".length) });
     const existing = await businessAdoptionForTask(id, release.artifactHash);
     if (existing) {
-      return NextResponse.json({ adoption: {
+      return NextResponse.json(businessAdoptionStatusResponseSchema.parse({ adoption: {
         publisher: existing.publisher,
         artifactHash: existing.artifactHash,
         workflowType: existing.workflowType,
@@ -47,9 +52,9 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ id
         adoptedAt: existing.adoptedAt,
         reportHash: existing.reportHash,
         attestedAt: existing.createdAt,
-      } }, { headers: privateHeaders });
+      } }), { headers: privateHeaders });
     }
-    return NextResponse.json({
+    return NextResponse.json(businessAdoptionStatusResponseSchema.parse({
       chainId: runtimeConfig().BSC_CHAIN_ID,
       release: {
         id: release.id,
@@ -58,13 +63,14 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ id
         artifactHash: release.artifactHash,
         createdAt: release.createdAt,
       },
-    }, { headers: privateHeaders });
+    }), { headers: privateHeaders });
   } catch (error) { return apiError(error); }
 }
 
 export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   try {
-    const { id } = await context.params;
+    if (!isProductionMode()) throw new Error("BUSINESS_ADOPTION_REQUIRES_PRODUCTION_MODE");
+    const id = onchainTaskIdPathParameterSchema.parse((await context.params).id);
     const publisher = await requirePublisherRequest(request);
     await enforceRateLimit(`business-adoption:${publisher.toLowerCase()}`, 10, 60 * 60);
     const input = submissionSchema.parse(await readJsonBody(request));
@@ -105,6 +111,6 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       requestId: requestId(request),
       payload: { artifactHash: input.report.artifactHash, workflowType: input.report.workflowType, reportHash: verified.reportHash },
     });
-    return NextResponse.json({ ok: true, reportHash: verified.reportHash }, { status: 201, headers: privateHeaders });
+    return NextResponse.json(businessAdoptionSubmissionResponseSchema.parse({ ok: true, reportHash: verified.reportHash }), { status: 201, headers: privateHeaders });
   } catch (error) { return apiError(error); }
 }

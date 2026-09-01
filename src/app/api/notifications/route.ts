@@ -1,15 +1,19 @@
 import { NextResponse } from "next/server";
-import { readWalletSession } from "@/lib/auth";
+import { requireWalletSession } from "@/lib/auth";
 import { isProductionMode } from "@/lib/env";
 import { apiError } from "@/lib/http";
 import { notificationsForRecipient } from "@/lib/store-postgres";
+import { notificationsResponseSchema } from "@/lib/wallet-workflow-schema";
+const privateHeaders = { "cache-control": "private, no-store", vary: "Cookie" };
 
 export async function GET() {
   try {
-    if (!isProductionMode()) return NextResponse.json({ notifications: [] });
-    const session = await readWalletSession();
-    if (!session) throw new Error("AUTHENTICATION_REQUIRED");
+    const session = await requireWalletSession();
+    if (!isProductionMode()) return NextResponse.json(notificationsResponseSchema.parse({ notifications: [], unread: 0 }), { headers: privateHeaders });
     const notifications = await notificationsForRecipient(session.address);
-    return NextResponse.json({ notifications, unread: notifications.filter((item) => !item.readAt).length });
+    return NextResponse.json(notificationsResponseSchema.parse({
+      notifications,
+      unread: notifications.filter((item) => !item.readAt).length,
+    }), { headers: privateHeaders });
   } catch (error) { return apiError(error); }
 }

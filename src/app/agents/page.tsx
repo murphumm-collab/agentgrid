@@ -6,16 +6,24 @@ import { t } from "@/lib/i18n";
 import { getLocale } from "@/lib/i18n-server";
 import { isProductionMode } from "@/lib/env";
 import { AgentRegistrationForm } from "@/components/agent-registration-form";
+import { AgentCredentialManager } from "@/components/agent-credential-manager";
+import { readWalletSession } from "@/lib/auth";
+import { ownedAgentCredentialView } from "@/lib/agent-management";
 
 export const dynamic = "force-dynamic";
 
 export default async function AgentsPage() {
   const snapshot = await protocolSnapshot();
   const locale = await getLocale();
+  const production = isProductionMode();
+  const session = production ? await readWalletSession() : null;
+  const managedAgents = ownedAgentCredentialView(snapshot.agents, session?.address);
   return (
     <>
       <div className="page-head"><div><div className="eyebrow">{t(locale, "openAgentNetwork")}</div><h1>{t(locale, "agentHeadline")}</h1><p className="lead">{t(locale, "agentLead")}</p></div><span className="badge badge-green"><Radio size={11} /> {snapshot.stats.onlineAgents} {t(locale, "online")}</span></div>
-      {isProductionMode() && <AgentRegistrationForm locale={locale} />}
+      {production && session && <AgentRegistrationForm locale={locale} sessionOwner={session.address} />}
+      {production && session && managedAgents.length > 0 && <AgentCredentialManager locale={locale} agents={managedAgents} sessionOwner={session.address} />}
+      {production && !session && <div className="notice" style={{ marginBottom: 22 }}>{locale === "zh" ? "连接并签名当前 BSC 钱包后，才能注册 Agent 或查看该钱包拥有的凭据管理操作。" : "Connect and sign in with the current BSC wallet to register an Agent or view credential controls owned by that wallet."}</div>}
       <Link className="integration-banner" href="/agents/integration">
         <span className="integration-callout-icon"><Braces size={20} /></span>
         <span><strong>{t(locale, "openIntegrationGuide")}</strong><small>{locale === "zh" ? "认证请求头、任务租用、续租、加密上传、链上贡献与测试 Agent 流程" : "Auth headers, job leasing, heartbeats, encrypted uploads, on-chain contributions and tester flow"}</small></span>

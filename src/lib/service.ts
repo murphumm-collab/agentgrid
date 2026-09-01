@@ -1,26 +1,34 @@
 import { randomBytes, randomUUID, scrypt as scryptCallback, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
 import { z } from "zod";
-import { createPublicClient, defineChain, formatEther, getAddress, http, keccak256, stringToHex } from "viem";
+import { createPublicClient, defineChain, formatEther, getAddress, keccak256, stringToHex, type Hex } from "viem";
 import {
   addDays,
   collaborationKey,
   consumeTaskCredit,
   issueTaskCredit,
   protocolHash,
+  REWARD_SPLIT_BPS,
   releaseTaskSlot,
   selectRandomTester,
   validateAndCreateReward,
   validateSoftwareEvidence,
 } from "./protocol";
 import { readDatabase, updateDatabase } from "./store";
+import { bscRpcTransport } from "./bsc-rpc";
 import type { Agent, AgentRole, AgentScope, SoftwareEvidence, Task } from "./types";
 import { chainContractAddresses, isProductionMode, runtimeConfig } from "./env";
 import { latestBusinessAdoptions, latestSignedTaskEvaluations, latestSignedTestEvidence, readChainProjectionRows } from "./store-postgres";
-import { projectChainBusiness } from "./chain-projection";
+import { projectAgentStatuses, projectChainBusiness } from "./chain-projection";
 import { agentRegistryAbi, stakeManagerAbi } from "./contracts";
 import { AGENT_ROLES, AGENT_ROLE_CAPABILITY_MASK, AGENT_ROLE_DEFAULT_SCOPES, AGENT_SCOPES, roleAllowsScope } from "./agent-roles";
-import { assessTaskDefinition, taskDefinitionSchema } from "./task-definition";
+import { assessTaskDefinition, collaborationPlanBlockers, taskDefinitionSchema, verificationPlanBlockers } from "./task-definition";
+import { walletAddressSchema } from "./auth-schema";
+import { verifyStoredTaskEvaluation } from "./task-evaluation";
+import { storedEvidenceHash, verifyStoredTestEvidence } from "./signed-evidence";
+import { parseAgentAuthentication } from "./agent-authentication";
+import { aggregateExecutorWeights, panelAggregateEvidenceHash } from "./verification-panel";
+import type { CriterionVerificationResult } from "./criterion-verification";
 
 const scrypt = promisify(scryptCallback);
 const bscTestnet = defineChain({
@@ -38,6 +46,7 @@ export const createTaskSchema = z.object({
   title: z.string().min(8).max(120),
   description: z.string().min(30).max(4_000),
   category: z.string().min(2).max(40),
+  executionMode: z.enum(["COLLABORATION", "COMPETITION"]).default("COLLABORATION"),
   maxExecutors: z.number().int().min(1).max(32),
   declaredDurationHours: z.number().min(0.25).max(720),
   criteria: z.array(z.string().min(8).max(240)).min(1).max(12),
@@ -47,18 +56,22 @@ export const createTaskSchema = z.object({
     context.addIssue({ code: "custom", path: ["criteria"], message: "CRITERIA_DEFINITION_MISMATCH" });
   }
   if (!assessTaskDefinition(spec.completionDefinition).ready) context.addIssue({ code: "custom", path: ["completionDefinition"], message: "COMPLETION_DEFINITION_NOT_READY" });
+  for (const blocker of collaborationPlanBlockers(spec.completionDefinition, spec.executionMode, spec.maxExecutors)) context.addIssue({ code: "custom", path: ["completionDefinition", "collaborationPlan"], message: blocker });
+  for (const blocker of verificationPlanBlockers(spec.completionDefinition)) context.addIssue({ code: "custom", path: ["completionDefinition", "verificationPlan"], message: blocker });
 });
 
 export const registerAgentSchema = z.object({
   name: z.string().min(3).max(80),
-  owner: actorSchema,
+  owner: walletAddressSchema,
   role: z.enum(AGENT_ROLES),
   capabilities: z.array(z.string().min(2).max(40)).min(1).max(20),
   endpoint: z.string().url(),
   stake: z.number().min(0).default(0),
-  stakePositionId: z.string().regex(/^\d+$/).optional(),
-  scopes: z.array(z.enum(AGENT_SCOPES)).optional(),
-});
+  stakePositionId: z.string().regex(/^\d+$/),
+  scopes: z.array(z.enum(AGENT_SCOPES)).max(AGENT_SCOPES.length)
+    .refine((scopes) => new Set(scopes).size === scopes.length, "AGENT_SCOPES_DUPLICATE")
+    .optional(),
+}).strict();
 
 export const softwareEvidenceSchema = z.object({
   testsPassed: z.boolean(),
@@ -68,7 +81,7 @@ export const softwareEvidenceSchema = z.object({
   criticalBranchCoverage: z.number().min(0).max(1),
   artifactHash: z.string().startsWith("sha256:"),
   logUrl: z.string().url().optional(),
-});
+}).strict();
 
 export async function protocolSnapshot() {
   const database = await readDatabase();
@@ -78,12 +91,19 @@ export async function protocolSnapshot() {
     database.positions = projection.positions;
     database.tasks = projection.tasks;
     database.rewards = projection.rewards;
+    const agentStatuses = projectAgentStatuses(rows.events);
+    for (const agent of database.agents) {
+      const active = agentStatuses.get(agent.owner.toLowerCase());
+      if (active !== undefined) agent.online = Boolean(agent.online && active);
+    }
     const submittedEvaluations = new Map(rows.events.filter((event) => event.eventName === "TaskEvaluationSubmitted").map((event) => [
       `${String(event.eventArgs?.taskId)}:${String(event.eventArgs?.evaluator).toLowerCase()}`,
       String(event.eventArgs?.reportHash).toLowerCase(),
     ]));
+    const signingTaskRegistry = chainContractAddresses().taskRegistry;
     const finalizedCategories = new Map(rows.events.filter((event) => event.eventName === "TaskEvaluationFinalized" && event.eventArgs?.approved).map((event) => [String(event.eventArgs?.taskId), String(event.eventArgs?.categoryHash).toLowerCase()]));
     for (const evaluation of await latestSignedTaskEvaluations()) {
+      if (!await verifyStoredTaskEvaluation({ ...evaluation, expectedTaskRegistry: signingTaskRegistry })) continue;
       if (submittedEvaluations.get(`${evaluation.taskId}:${evaluation.evaluatorAddress.toLowerCase()}`) !== evaluation.reportHash.toLowerCase()) continue;
       const category = String(evaluation.report.category ?? "");
       if (!category || keccak256(stringToHex(category)).toLowerCase() !== finalizedCategories.get(evaluation.taskId)) continue;
@@ -91,21 +111,48 @@ export async function protocolSnapshot() {
       if (task) { task.category = category; if (task.evaluation) task.evaluation.category = category; }
     }
     const submittedEvidence = new Map(rows.events.filter((event) => event.eventName === "TestSubmitted" || event.eventName === "CompetitionResultSubmitted").map((event) => [String(event.eventArgs?.taskId), String(event.eventArgs?.evidenceHash).toLowerCase()]));
-    for (const evidence of await latestSignedTestEvidence()) {
-      const evidenceHash = keccak256(stringToHex(JSON.stringify({ reportHash: evidence.reportHash, signer: evidence.testerAddress.toLowerCase(), signature: evidence.signature.toLowerCase() })));
-      if (submittedEvidence.get(evidence.taskId) !== evidenceHash.toLowerCase()) continue;
-      const task = database.tasks.find((item) => item.id === evidence.taskId);
-      const report = evidence.report as Record<string, unknown>;
-      if (!task) continue;
+    const evidenceGroups = Map.groupBy(await latestSignedTestEvidence(), (evidence) => evidence.taskId);
+    for (const [taskId, evidenceRows] of evidenceGroups) {
+      const task = database.tasks.find((item) => item.id === taskId);
+      const currentEvidence = evidenceRows.filter((evidence) => evidence.workRound === (task?.workRound ?? 1));
+      if (!task || task.testerIds?.length !== 3 || currentEvidence.length !== 3 || !task.completionDefinition?.verificationPlan) continue;
+      const ordered = task.testerIds.map((tester) => currentEvidence.find((evidence) => evidence.testerAddress.toLowerCase() === tester.toLowerCase())).filter(Boolean) as typeof evidenceRows;
+      if (ordered.length !== 3 || !(await Promise.all(ordered.map((evidence, shard) => verifyStoredTestEvidence({
+        ...evidence, expectedTaskRegistry: signingTaskRegistry, expectedWorkRound: task.workRound ?? 1,
+        expectedVerificationShard: shard, expectedExecutionMode: task.executionMode, expectedExecutorOrder: task.executorIds,
+      })))).every(Boolean)) continue;
+      const criterionVotes = new Map<string, CriterionVerificationResult[]>();
+      let authorized = true;
+      for (let shard = 0; shard < ordered.length; shard += 1) {
+        const evidence = ordered[shard];
+        const results = (Array.isArray(evidence.report.criterionResults) ? evidence.report.criterionResults : []) as CriterionVerificationResult[];
+        const expectedIds = task.completionDefinition.verificationPlan.shards[shard].criterionIds;
+        if (evidence.verificationShard !== shard || results.length !== expectedIds.length || results.some((result, index) => result.criterionId !== expectedIds[index])) { authorized = false; break; }
+        for (const result of results) criterionVotes.set(result.criterionId, [...(criterionVotes.get(result.criterionId) ?? []), result]);
+      }
+      if (!authorized) continue;
+      let passMask = 0;
+      const criterionResults = task.completionDefinition?.acceptanceCriteria.map((criterion, index) => {
+        const votes = criterionVotes.get(criterion.id) ?? [];
+        const passed = votes.length === 2 && votes.every((vote) => vote.passed);
+        if (passed) passMask |= 1 << index;
+        return votes[0] ? { ...votes[0], passed } : undefined;
+      }).filter(Boolean) as NonNullable<typeof task.testResult>["criterionResults"] | undefined;
+      const evidenceHashes = ordered.map((evidence) => storedEvidenceHash(evidence)) as [Hex, Hex, Hex];
+      const aggregateHash = panelAggregateEvidenceHash({ taskId, workRound: task.workRound ?? 1, evidenceHashes, testers: task.testerIds as [Hex, Hex, Hex], passMask });
+      if (submittedEvidence.get(taskId) !== aggregateHash.toLowerCase()) continue;
+      const commitOrders = new Map(rows.events.filter((event) => event.eventName === "ShardCommitted" && String(event.eventArgs?.taskId) === taskId && Number(event.eventArgs?.workRound) === (task.workRound ?? 1)).map((event) => [String(event.eventArgs?.tester).toLowerCase(), Number(event.eventArgs?.commitOrder)]));
+      if (commitOrders.size !== 3 || [...commitOrders.values()].some((order) => !Number.isInteger(order) || order < 0 || order > 2) || new Set(commitOrders.values()).size !== 3) continue;
+      const reports = ordered.map((evidence) => evidence.report as Record<string, unknown>);
+      const passed = Boolean(criterionResults?.length) && criterionResults!.every((result) => result.passed);
+      const executorWeightsBps = passed ? aggregateExecutorWeights(ordered.map((evidence, index) => ({ commitOrder: commitOrders.get(evidence.testerAddress.toLowerCase())!, executorWeightsBps: (reports[index].executorWeightsBps as number[]).map(Number) }))) : [];
       task.testResult = {
-        testerId: evidence.testerAddress, passed: Boolean(report.passed), failures: report.passed ? [] : ["Independent verification failed"],
-        testsPassed: Boolean(report.testsPassed), hiddenTestsPassed: Boolean(report.hiddenTestsPassed), artifactHash: evidence.artifactHash,
-        lineCoverage: Number(report.lineCoverage), branchCoverage: Number(report.branchCoverage), criticalBranchCoverage: Number(report.criticalBranchCoverage),
-        submittedAt: evidence.createdAt, selectionProof: task.testerSelectionProof ?? "", reportHash: evidence.reportHash,
-        executorWeightsBps: Array.isArray(report.executorWeightsBps) ? report.executorWeightsBps.map(Number) : undefined,
-        contributionWork: Array.isArray(report.contributionWork) ? report.contributionWork as NonNullable<typeof task.testResult>["contributionWork"] : undefined,
-        competition: report.competition && typeof report.competition === "object" ? report.competition as NonNullable<typeof task.testResult>["competition"] : undefined,
-        criterionResults: Array.isArray(report.criterionResults) ? report.criterionResults as NonNullable<typeof task.testResult>["criterionResults"] : undefined,
+        testerId: task.testerIds[0], testerIds: task.testerIds, reportHashes: ordered.map((evidence) => evidence.reportHash), passed,
+        failures: passed ? [] : ["Cross-validation panel rejected at least one required criterion"],
+        testsPassed: reports.every((report) => Boolean(report.testsPassed)), hiddenTestsPassed: reports.every((report) => Boolean(report.hiddenTestsPassed)), artifactHash: ordered[0].artifactHash,
+        lineCoverage: Math.min(...reports.map((report) => Number(report.lineCoverage))), branchCoverage: Math.min(...reports.map((report) => Number(report.branchCoverage))), criticalBranchCoverage: Math.min(...reports.map((report) => Number(report.criticalBranchCoverage))),
+        submittedAt: ordered.map((evidence) => evidence.createdAt).sort().at(-1)!, selectionProof: task.testerSelectionProof ?? "", reportHash: aggregateHash,
+        executorWeightsBps, criterionResults,
       };
     }
     for (const adoption of await latestBusinessAdoptions()) {
@@ -132,7 +179,7 @@ export async function protocolSnapshot() {
     if (isProductionMode()) {
       const position = database.positions.find((item) => item.id === agent.stakePositionId && item.owner.toLowerCase() === agent.owner.toLowerCase());
       publicAgent.stake = position?.amount ?? 0;
-      publicAgent.online = Boolean(agent.online && position && position.amount >= database.config.minAgentStake);
+      publicAgent.online = Boolean(agent.online && !agent.revokedAt && position && position.amount >= database.config.minAgentStake);
     }
     delete publicAgent.apiKey;
     delete publicAgent.apiKeyHash;
@@ -226,7 +273,7 @@ export async function createTask(input: z.infer<typeof createTaskSchema>) {
       title: parsed.title,
       description: parsed.description,
       category: parsed.category,
-      executionMode: "COLLABORATION",
+      executionMode: parsed.executionMode,
       publisher: parsed.publisher,
       stakePositionId: parsed.stakePositionId,
       state: "OPEN",
@@ -254,43 +301,121 @@ export async function createTask(input: z.infer<typeof createTaskSchema>) {
 export async function registerAgent(input: z.infer<typeof registerAgentSchema>) {
   const parsed = registerAgentSchema.parse(input);
   if (parsed.scopes?.some((scope) => !roleAllowsScope(parsed.role, scope))) throw new Error("AGENT_SCOPE_ROLE_MISMATCH");
-  if (isProductionMode() && !parsed.stakePositionId) throw new Error("AGENT_STAKE_POSITION_REQUIRED");
   if (isProductionMode()) {
-    const amount = await productionAgentStake(parsed.owner, parsed.stakePositionId!, parsed.role);
+    const amount = await productionAgentStake(parsed.owner, parsed.stakePositionId, parsed.role);
     const database = await readDatabase();
     if (amount < database.config.minAgentStake) throw new Error("INSUFFICIENT_AGENT_STAKE");
-    if (database.agents.some((agent) => agent.stakePositionId === parsed.stakePositionId)) throw new Error("AGENT_STAKE_POSITION_ALREADY_BOUND");
     parsed.stake = amount;
   }
   const apiKey = `amp_${randomBytes(32).toString("base64url")}`;
   const salt = randomBytes(16).toString("hex");
   const hash = (await scrypt(apiKey, salt, 32) as Buffer).toString("hex");
   return updateDatabase((database) => {
-    if (parsed.stakePositionId && database.agents.some((agent) => agent.stakePositionId === parsed.stakePositionId)) throw new Error("AGENT_STAKE_POSITION_ALREADY_BOUND");
+    const scopes = parsed.scopes ?? [...AGENT_ROLE_DEFAULT_SCOPES[parsed.role]];
+    const existing = parsed.stakePositionId
+      ? database.agents.find((agent) => agent.stakePositionId === parsed.stakePositionId)
+      : undefined;
+    if (existing) {
+      if (existing.owner.toLowerCase() !== parsed.owner.toLowerCase()) throw new Error("AGENT_STAKE_POSITION_ALREADY_BOUND");
+      if (existing.revokedAt || !existing.online) throw new Error("AGENT_REGISTRATION_RECOVERY_INACTIVE");
+      const existingScopes = existing.scopes ?? [...AGENT_ROLE_DEFAULT_SCOPES[existing.role]];
+      if (existing.name !== parsed.name
+        || existing.role !== parsed.role
+        || existing.endpoint !== parsed.endpoint
+        || JSON.stringify(existing.capabilities) !== JSON.stringify(parsed.capabilities)
+        || JSON.stringify(existingScopes) !== JSON.stringify(scopes)) {
+        throw new Error("AGENT_REGISTRATION_RECOVERY_MISMATCH");
+      }
+      existing.scopes = existingScopes;
+      existing.apiKey = isProductionMode() ? undefined : apiKey;
+      existing.apiKeyHash = hash;
+      existing.apiKeySalt = salt;
+      if (isProductionMode()) existing.stake = parsed.stake;
+      return { agent: credentialSafeAgent(existing), apiKey, recovered: true as const };
+    }
     const agent: Agent = {
       id: `agent-${randomUUID()}`,
       ...parsed,
       apiKey: isProductionMode() ? undefined : apiKey,
       apiKeyHash: hash,
       apiKeySalt: salt,
-      scopes: parsed.scopes ?? [...AGENT_ROLE_DEFAULT_SCOPES[parsed.role]],
+      scopes,
       revokedAt: null,
       reputation: 50,
       completedTasks: 0,
       online: true,
     };
     database.agents.push(agent);
-    return { agent: { ...agent, apiKey: undefined, apiKeyHash: undefined, apiKeySalt: undefined }, apiKey };
+    return { agent: credentialSafeAgent(agent), apiKey, recovered: false as const };
+  });
+}
+
+function credentialSafeAgent(agent: Agent): Omit<Agent, "apiKey" | "apiKeyHash" | "apiKeySalt"> {
+  const safe: Partial<Agent> = { ...agent };
+  delete safe.apiKey;
+  delete safe.apiKeyHash;
+  delete safe.apiKeySalt;
+  return safe as Omit<Agent, "apiKey" | "apiKeyHash" | "apiKeySalt">;
+}
+
+export async function assertAgentCredentialChainStatus(agentId: string, owner: string, expectedActive: boolean) {
+  const database = await readDatabase();
+  const agent = database.agents.find((item) => item.id === agentId);
+  if (!agent) throw new Error("AGENT_NOT_FOUND");
+  if (agent.owner.toLowerCase() !== owner.toLowerCase()) throw new Error("AGENT_CREDENTIAL_OWNER_DENIED");
+  if (!isProductionMode()) return;
+  if (!agent.stakePositionId) throw new Error("AGENT_STAKE_POSITION_REQUIRED");
+  const config = runtimeConfig();
+  const addresses = chainContractAddresses();
+  const client = createPublicClient({ chain: bscTestnet, transport: bscRpcTransport(config.BSC_TESTNET_RPC_URL) });
+  const address = getAddress(agent.owner);
+  const [registeredPosition, active] = await Promise.all([
+    client.readContract({ address: addresses.agentRegistry, abi: agentRegistryAbi, functionName: "agentPosition", args: [address] }),
+    client.readContract({ address: addresses.agentRegistry, abi: agentRegistryAbi, functionName: "agentActive", args: [address] }),
+  ]);
+  if (registeredPosition !== BigInt(agent.stakePositionId)) throw new Error("AGENT_ONCHAIN_REGISTRATION_INVALID");
+  if (active !== expectedActive) throw new Error("AGENT_ONCHAIN_STATUS_MISMATCH");
+}
+
+export async function rotateAgentCredential(agentId: string, owner: string) {
+  const apiKey = `amp_${randomBytes(32).toString("base64url")}`;
+  const salt = randomBytes(16).toString("hex");
+  const hash = (await scrypt(apiKey, salt, 32) as Buffer).toString("hex");
+  return updateDatabase((database) => {
+    const agent = database.agents.find((item) => item.id === agentId);
+    if (!agent) throw new Error("AGENT_NOT_FOUND");
+    if (agent.owner.toLowerCase() !== owner.toLowerCase()) throw new Error("AGENT_CREDENTIAL_OWNER_DENIED");
+    agent.apiKey = undefined;
+    agent.apiKeyHash = hash;
+    agent.apiKeySalt = salt;
+    agent.revokedAt = null;
+    agent.online = true;
+    return { agent: credentialSafeAgent(agent), apiKey };
+  });
+}
+
+export async function revokeAgentCredential(agentId: string, owner: string) {
+  return updateDatabase((database) => {
+    const agent = database.agents.find((item) => item.id === agentId);
+    if (!agent) throw new Error("AGENT_NOT_FOUND");
+    if (agent.owner.toLowerCase() !== owner.toLowerCase()) throw new Error("AGENT_CREDENTIAL_OWNER_DENIED");
+    agent.revokedAt ??= new Date().toISOString();
+    agent.apiKey = undefined;
+    agent.apiKeyHash = undefined;
+    agent.apiKeySalt = undefined;
+    agent.online = false;
+    return { agent: credentialSafeAgent(agent), revokedAt: agent.revokedAt };
   });
 }
 
 export async function authenticateAgent(agentId: string, apiKey: string | null, requiredScope?: AgentScope) {
+  const credentials = parseAgentAuthentication(agentId, apiKey);
   const database = await readDatabase();
-  const agent = database.agents.find((item) => item.id === agentId);
-  if (!agent || !apiKey || agent.revokedAt) throw new Error("AGENT_AUTHENTICATION_FAILED");
-  let authenticated = agent.apiKey === apiKey;
+  const agent = database.agents.find((item) => item.id === credentials.agentId);
+  if (!agent || agent.revokedAt) throw new Error("AGENT_AUTHENTICATION_FAILED");
+  let authenticated = agent.apiKey === credentials.apiKey;
   if (!authenticated && agent.apiKeyHash && agent.apiKeySalt) {
-    const candidate = await scrypt(apiKey, agent.apiKeySalt, 32) as Buffer;
+    const candidate = await scrypt(credentials.apiKey, agent.apiKeySalt, 32) as Buffer;
     const expected = Buffer.from(agent.apiKeyHash, "hex");
     authenticated = candidate.length === expected.length && timingSafeEqual(candidate, expected);
   }
@@ -308,7 +433,7 @@ export async function authenticateAgent(agentId: string, apiKey: string | null, 
 async function productionAgentStake(owner: string, positionId: string, role?: AgentRole) {
   const config = runtimeConfig();
   const addresses = chainContractAddresses();
-  const client = createPublicClient({ chain: bscTestnet, transport: http(config.BSC_TESTNET_RPC_URL) });
+  const client = createPublicClient({ chain: bscTestnet, transport: bscRpcTransport(config.BSC_TESTNET_RPC_URL) });
   const address = getAddress(owner);
   const [registeredPosition, eligible, capabilities, amount] = await Promise.all([
     client.readContract({ address: addresses.agentRegistry, abi: agentRegistryAbi, functionName: "agentPosition", args: [address] }),
@@ -365,6 +490,8 @@ export async function submitTest(taskId: string, testerId: string, evidenceInput
     if (task.testerId !== testerId) throw new Error("TESTER_NOT_ASSIGNED");
     if (!task.submission || task.submission.artifactHash !== evidence.artifactHash) throw new Error("ARTIFACT_MISMATCH");
     const decision = validateSoftwareEvidence(evidence);
+    const equalWeight = Math.floor(10_000 / task.executorIds.length);
+    const executorWeightsBps = task.executorIds.map((_, index) => equalWeight + (index === 0 ? 10_000 - equalWeight * task.executorIds.length : 0));
     task.testResult = {
       ...evidence,
       testerId,
@@ -372,6 +499,10 @@ export async function submitTest(taskId: string, testerId: string, evidenceInput
       failures: decision.failures,
       submittedAt: new Date().toISOString(),
       selectionProof,
+      // Demo verification has no contribution artifact protocol, so its explicit
+      // deterministic policy is equal weight. Production accepts only the
+      // Tester-signed 10,000 bps vector bound to the on-chain evidence hash.
+      executorWeightsBps,
     };
     task.state = decision.passed ? "USER_REVIEW" : "SUBMITTED";
     return task;
@@ -458,14 +589,24 @@ export async function claimReward(taskId: string, trancheId: string) {
     const tester = database.agents.find((agent) => agent.id === task.testerId);
     if (!executorAgents.length || !tester) throw new Error("REWARD_PARTICIPANTS_MISSING");
     const now = new Date().toISOString();
-    const executorTotal = Math.floor(tranche.amount * 0.65 * 100) / 100;
-    const perExecutor = Math.floor((executorTotal / executorAgents.length) * 100) / 100;
-    const testerAmount = Math.floor(tranche.amount * 0.15 * 100) / 100;
-    for (const agent of executorAgents) {
-      database.balances[agent.owner] = (database.balances[agent.owner] ?? 0) + perExecutor;
+    const executorTotal = Math.floor(tranche.amount * REWARD_SPLIT_BPS.executors / 10_000 * 100) / 100;
+    const executorWeightsBps = task.testResult?.executorWeightsBps;
+    if (!executorWeightsBps || executorWeightsBps.length !== executorAgents.length
+      || executorWeightsBps.some((weight) => !Number.isInteger(weight) || weight < 0 || weight > 10_000)
+      || executorWeightsBps.reduce((sum, weight) => sum + weight, 0) !== 10_000) {
+      throw new Error("REWARD_EXECUTOR_WEIGHTS_INVALID");
+    }
+    const testerAmount = Math.floor(tranche.amount * REWARD_SPLIT_BPS.tester / 10_000 * 100) / 100;
+    const executorPayments = executorAgents.map((agent, index) => ({
+      agent,
+      amount: Math.floor(executorTotal * executorWeightsBps[index] / 10_000 * 100) / 100,
+    }));
+    const executorsPaid = executorPayments.reduce((sum, payment) => sum + payment.amount, 0);
+    for (const { agent, amount } of executorPayments) {
+      database.balances[agent.owner] = (database.balances[agent.owner] ?? 0) + amount;
       database.ledger.push({
-        id: randomUUID(), type: "REWARD", owner: agent.owner, amount: perExecutor, taskId,
-        proof: protocolHash(grant.issuanceProof, tranche.id, agent.id, perExecutor), createdAt: now,
+        id: randomUUID(), type: "REWARD", owner: agent.owner, amount, taskId,
+        proof: protocolHash(grant.issuanceProof, tranche.id, agent.id, amount), createdAt: now,
       });
     }
     database.balances[tester.owner] = (database.balances[tester.owner] ?? 0) + testerAmount;
@@ -474,6 +615,12 @@ export async function claimReward(taskId: string, trancheId: string) {
       proof: protocolHash(grant.issuanceProof, tranche.id, tester.id, testerAmount), createdAt: now,
     });
     tranche.status = "CLAIMED";
-    return { tranche, executorTotal, testerAmount, protocolReserve: tranche.amount - executorTotal - testerAmount };
+    return {
+      tranche,
+      executorTotal,
+      executorPayments: executorPayments.map(({ agent, amount }, index) => ({ agentId: agent.id, weightBps: executorWeightsBps[index], amount })),
+      testerAmount,
+      protocolReserve: Math.round((tranche.amount - executorsPaid - testerAmount) * 100) / 100,
+    };
   });
 }

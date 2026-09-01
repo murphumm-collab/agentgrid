@@ -8,6 +8,7 @@ import { requiredTesterCapabilityMask } from "./agent-roles";
 
 let pool: Pool | undefined;
 let migrated = false;
+const transientSecurityRetentionHours = 24;
 
 function databasePool() {
   const connectionString = runtimeConfig().DATABASE_URL;
@@ -165,12 +166,16 @@ export async function migratePostgres(initialState?: ProtocolDatabase) {
         task_id TEXT NOT NULL,
         tester_agent_id TEXT NOT NULL,
         tester_address TEXT NOT NULL,
+        work_round INTEGER NOT NULL CHECK(work_round > 0),
+        verification_shard INTEGER NOT NULL CHECK(verification_shard BETWEEN 0 AND 2),
         artifact_hash TEXT NOT NULL,
         report_hash TEXT NOT NULL,
         report JSONB NOT NULL,
         signature TEXT NOT NULL,
+        signing_version TEXT NOT NULL CHECK(signing_version='AgentGrid Test Evidence V3'),
+        signing_message TEXT NOT NULL CHECK(signing_message LIKE 'AgentGrid Test Evidence V3%'),
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        UNIQUE(task_id, report_hash)
+        UNIQUE(task_id, work_round, tester_address)
       );
       CREATE TABLE IF NOT EXISTS signed_task_evaluations (
         id UUID PRIMARY KEY,
@@ -181,6 +186,8 @@ export async function migratePostgres(initialState?: ProtocolDatabase) {
         report_hash TEXT NOT NULL,
         report JSONB NOT NULL,
         signature TEXT NOT NULL,
+        signing_version TEXT NOT NULL CHECK(signing_version='AgentGrid Task Evaluation V2'),
+        signing_message TEXT NOT NULL CHECK(signing_message LIKE 'AgentGrid Task Evaluation V2%'),
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         UNIQUE(task_id,evaluator_address)
       );
@@ -222,6 +229,24 @@ export async function migratePostgres(initialState?: ProtocolDatabase) {
       ALTER TABLE job_outbox DROP CONSTRAINT IF EXISTS job_outbox_role_check;
       ALTER TABLE job_outbox ADD CONSTRAINT job_outbox_role_check CHECK(role IN ('EXECUTOR','TESTER','EVALUATOR','COORDINATOR'));
       ALTER TABLE signed_task_evaluations DROP CONSTRAINT IF EXISTS signed_task_evaluations_task_id_report_hash_key;
+      ALTER TABLE signed_test_evidence ADD COLUMN IF NOT EXISTS signing_version TEXT;
+      ALTER TABLE signed_test_evidence ADD COLUMN IF NOT EXISTS signing_message TEXT;
+      ALTER TABLE signed_test_evidence ADD COLUMN IF NOT EXISTS work_round INTEGER;
+      ALTER TABLE signed_test_evidence ADD COLUMN IF NOT EXISTS verification_shard INTEGER;
+      ALTER TABLE signed_task_evaluations ADD COLUMN IF NOT EXISTS signing_version TEXT;
+      ALTER TABLE signed_task_evaluations ADD COLUMN IF NOT EXISTS signing_message TEXT;
+      ALTER TABLE signed_test_evidence DROP CONSTRAINT IF EXISTS signed_test_evidence_signing_preimage_check;
+      ALTER TABLE signed_test_evidence ADD CONSTRAINT signed_test_evidence_signing_preimage_check CHECK(
+        (signing_version IS NULL AND signing_message IS NULL) OR
+        (signing_version IN ('AgentGrid Test Evidence V2','AgentGrid Test Evidence V3') AND signing_message LIKE signing_version || '%')
+      );
+      ALTER TABLE signed_test_evidence DROP CONSTRAINT IF EXISTS signed_test_evidence_task_id_report_hash_key;
+      CREATE UNIQUE INDEX IF NOT EXISTS signed_test_evidence_panel_member_idx ON signed_test_evidence(task_id,work_round,LOWER(tester_address)) WHERE work_round IS NOT NULL;
+      ALTER TABLE signed_task_evaluations DROP CONSTRAINT IF EXISTS signed_task_evaluations_signing_preimage_check;
+      ALTER TABLE signed_task_evaluations ADD CONSTRAINT signed_task_evaluations_signing_preimage_check CHECK(
+        (signing_version IS NULL AND signing_message IS NULL) OR
+        (signing_version='AgentGrid Task Evaluation V2' AND signing_message LIKE 'AgentGrid Task Evaluation V2%')
+      );
       ALTER TABLE artifact_manifests ADD COLUMN IF NOT EXISTS plaintext_sha256 TEXT;
       ALTER TABLE artifact_manifests ADD COLUMN IF NOT EXISTS encryption_algorithm TEXT;
       ALTER TABLE artifact_manifests ADD COLUMN IF NOT EXISTS content_iv TEXT;
@@ -233,6 +258,7 @@ export async function migratePostgres(initialState?: ProtocolDatabase) {
       CREATE INDEX IF NOT EXISTS task_definition_reviews_expiry_idx ON task_definition_reviews(expires_at) WHERE consumed_at IS NULL;
       CREATE INDEX IF NOT EXISTS audit_events_created_at_idx ON audit_events(created_at DESC);
       CREATE INDEX IF NOT EXISTS auth_nonces_expires_at_idx ON auth_nonces(expires_at);
+      CREATE INDEX IF NOT EXISTS rate_limits_window_start_idx ON rate_limits(window_start);
       CREATE INDEX IF NOT EXISTS chain_events_block_idx ON chain_events(chain_id, block_number);
       CREATE INDEX IF NOT EXISTS notifications_recipient_idx ON notifications(recipient, read_at, created_at DESC);
       CREATE INDEX IF NOT EXISTS task_commitments_publisher_idx ON task_commitments(publisher, created_at DESC);
@@ -296,7 +322,7 @@ export async function createTaskCommitment(input: TaskCommitmentInput) {
   await migratePostgres();
   const rawSpec = input.spec as {
     definitionReviewId?: unknown; hiddenTestManifestId?: unknown; hiddenTestPlaintextSha256?: unknown;
-    title?: unknown; description?: unknown; category?: unknown; completionDefinition?: unknown;
+    title?: unknown; description?: unknown; category?: unknown; executionMode?: unknown; maxExecutors?: unknown; completionDefinition?: unknown;
   };
   const definitionReviewId = String(rawSpec.definitionReviewId ?? "");
   const hiddenTestId = String(rawSpec.hiddenTestManifestId ?? "");
@@ -305,6 +331,8 @@ export async function createTaskCommitment(input: TaskCommitmentInput) {
     title: rawSpec.title,
     businessOutcome: rawSpec.description,
     category: rawSpec.category,
+    executionMode: rawSpec.executionMode,
+    maxExecutors: rawSpec.maxExecutors,
     completionDefinition: rawSpec.completionDefinition,
   });
   const client = await databasePool().connect();
@@ -458,7 +486,7 @@ export interface IndexedChainEvent {
 
 function chainJobPayload(event: IndexedChainEvent, extra: Record<string, unknown> = {}) {
   return {
-    ...event.eventArgs,
+    taskId: String(event.eventArgs?.taskId ?? ""),
     ...extra,
     chainId: event.chainId,
     transactionHash: event.transactionHash,
@@ -576,7 +604,11 @@ export async function persistChainBatch(name: string, fromBlock: bigint, nextBlo
           const id = `${event.chainId}:${event.transactionHash}:${event.logIndex}:REPAIR_MAINTENANCE:${executor.toLowerCase()}`;
           await client.query(
             `INSERT INTO job_outbox(id,role,kind,payload) VALUES($1,'EXECUTOR','REPAIR_MAINTENANCE',$2::jsonb) ON CONFLICT(id) DO NOTHING`,
-            [id, JSON.stringify(chainJobPayload(event, { executor }))],
+            [id, JSON.stringify(chainJobPayload(event, {
+              executor,
+              checkpoint: Number(event.eventArgs?.checkpoint),
+              evidenceHash: String(event.eventArgs?.evidenceHash ?? ""),
+            }))],
           );
         }
       }
@@ -605,6 +637,17 @@ export async function persistChainBatch(name: string, fromBlock: bigint, nextBlo
           );
         }
       }
+      if (event.eventName === "TesterPanelAssigned") {
+        for (const key of ["tester0", "tester1", "tester2"] as const) {
+          const tester = event.eventArgs?.[key];
+          const shard = Number(key.slice(-1));
+          const id = `${event.chainId}:${event.transactionHash}:${event.logIndex}:TEST_TASK:${shard}`;
+          await client.query(
+            `INSERT INTO job_outbox(id,role,kind,payload) VALUES($1,'TESTER','TEST_TASK',$2::jsonb) ON CONFLICT(id) DO NOTHING`,
+            [id, JSON.stringify(chainJobPayload(event, { tester, shard }))],
+          );
+        }
+      }
       const queued = event.eventName === "TeamReady"
           ? { role: "EXECUTOR", kind: "ASSEMBLE_TASK" }
         : event.eventName === "CompetitionReady"
@@ -615,8 +658,6 @@ export async function persistChainBatch(name: string, fromBlock: bigint, nextBlo
           ? { role: "COORDINATOR", kind: "ASSIGN_TESTER" }
           : event.eventName === "TesterRequested"
             ? { role: "COORDINATOR", kind: "FINALIZE_TESTER" }
-          : event.eventName === "TesterAssigned"
-            ? { role: "TESTER", kind: "TEST_TASK" }
           : event.eventName === "TaskEvaluationRequested"
             ? { role: "COORDINATOR", kind: "FINALIZE_EVALUATION_PANEL" }
             : null;
@@ -627,6 +668,10 @@ export async function persistChainBatch(name: string, fromBlock: bigint, nextBlo
           [id, queued.role, queued.kind, JSON.stringify(chainJobPayload(event, {
             ...(event.eventName === "TeamReady" ? { executor: event.eventArgs?.leadExecutor } : {}),
             ...(event.eventName === "ExecutorEvicted" ? { executor: undefined } : {}),
+            ...(event.eventName === "TaskEvaluationRequested" ? {
+              selectionBlock: String(event.eventArgs?.selectionBlock ?? ""),
+              deadline: String(event.eventArgs?.deadline ?? ""),
+            } : {}),
           }))],
         );
       }
@@ -642,7 +687,7 @@ export async function persistChainBatch(name: string, fromBlock: bigint, nextBlo
 
 const notificationEvents = new Set([
   "TaskEvaluationRequested", "TaskEvaluationFeeCharged", "TaskEvaluatorsAssigned", "TaskEvaluationSubmitted", "TaskEvaluationFinalized", "TaskEvaluationExpired", "EvaluationFeePaid", "EvaluationFeeSettled",
-  "TaskCreated", "TaskExecutionModeSet", "TaskTesterCapabilitiesSet", "TaskPublicationFeeCharged", "TaskClaimed", "ExecutorEvicted", "TeamClosed", "ContributionSubmitted", "TeamReady", "CompetitionReady", "WorkSubmitted", "TesterAssigned", "TestSubmitted", "CompetitionResultSubmitted", "UserReviewed",
+  "TaskCreated", "TaskExecutionModeSet", "TaskTesterCapabilitiesSet", "TaskPublicationFeeCharged", "TaskClaimed", "ExecutorEvicted", "TeamClosed", "ContributionSubmitted", "TeamReady", "CompetitionReady", "WorkSubmitted", "TesterAssigned", "TesterPanelAssigned", "TestSubmitted", "CompetitionResultSubmitted", "UserReviewed",
   "RejectionResponded", "RejectionResolved", "MaintenanceValidated", "MaintenanceRepairRequested", "GrantCreated", "FutureParticipantsUpdated", "RewardClaimed",
 ]);
 
@@ -650,7 +695,7 @@ async function persistEventNotifications(client: PoolClient, event: IndexedChain
   if (!event.eventName || !notificationEvents.has(event.eventName) || !event.eventArgs) return;
   const taskId = event.eventArgs.taskId === undefined ? null : String(event.eventArgs.taskId);
   const recipients = new Set<string>();
-  for (const key of ["publisher", "executor", "tester", "evaluator", "evaluator0", "evaluator1", "evaluator2"] as const) {
+  for (const key of ["publisher", "executor", "tester", "tester0", "tester1", "tester2", "evaluator", "evaluator0", "evaluator1", "evaluator2"] as const) {
     const value = event.eventArgs[key];
     if (typeof value === "string" && /^0x[0-9a-fA-F]{40}$/.test(value)) recipients.add(value.toLowerCase());
   }
@@ -1008,15 +1053,32 @@ export async function rotateArtifactMasterKeyEnvelopes() {
 }
 
 export async function storeSignedTestEvidence(input: {
-  id: string; taskId: string; testerAgentId: string; testerAddress: string; artifactHash: string; reportHash: string; report: unknown; signature: string;
+  id: string; taskId: string; workRound: number; verificationShard: number; testerAgentId: string; testerAddress: string; artifactHash: string; reportHash: string; report: unknown; signature: string;
+  signingVersion: "AgentGrid Test Evidence V3"; signingMessage: string;
 }) {
   await migratePostgres();
-  await databasePool().query(
-    `INSERT INTO signed_test_evidence(id,task_id,tester_agent_id,tester_address,artifact_hash,report_hash,report,signature)
-     VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8) ON CONFLICT(task_id,report_hash) DO NOTHING`,
-    [input.id, input.taskId, input.testerAgentId, input.testerAddress.toLowerCase(), input.artifactHash, input.reportHash, JSON.stringify(input.report), input.signature],
+  const result = await databasePool().query<{
+    id: string; taskId: string; testerAgentId: string; testerAddress: string; artifactHash: string; reportHash: string; signature: string; signingVersion: string; signingMessage: string;
+  }>(
+    `INSERT INTO signed_test_evidence(id,task_id,work_round,verification_shard,tester_agent_id,tester_address,artifact_hash,report_hash,report,signature,signing_version,signing_message)
+     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11,$12) ON CONFLICT DO NOTHING
+     RETURNING id,task_id AS "taskId",tester_agent_id AS "testerAgentId",tester_address AS "testerAddress",
+       artifact_hash AS "artifactHash",report_hash AS "reportHash",signature,signing_version AS "signingVersion",signing_message AS "signingMessage"`,
+    [input.id, input.taskId, input.workRound, input.verificationShard, input.testerAgentId, input.testerAddress.toLowerCase(), input.artifactHash, input.reportHash, JSON.stringify(input.report), input.signature, input.signingVersion, input.signingMessage],
   );
-  return input;
+  if (result.rows[0]) return result.rows[0];
+  const existing = await databasePool().query<{
+    id: string; taskId: string; testerAgentId: string; testerAddress: string; artifactHash: string; reportHash: string; signature: string; signingVersion: string | null; signingMessage: string | null;
+  }>(
+    `SELECT id,task_id AS "taskId",tester_agent_id AS "testerAgentId",tester_address AS "testerAddress",
+       artifact_hash AS "artifactHash",report_hash AS "reportHash",signature,signing_version AS "signingVersion",signing_message AS "signingMessage"
+     FROM signed_test_evidence WHERE task_id=$1 AND report_hash=$2`, [input.taskId, input.reportHash],
+  );
+  const row = existing.rows[0];
+  if (row && row.testerAgentId === input.testerAgentId && row.testerAddress.toLowerCase() === input.testerAddress.toLowerCase()
+    && row.artifactHash === input.artifactHash && row.signature.toLowerCase() === input.signature.toLowerCase()
+    && row.signingVersion === input.signingVersion && row.signingMessage === input.signingMessage) return { ...row, signingVersion: input.signingVersion, signingMessage: input.signingMessage };
+  throw new Error("TEST_EVIDENCE_EQUIVOCATION_REJECTED");
 }
 
 export async function evaluationTaskForAgent(taskId: string, evaluatorAddress: string) {
@@ -1048,22 +1110,29 @@ export async function evaluationTaskForAgent(taskId: string, evaluatorAddress: s
 export async function storeSignedTaskEvaluation(input: {
   id: string; taskId: string; evaluatorAgentId: string; evaluatorAddress: string; approve: boolean;
   reportHash: string; report: unknown; signature: string;
+  signingVersion: "AgentGrid Task Evaluation V2"; signingMessage: string;
 }) {
   await migratePostgres();
   const result = await databasePool().query(
-    `INSERT INTO signed_task_evaluations(id,task_id,evaluator_agent_id,evaluator_address,approve,report_hash,report,signature)
-     SELECT $1,$2,$3,$4,$5,$6,$7::jsonb,$8
+    `INSERT INTO signed_task_evaluations(id,task_id,evaluator_agent_id,evaluator_address,approve,report_hash,report,signature,signing_version,signing_message)
+     SELECT $1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10
      WHERE EXISTS(SELECT 1 FROM task_commitments WHERE chain_task_id::text=$2 AND status='EVALUATING')
      ON CONFLICT DO NOTHING
      RETURNING id,task_id AS "taskId",report_hash AS "reportHash"`,
-    [input.id, input.taskId, input.evaluatorAgentId, input.evaluatorAddress.toLowerCase(), input.approve, input.reportHash, JSON.stringify(input.report), input.signature],
+    [input.id, input.taskId, input.evaluatorAgentId, input.evaluatorAddress.toLowerCase(), input.approve, input.reportHash, JSON.stringify(input.report), input.signature, input.signingVersion, input.signingMessage],
   );
   if (!result.rows[0]) {
-    const existing = await databasePool().query<{ id: string; taskId: string; reportHash: string; signature: string }>(
-      `SELECT id,task_id AS "taskId",report_hash AS "reportHash",signature FROM signed_task_evaluations
+    const existing = await databasePool().query<{ id: string; taskId: string; evaluatorAgentId: string; evaluatorAddress: string; approve: boolean; reportHash: string; signature: string; signingVersion: string | null; signingMessage: string | null }>(
+      `SELECT id,task_id AS "taskId",evaluator_agent_id AS "evaluatorAgentId",evaluator_address AS "evaluatorAddress",
+         approve,report_hash AS "reportHash",signature,signing_version AS "signingVersion",signing_message AS "signingMessage" FROM signed_task_evaluations
        WHERE task_id=$1 AND evaluator_address=$2`, [input.taskId, input.evaluatorAddress.toLowerCase()],
     );
-    if (existing.rows[0]?.reportHash === input.reportHash && existing.rows[0].signature.toLowerCase() === input.signature.toLowerCase()) return existing.rows[0];
+    if (existing.rows[0]?.reportHash === input.reportHash && existing.rows[0].signature.toLowerCase() === input.signature.toLowerCase()
+      && existing.rows[0].evaluatorAgentId === input.evaluatorAgentId && existing.rows[0].evaluatorAddress.toLowerCase() === input.evaluatorAddress.toLowerCase()
+      && existing.rows[0].approve === input.approve && existing.rows[0].signingVersion === input.signingVersion
+      && existing.rows[0].signingMessage === input.signingMessage) {
+      return { id: existing.rows[0].id, taskId: existing.rows[0].taskId, reportHash: existing.rows[0].reportHash };
+    }
     if (existing.rows[0]) throw new Error("TASK_EVALUATION_EQUIVOCATION_REJECTED");
     throw new Error("TASK_NOT_ACCEPTING_EVALUATION");
   }
@@ -1072,30 +1141,30 @@ export async function storeSignedTaskEvaluation(input: {
 
 export interface SignedTaskEvaluationRow {
   taskId: string; evaluatorAddress: string; approve: boolean; reportHash: string;
-  report: Record<string, unknown>; signature: string; createdAt: string;
+  report: Record<string, unknown>; signature: string; signingVersion: string | null; signingMessage: string | null; createdAt: string;
 }
 
 export async function latestSignedTaskEvaluations() {
   await migratePostgres();
   const result = await databasePool().query<SignedTaskEvaluationRow>(
     `SELECT task_id AS "taskId",evaluator_address AS "evaluatorAddress",approve,report_hash AS "reportHash",
-       report,signature,created_at::text AS "createdAt"
+       report,signature,signing_version AS "signingVersion",signing_message AS "signingMessage",created_at::text AS "createdAt"
      FROM signed_task_evaluations ORDER BY task_id,created_at`,
   );
   return result.rows;
 }
 
 export interface SignedTestEvidenceRow {
-  taskId: string; testerAddress: string; artifactHash: string; reportHash: string;
-  report: Record<string, unknown>; signature: string; createdAt: string;
+  taskId: string; workRound: number; verificationShard: number; testerAddress: string; artifactHash: string; reportHash: string;
+  report: Record<string, unknown>; signature: string; signingVersion: string | null; signingMessage: string | null; createdAt: string;
 }
 
 export async function latestSignedTestEvidence() {
   await migratePostgres();
   const result = await databasePool().query<SignedTestEvidenceRow>(
-    `SELECT DISTINCT ON (task_id) task_id AS "taskId",tester_address AS "testerAddress",artifact_hash AS "artifactHash",
-       report_hash AS "reportHash",report,signature,created_at::text AS "createdAt"
-     FROM signed_test_evidence ORDER BY task_id,created_at DESC`,
+    `SELECT DISTINCT ON (task_id,work_round,LOWER(tester_address)) task_id AS "taskId",work_round AS "workRound",verification_shard AS "verificationShard",tester_address AS "testerAddress",artifact_hash AS "artifactHash",
+       report_hash AS "reportHash",report,signature,signing_version AS "signingVersion",signing_message AS "signingMessage",created_at::text AS "createdAt"
+     FROM signed_test_evidence WHERE work_round IS NOT NULL AND verification_shard IS NOT NULL ORDER BY task_id,work_round,LOWER(tester_address),created_at DESC`,
   );
   return result.rows;
 }
@@ -1194,8 +1263,31 @@ export async function postgresReady() {
   return result.rows[0]?.ready === 1;
 }
 
+async function pruneExpiredAuthNonces() {
+  const result = await databasePool().query(
+    "DELETE FROM auth_nonces WHERE expires_at < NOW()-($1 * INTERVAL '1 hour')",
+    [transientSecurityRetentionHours],
+  );
+  return result.rowCount ?? 0;
+}
+
+async function pruneInactiveRateLimits() {
+  const result = await databasePool().query(
+    "DELETE FROM rate_limits WHERE window_start < NOW()-($1 * INTERVAL '1 hour')",
+    [transientSecurityRetentionHours],
+  );
+  return result.rowCount ?? 0;
+}
+
+export async function pruneTransientSecurityState() {
+  await migratePostgres();
+  const [authNonces, rateLimits] = await Promise.all([pruneExpiredAuthNonces(), pruneInactiveRateLimits()]);
+  return { authNonces, rateLimits, retentionHours: transientSecurityRetentionHours };
+}
+
 export async function storeAuthNonce(nonceHash: string, messageHash: string, address: string, chainId: number, expiresAt: Date) {
   await migratePostgres();
+  await pruneExpiredAuthNonces();
   await databasePool().query(
     "INSERT INTO auth_nonces(nonce_hash,message_hash,address,chain_id,expires_at) VALUES($1,$2,$3,$4,$5)",
     [nonceHash, messageHash, address.toLowerCase(), chainId, expiresAt],
@@ -1220,6 +1312,8 @@ export async function appendAuditEvent(input: { actor: string; action: string; t
 }
 
 export async function consumePostgresRateLimit(key: string, limit: number, windowSeconds: number) {
+  await migratePostgres();
+  await pruneInactiveRateLimits();
   const result = await databasePool().query<{ count: number }>(
     `INSERT INTO rate_limits(key,window_start,count) VALUES($1,NOW(),1)
      ON CONFLICT(key) DO UPDATE SET

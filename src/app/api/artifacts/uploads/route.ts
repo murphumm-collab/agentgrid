@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
 import { createArtifactUpload } from "@/lib/artifacts";
 import { apiError } from "@/lib/http";
 import { authenticateAgent, protocolSnapshot } from "@/lib/service";
@@ -8,21 +7,12 @@ import { createArtifactManifest } from "@/lib/store-postgres";
 import { isProductionMode } from "@/lib/env";
 import { sealArtifactKey } from "@/lib/artifact-crypto";
 import { readJsonBody } from "@/lib/request-body";
-
-const schema = z.object({
-  taskId: z.string().min(1).max(120), agentId: z.string().min(3).max(120),
-  sha256: z.string().regex(/^[0-9a-fA-F]{64}$/), sizeBytes: z.number().int().positive().max(100 * 1024 * 1024),
-  contentType: z.literal("application/gzip"),
-  plaintextSha256: z.string().regex(/^[0-9a-fA-F]{64}$/),
-  encryptionAlgorithm: z.literal("AES-256-GCM"),
-  contentIv: z.string().min(16).max(32),
-  encryptionKey: z.string().min(40).max(64),
-});
+import { artifactUploadRequestSchema } from "@/lib/agent-delivery-schema";
 
 export async function POST(request: NextRequest) {
   try {
     if (!isProductionMode()) throw new Error("ARTIFACT_UPLOADS_REQUIRE_PRODUCTION_MODE");
-    const input = schema.parse(await readJsonBody(request));
+    const input = artifactUploadRequestSchema.parse(await readJsonBody(request));
     const agent = await authenticateAgent(input.agentId, request.headers.get("x-agent-key"), "tasks:submit");
     const task = (await protocolSnapshot()).tasks.find((item) => item.id === input.taskId);
     if (!task || !task.executorIds.some((executor) => executor.toLowerCase() === agent.owner.toLowerCase())) throw new Error("ARTIFACT_EXECUTOR_NOT_ASSIGNED");

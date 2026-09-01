@@ -4,14 +4,18 @@ import { completeAgentJob } from "@/lib/agent-queue";
 import { apiError } from "@/lib/http";
 import { authenticateAgent } from "@/lib/service";
 import { readJsonBody } from "@/lib/request-body";
+import { jobIdPathParameterSchema } from "@/lib/path-parameters";
+import { agentJobCompletionResultSchema } from "@/lib/agent-job-schema";
 
-const schema = z.object({ agentId: z.string().min(3), result: z.unknown().optional() });
+const schema = z.object({
+  agentId: z.string().min(3).max(120),
+  result: agentJobCompletionResultSchema,
+}).strict();
 
 export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   try {
-    const { id } = await context.params;
+    const id = jobIdPathParameterSchema.parse((await context.params).id);
     const input = schema.parse(await readJsonBody(request, 128 * 1024));
-    if (input.result !== undefined && JSON.stringify(input.result).length > 64 * 1024) throw new Error("JOB_RESULT_TOO_LARGE");
     await authenticateAgent(input.agentId, request.headers.get("x-agent-key"), "heartbeat:write");
     return NextResponse.json(await completeAgentJob(id, input.agentId, input.result));
   } catch (error) { return apiError(error); }

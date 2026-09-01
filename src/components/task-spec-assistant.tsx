@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { Bot, Check, ShieldAlert, Sparkles } from "lucide-react";
+import { Bot, Check, ShieldAlert, ShieldCheck, Sparkles } from "lucide-react";
 import type { Locale } from "@/lib/i18n";
 import type { TaskClarificationReview, TaskDefinitionAssessment } from "@/lib/task-definition";
+import { ActionNotice } from "./action-notice";
 
 type AssistantResponse = {
   aiAvailable: boolean;
@@ -11,6 +12,8 @@ type AssistantResponse = {
   recommendation: {
     targetUsers: string; deliverables: string[]; constraints: string[]; outOfScope: string[]; assumptions: string[];
     acceptanceCriteria: Array<{ description: string; verificationMethod: string; evidenceRequired: string; passCondition: string; verificationType: string }>;
+    collaborationPlan?: { workPackages: Array<{ slot: number; title: string; objective: string; deliverables: string[]; dependsOn: number[]; criterionIds: string[] }>; sharedInterfaces: string[]; assemblyStrategy: string; underfilledStrategy: string; integrationChecks: string[] };
+    verificationPlan?: { panelSize: 3; disclosure: "COMMIT_THEN_REVEAL"; aggregation: "TWO_OF_THREE_PER_CRITERION"; orderWeightsBps: [4000, 3333, 2667]; shards: Array<{ shard: number; criterionIds: string[] }>; arbitration: { challengeWindowSeconds: 86400; minimumStakeTokens: 500; challengeBondTokens: 50; correctChallengeRewardShareBps: 6000; falseChallengeSlashBps: [500, 1500, 3000]; quorum: 2; panelSize: 3 } };
     aiReviews: Array<{ role: string; provider: string; model: string; reportHash: string }>;
   };
   assessment: TaskDefinitionAssessment;
@@ -45,6 +48,7 @@ export function TaskSpecAssistant({ formId, publisher, locale, production = fals
     if (!form) return;
     setLoading(true); setError(null);
     setField(form, "definitionReviewId", "");
+    setField(form, "collaborationPlan", "");
     try {
       const data = new FormData(form);
       const criteria = lines(data.get("criteria"));
@@ -56,6 +60,7 @@ export function TaskSpecAssistant({ formId, publisher, locale, production = fals
         method: "POST", headers: { "content-type": "application/json" },
         body: JSON.stringify({
           publisher, title: data.get("title"), businessOutcome: data.get("description"), category: data.get("category"),
+          executionMode: data.get("executionMode"), maxExecutors: Number(data.get("maxExecutors")),
           targetUsers: String(data.get("targetUsers") ?? ""), deliverables: lines(data.get("deliverables")), constraints: lines(data.get("constraints")),
           outOfScope: lines(data.get("outOfScope")), assumptions: lines(data.get("assumptions")),
           criteria: criteria.map((description, index) => ({ description, verificationMethod: methods[index] ?? "", evidenceRequired: evidence[index] ?? "", passCondition: passConditions[index] ?? "", verificationType: verificationTypes[index] ?? "AUTOMATED_TEST", required: true })),
@@ -87,6 +92,7 @@ export function TaskSpecAssistant({ formId, publisher, locale, production = fals
     setField(form, "passConditions", recommendation.acceptanceCriteria.map((item) => item.passCondition).join("\n"));
     setField(form, "verificationTypes", recommendation.acceptanceCriteria.map((item) => item.verificationType).join("\n"));
     setField(form, "aiReviewMetadata", JSON.stringify(recommendation.aiReviews));
+    setField(form, "collaborationPlan", recommendation.collaborationPlan ? JSON.stringify(recommendation.collaborationPlan) : "");
     setField(form, "definitionReviewId", result.definitionReview?.id ?? "");
     setError(null);
   }
@@ -98,13 +104,15 @@ export function TaskSpecAssistant({ formId, publisher, locale, production = fals
     <div className="section-head"><div><div className="eyebrow">AI DEFINITION GATE</div><h3 className="section-title">{locale === "zh" ? "发布前需求澄清" : "Pre-publish requirement clarification"}</h3></div><button type="button" className="button button-secondary" onClick={review} disabled={loading}><Sparkles size={15} />{loading ? (locale === "zh" ? "正在交叉校验…" : "Cross-checking…") : (locale === "zh" ? "让 AI 校验完成定义" : "Ask AI to validate completion")}</button></div>
     <p className="hint">{locale === "zh" ? `需求编写 AI 负责拆解；验证批评 AI 专门找模糊条件、不可复现证据和容易刷的指标。${production ? "生产发布必须同时取得两个外部 AI 角色的有效报告；规则引擎只能提示，不能签发发布凭证。" : "真实 AI 未配置时会使用确定性规则引擎。"}` : `A requirements writer structures the task; a validation critic looks for ambiguity, irreproducible evidence and gameable metrics. ${production ? "Production publication requires valid reports from both external AI roles; the rule engine can advise but cannot issue a publication credential." : "A deterministic rule engine is used when external AI is not configured."}`}</p>
     {result && <>
-      <div className={`notice ${blocking || !result.assessment.ready ? "error" : "success"}`} style={{ marginTop: 14 }}>{blocking || !result.assessment.ready ? <ShieldAlert size={15} /> : <Check size={15} />} <strong>{locale === "zh" ? `就绪度 ${result.assessment.score}/100` : `Readiness ${result.assessment.score}/100`}</strong> · {result.aiAvailable ? (locale === "zh" ? "多模型 AI 已参与" : "Multi-model AI participated") : (locale === "zh" ? "规则引擎校验" : "Rule-engine validation")}</div>
+      <ActionNotice tone={blocking || !result.assessment.ready ? "error" : "success"} style={{ marginTop: 14 }}>{blocking || !result.assessment.ready ? <ShieldAlert size={15} /> : <Check size={15} />} <strong>{locale === "zh" ? `就绪度 ${result.assessment.score}/100` : `Readiness ${result.assessment.score}/100`}</strong> · {result.aiAvailable ? (locale === "zh" ? "多模型 AI 已参与" : "Multi-model AI participated") : (locale === "zh" ? "规则引擎校验" : "Rule-engine validation")}</ActionNotice>
       {questions.length > 0 && <div className="spec-review-list"><strong>{locale === "zh" ? "发布者必须回答" : "Publisher must answer"}</strong>{questions.map((item) => <div className="spec-review-item" key={item.id}><Bot size={14} /><span>{item.question}<small>{item.reason}</small></span></div>)}</div>}
       {risks.length > 0 && <details className="spec-review-details"><summary>{locale === "zh" ? `查看 ${risks.length} 项验收风险` : `View ${risks.length} validation risks`}</summary><ul>{risks.map((risk) => <li key={risk}>{risk}</li>)}</ul></details>}
+      {result.recommendation.collaborationPlan && <div className="spec-review-list"><strong>{locale === "zh" ? "冻结的多 Agent 协作方案" : "Frozen multi-Agent collaboration plan"}</strong>{result.recommendation.collaborationPlan.workPackages.map((item) => <div className="spec-review-item" key={item.slot}><Bot size={14} /><span><b>{locale === "zh" ? `槽位 ${item.slot}` : `Slot ${item.slot}`} · {item.title}</b><small>{item.objective}</small><small>{locale === "zh" ? "验收映射" : "Criteria"}: {item.criterionIds.join(", ")} · {locale === "zh" ? "依赖" : "Depends on"}: {item.dependsOn.length ? item.dependsOn.join(", ") : (locale === "zh" ? "无，可并行" : "none; parallel")}</small></span></div>)}<div className="notice"><strong>{locale === "zh" ? "不足额团队接管规则" : "Underfilled-team takeover"}</strong><p>{result.recommendation.collaborationPlan.underfilledStrategy}</p></div></div>}
+      {result.recommendation.verificationPlan && <div className="spec-review-list"><strong>{locale === "zh" ? "三 Agent 交叉验证与仲裁" : "Three-Agent cross-validation and arbitration"}</strong>{result.recommendation.verificationPlan.shards.map((item, index) => <div className="spec-review-item" key={item.shard}><ShieldCheck size={14} /><span><b>{locale === "zh" ? `验证分片 ${item.shard + 1}` : `Validation shard ${item.shard + 1}`} · {(result.recommendation.verificationPlan!.orderWeightsBps[index] / 100).toFixed(2)}%</b><small>{locale === "zh" ? "仅授权条件" : "Authorized criteria"}: {item.criterionIds.join(", ")}</small></span></div>)}<div className="notice"><strong>Commit → Reveal → 24h Challenge → 2/3 Arbitration</strong><p>{locale === "zh" ? "报告在三份承诺完成前互相隔离。仲裁者至少质押 500 Token；正确挑战奖励，重复错误挑战按 5% / 15% / 30% 罚没。" : "Reports remain isolated until all commitments exist. Arbitrators stake at least 500 tokens; correct challenges earn rewards and repeated false challenges are slashed 5% / 15% / 30%."}</p></div></div>}
       <div className="hint" style={{ marginTop: 10 }}>{result.reviews.map((item) => `${item.role}: ${item.provider}/${item.model}`).join(" · ")}</div>
-      <button type="button" className="button button-primary" style={{ marginTop: 12 }} onClick={apply} disabled={blocking || !result.assessment.ready || (production && !result.definitionReview)}>{locale === "zh" ? "采用 AI 优化后的验收规则" : "Apply AI-refined completion rules"}</button>
+      <button type="button" className="button button-primary" style={{ marginTop: 12 }} onClick={apply} disabled={blocking || !result.assessment.ready || (production && !result.definitionReview)}>{locale === "zh" ? "采用验收规则与协作方案" : "Apply completion and collaboration plan"}</button>
       {production && result.definitionReview && <div className="hint" style={{ marginTop: 10 }}>{locale === "zh" ? `服务器发布凭证有效至 ${new Date(result.definitionReview.expiresAt).toLocaleString("zh-CN")}；修改任务定义后必须重新校验。` : `Server publication credential expires ${new Date(result.definitionReview.expiresAt).toLocaleString("en-US")}; any definition change requires another review.`}</div>}
     </>}
-    {error && <div className="notice error" style={{ marginTop: 12 }}>{error}</div>}
+    {error && <ActionNotice tone="error" style={{ marginTop: 12 }}>{error}</ActionNotice>}
   </section>;
 }

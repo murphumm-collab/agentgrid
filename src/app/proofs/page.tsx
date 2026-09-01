@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ArrowUpRight, BriefcaseBusiness, FileCheck2, ShieldCheck, Trophy } from "lucide-react";
 import { protocolSnapshot } from "@/lib/service";
-import { publicTaskStatistics } from "@/lib/public-task-view";
+import { isPublicTask, publicTaskStatistics } from "@/lib/public-task-view";
 import { getLocale } from "@/lib/i18n-server";
 import { formatDate, formatToken } from "@/lib/format";
 import { taskCategoryLabel } from "@/components/task-category";
@@ -13,7 +13,7 @@ export default async function CompletedProofsPage() {
   const locale = await getLocale();
   const statistics = publicTaskStatistics(snapshot.tasks, snapshot.rewards);
   const rewards = new Map(snapshot.rewards.map((reward) => [reward.taskId, reward]));
-  const completed = snapshot.tasks.filter((task) => task.state === "COMPLETED")
+  const completed = snapshot.tasks.filter((task) => task.state === "COMPLETED" && isPublicTask(task))
     .sort((a, b) => (b.completedAt ?? b.createdAt).localeCompare(a.completedAt ?? a.createdAt) || b.id.localeCompare(a.id));
   const percent = statistics.settledCompletionRate == null ? "—" : `${(statistics.settledCompletionRate * 100).toFixed(1)}%`;
   const cards = [

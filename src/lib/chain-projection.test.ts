@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseEther } from "viem";
-import { projectChainBusiness } from "./chain-projection";
+import { projectAgentStatuses, projectChainBusiness } from "./chain-projection";
 import type { ChainProjectionRow, CommitmentProjectionRow } from "./store-postgres";
 
 const event = (eventName: string, eventArgs: Record<string, string | number | boolean | Array<string | number | boolean>>, blockNumber: string): ChainProjectionRow => ({
@@ -9,6 +9,16 @@ const event = (eventName: string, eventArgs: Record<string, string | number | bo
 });
 
 describe("confirmed chain business projection", () => {
+  it("folds the latest canonical Agent activation status by wallet", () => {
+    const statuses = projectAgentStatuses([
+      event("AgentStatusUpdated", { agent: "0xAgent", active: true }, "1"),
+      event("AgentStatusUpdated", { agent: "0xOther", active: false }, "2"),
+      event("AgentStatusUpdated", { agent: "0xAgent", active: false }, "3"),
+    ]);
+    expect(statuses.get("0xagent")).toBe(false);
+    expect(statuses.get("0xother")).toBe(false);
+  });
+
   it("folds stake, task lifecycle, maintenance and rewards", () => {
     const commitment: CommitmentProjectionRow = {
       specHash: `0x${"1".repeat(64)}`, publisher: "0xPublisher", status: "CONFIRMED", chainTaskId: "9",

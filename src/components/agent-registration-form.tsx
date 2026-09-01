@@ -7,10 +7,11 @@ import type { Locale } from "@/lib/i18n";
 import { agentCapabilityMask } from "@/lib/agent-roles";
 import type { AgentRole } from "@/lib/types";
 import { verificationTypes, type VerificationType } from "@/lib/task-definition";
+import { ActionNotice, type ActionResult } from "./action-notice";
 
-export function AgentRegistrationForm({ locale }: { locale: Locale }) {
+export function AgentRegistrationForm({ locale, sessionOwner }: { locale: Locale; sessionOwner: string }) {
   const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<{ apiKey?: string; message: string; error?: boolean }>();
+  const [result, setResult] = useState<ActionResult & { apiKey?: string }>();
 
   async function submit(formData: FormData) {
     setBusy(true); setResult(undefined);
@@ -20,7 +21,7 @@ export function AgentRegistrationForm({ locale }: { locale: Locale }) {
       const verificationCapabilities = formData.getAll("verificationCapability").map(String) as VerificationType[];
       if ((role === "TESTER" || role === "BOTH") && verificationCapabilities.length === 0) throw new Error("TESTER_VERIFICATION_CAPABILITY_REQUIRED");
       const capabilityMask = agentCapabilityMask(role, verificationCapabilities);
-      const registered = await registerAgentPosition(BigInt(stakePositionId), capabilityMask);
+      const registered = await registerAgentPosition(BigInt(stakePositionId), capabilityMask, sessionOwner);
       const response = await fetch("/api/agents", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -36,12 +37,18 @@ export function AgentRegistrationForm({ locale }: { locale: Locale }) {
       });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error ?? "AGENT_REGISTRATION_FAILED");
+      const serverOutcome = body.recovered
+        ? (locale === "zh" ? "已保留原 Agent ID，并原子替换丢失响应中的旧 Key。" : "The existing Agent ID was retained and the key from the lost response was atomically replaced.")
+        : (locale === "zh" ? "已创建服务端 Agent 身份。" : "The server Agent identity was created.");
       setResult({
+        tone: "success",
         apiKey: body.apiKey,
-        message: locale === "zh" ? `Agent 已绑定链上仓位，交易 ${registered.hash.slice(0, 10)}…` : `Agent bound to on-chain stake, transaction ${registered.hash.slice(0, 10)}…`,
+        message: registered.hash
+          ? (locale === "zh" ? `Agent 已绑定链上仓位，交易 ${registered.hash.slice(0, 10)}… ${serverOutcome}` : `Agent bound to on-chain stake, transaction ${registered.hash.slice(0, 10)}… ${serverOutcome}`)
+          : (locale === "zh" ? `已确认完全匹配的链上注册，未重复广播交易。${serverOutcome}` : `An exact on-chain registration was already confirmed, so no duplicate transaction was broadcast. ${serverOutcome}`),
       });
     } catch (error) {
-      setResult({ message: error instanceof Error ? error.message : "AGENT_REGISTRATION_FAILED", error: true });
+      setResult({ tone: "error", message: error instanceof Error ? error.message : "AGENT_REGISTRATION_FAILED" });
     } finally { setBusy(false); }
   }
 
@@ -57,7 +64,8 @@ export function AgentRegistrationForm({ locale }: { locale: Locale }) {
         <fieldset className="field field-full" style={{ border: 0, padding: 0 }}><legend className="label">{locale === "zh" ? "可验证的证据类型（TESTER/BOTH 必选）" : "Evidence types this agent can verify (required for TESTER/BOTH)"}</legend><div style={{ display: "flex", flexWrap: "wrap", gap: "10px 18px" }}>{verificationTypes.map((capability) => <label className="hint" key={capability} style={{ display: "flex", gap: 7, alignItems: "center" }}><input type="checkbox" name="verificationCapability" value={capability} defaultChecked={capability === "AUTOMATED_TEST"} />{capability}</label>)}</div><span className="hint">{locale === "zh" ? "这些能力位会上链并参与随机测试者筛选；自报不等于认证，声誉、质押和失败处罚仍用于约束虚假声明。" : "These capability bits are recorded on-chain and used in random tester selection. Self-declaration is not certification; reputation, stake and failure penalties still constrain false claims."}</span></fieldset>
       </div>
       <div className="notice" style={{ marginTop: 16 }}><ShieldCheck size={15} style={{ verticalAlign: "middle", marginRight: 8 }} />{locale === "zh" ? "仓位必须属于当前钱包且未申请提现；角色和验证专长会写入链上。协议只会从同时满足任务全部验证类型的测试者中随机选择。API Key 只显示一次。" : "The position must belong to this wallet and have no pending withdrawal. Role and verification specialities are recorded on-chain. The protocol randomly selects only among testers satisfying every required task verification type. The API key is shown once."}</div>
-      {result && <div className={`notice ${result.error ? "error" : "success"}`} style={{ marginTop: 14 }}>{result.message}{result.apiKey && <><br /><code>{result.apiKey}</code></>}</div>}
+      {result && <ActionNotice tone={result.tone} style={{ marginTop: 14 }}>{result.message}</ActionNotice>}
+      {result?.apiKey && <div className="notice success" style={{ marginTop: 10 }}><code>{result.apiKey}</code></div>}
       <button className="button button-primary" style={{ marginTop: 16 }} disabled={busy}>{busy ? <Loader2 size={15} /> : <Bot size={15} />}{locale === "zh" ? " 链上注册并生成 API Key" : " Register on-chain and create API key"}</button>
     </form>
   );

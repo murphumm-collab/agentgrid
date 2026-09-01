@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight, ShieldCheck } from "lucide-react";
 import type { StakePosition } from "@/lib/types";
@@ -12,6 +12,7 @@ import { taskCategories, taskCategoryGroupLabel, taskCategoryGroups } from "@/co
 import { TaskSpecAssistant } from "@/components/task-spec-assistant";
 import { assessTaskDefinition, taskDefinitionSchema, taskDefinitionVersion, verificationTypes } from "@/lib/task-definition";
 import { requiredTesterCapabilityMask } from "@/lib/agent-roles";
+import { ActionNotice } from "./action-notice";
 
 function storageKey(publisher: string) {
   return `agentgrid:pending-evaluation:${publisher.toLowerCase()}`;
@@ -28,6 +29,7 @@ export function NewTaskForm({ positions, publisher, locale, production = false }
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [pendingEvaluation, setPendingEvaluation] = useState<PendingTaskEvaluation | null>(null);
+  const submitInFlight = useRef(false);
   const available = positions.filter((position) => !position.activeTaskId && position.creditExpiresAt);
 
   useEffect(() => {
@@ -129,13 +131,15 @@ export function NewTaskForm({ positions, publisher, locale, production = false }
   }
 
   async function submit(formData: FormData) {
+    if (submitInFlight.current) return;
+    submitInFlight.current = true;
     setError(null);
+    setSubmitting(true);
+    try {
     if (production && pendingEvaluation) {
       await sendEvaluationTransaction(pendingEvaluation);
       return;
     }
-    setSubmitting(true);
-    try {
     const lines = (name: string) => String(formData.get(name) ?? "").split("\n").map((item) => item.trim()).filter(Boolean);
     const criteria = lines("criteria");
     const methods = lines("verificationMethods");
@@ -148,9 +152,15 @@ export function NewTaskForm({ positions, publisher, locale, production = false }
     try { aiReviews = JSON.parse(String(formData.get("aiReviewMetadata") ?? "[]")); } catch { throw new Error(locale === "zh" ? "AI 评审记录无效，请重新校验" : "Invalid AI review metadata; run the check again"); }
     const definitionReviewId = String(formData.get("definitionReviewId") ?? "").trim();
     if (production && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(definitionReviewId)) throw new Error(locale === "zh" ? "发布前必须完成 AI 定义校验并采用服务器签发的结果" : "Run and apply the server-issued AI definition review before publication");
+    let collaborationPlan: unknown;
+    const rawCollaborationPlan = String(formData.get("collaborationPlan") ?? "").trim();
+    if (rawCollaborationPlan) {
+      try { collaborationPlan = JSON.parse(rawCollaborationPlan); } catch { throw new Error(locale === "zh" ? "协作方案无效，请重新校验" : "Invalid collaboration plan; run the check again"); }
+    }
     const completionDefinition = taskDefinitionSchema.parse({
       version: taskDefinitionVersion, targetUsers: formData.get("targetUsers"), deliverables: lines("deliverables"), constraints: lines("constraints"),
       outOfScope: lines("outOfScope"), assumptions: lines("assumptions"), aiReviews,
+      ...(collaborationPlan ? { collaborationPlan } : {}),
       acceptanceCriteria: criteria.map((description, index) => ({ id: `criterion-${index + 1}`, description, verificationMethod: methods[index], evidenceRequired: evidence[index], passCondition: passConditions[index], verificationType: criterionVerificationTypes[index], required: true })),
     });
     const readiness = assessTaskDefinition(completionDefinition);
@@ -168,7 +178,7 @@ export function NewTaskForm({ positions, publisher, locale, production = false }
       }) });
       const created = await createdResponse.json();
       if (!createdResponse.ok) { setError(created.error ?? "Hidden-test manifest creation failed"); return; }
-      const uploadResponse = await fetch(`/api/hidden-tests/${created.id}/content`, { method: "PUT", headers: { "content-type": "application/octet-stream", "x-publisher": publisher }, body: encrypted.ciphertext as BodyInit });
+      const uploadResponse = await fetch(`/api/hidden-tests/${created.id}/content`, { method: "PUT", headers: { "content-type": "application/octet-stream" }, body: encrypted.ciphertext as BodyInit });
       if (!uploadResponse.ok) { const failed = await uploadResponse.json(); setError(failed.error ?? "Hidden-test upload failed"); return; }
       const finalizeResponse = await fetch(`/api/hidden-tests/${created.id}/finalize`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ publisher }) });
       const finalized = await finalizeResponse.json();
@@ -206,11 +216,12 @@ export function NewTaskForm({ positions, publisher, locale, production = false }
       setError(errorMessage(caught));
     } finally {
       setSubmitting(false);
+      submitInFlight.current = false;
     }
   }
 
   return (
-    <form id="new-task-form" className="card card-pad form-card" action={submit}>
+    <form id="new-task-form" className="card card-pad form-card" action={submit} aria-busy={submitting}>
       {!available.length && <div className="notice error" style={{ marginBottom: 18 }}>{t(locale, "noCredit")}{production ? " · Waiting for confirmed chain index" : ""}</div>}
       {production && <div className="notice" style={{ marginBottom: 18 }}><ShieldCheck size={15} style={{ verticalAlign: "middle", marginRight: 8 }} /><strong>{t(locale, "evaluationGate")}</strong><div style={{ marginTop: 6 }}>{t(locale, "evaluationGateLead")}</div></div>}
       <fieldset className="form-grid form-fieldset" disabled={Boolean(pendingEvaluation || submitted || submitting)}>
@@ -234,15 +245,16 @@ export function NewTaskForm({ positions, publisher, locale, production = false }
         <label className="field field-full"><span className="label">{locale === "zh" ? "必须提交的证据（逐行对应）" : "Required evidence (line-aligned)"}</span><textarea className="textarea" name="evidenceRequirements" required defaultValue={locale === "zh" ? "签名构建日志与成果哈希\n测试 Agent 签名的测试结果与隐藏测试清单哈希\n签名覆盖率报告" : "Signed build log and artifact hash\nTester-signed results and hidden-test manifest hash\nSigned coverage report"} /></label>
         <label className="field field-full"><span className="label">{locale === "zh" ? "二元或数字通过条件（逐行对应）" : "Binary or numeric pass conditions (line-aligned)"}</span><textarea className="textarea" name="passConditions" required defaultValue={locale === "zh" ? "构建命令退出码必须等于 0\n所有公开测试和隐藏测试必须通过，失败数等于 0\n关键分支覆盖率必须不低于 95%" : "Build command exit code must equal 0\nAll public and hidden tests must pass with zero failures\nCritical branch coverage must be at least 95%"} /></label>
         <input type="hidden" name="aiReviewMetadata" defaultValue="[]" />
+        <input type="hidden" name="collaborationPlan" defaultValue="" />
         <input type="hidden" name="definitionReviewId" defaultValue="" />
         <div className="field field-full"><TaskSpecAssistant formId="new-task-form" publisher={publisher} locale={locale} production={production} /></div>
       </fieldset>
       <div className="notice" style={{ marginTop: 20 }}><ShieldCheck size={15} style={{ verticalAlign: "middle", marginRight: 8 }} />{t(locale, "publishLockNotice")}</div>
       {production && <div className="notice" style={{ marginTop: 12 }}>{locale === "zh" ? "提交申请会从质押中扣除 3 AGT 不可退评估费，并分给实际提交报告的评估 Agent。只有至少 2/3 通过并公开任务时，才另扣发布费：有效奖励额的 2%，最低 10 AGT，最高为仓位的 10%。" : "Submitting charges a non-refundable 3 AGT evaluation fee from the stake and pays evaluators who report. A separate publication fee is charged only after at least 2 of 3 approve: 2% of effective reward, minimum 10 AGT, capped at 10% of the position."}</div>}
-      {error && <div className="notice error" style={{ marginTop: 14 }}>{error}</div>}
+      {error && <ActionNotice tone="error" style={{ marginTop: 14 }}>{error}</ActionNotice>}
       {pendingEvaluation && !submitted && <div className="notice" style={{ marginTop: 14 }}>{locale === "zh" ? `加密测试与任务承诺已保存。${pendingEvaluation.transactionHash ? "交易已广播，将继续等待 5 个确认；不会重复发布或重复扣费。" : "钱包交易尚未广播，点击下方按钮可安全重试。"}` : `The encrypted tests and task commitment are saved. ${pendingEvaluation.transactionHash ? "The transaction was broadcast and will resume waiting for 5 confirmations without republishing or charging twice." : "No transaction was broadcast; use the button below to retry safely."}`}</div>}
-      {submitted && <div className="notice success" style={{ marginTop: 14 }}>{t(locale, "evaluationSubmitted")}</div>}
-      <div className="form-actions"><button type="button" className="button button-secondary" disabled={submitting} onClick={() => router.back()}>{t(locale, "cancel")}</button><button className="button button-primary" disabled={!available.length || submitted || submitting}>{submitting ? (locale === "zh" ? "等待确认…" : "Waiting for confirmation…") : pendingEvaluation ? (locale === "zh" ? "继续链上评估申请" : "Resume evaluation transaction") : production ? t(locale, "requestEvaluation") : t(locale, "publishTask")} <ArrowRight size={15} /></button></div>
+      {submitted && <ActionNotice tone="success" style={{ marginTop: 14 }}>{t(locale, "evaluationSubmitted")}</ActionNotice>}
+      <div className="form-actions"><button type="button" className="button button-secondary" disabled={submitting} onClick={() => router.back()}>{t(locale, "cancel")}</button><button className="button button-primary" disabled={!available.length || submitted || submitting} aria-busy={submitting}>{submitting ? (locale === "zh" ? "等待确认…" : "Waiting for confirmation…") : pendingEvaluation ? (locale === "zh" ? "继续链上评估申请" : "Resume evaluation transaction") : production ? t(locale, "requestEvaluation") : t(locale, "publishTask")} <ArrowRight size={15} /></button></div>
     </form>
   );
 }

@@ -1,9 +1,10 @@
-import { createPublicClient, createWalletClient, http, type Hex } from "viem";
+import { createPublicClient, createWalletClient, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { bscTestnet } from "viem/chains";
 import { chainContractAddresses, runtimeConfig } from "../src/lib/env";
 import { expiredTaskEvaluations } from "../src/lib/store-postgres";
 import { requiredSecret } from "../src/lib/secrets";
+import { bscRpcTransport } from "../src/lib/bsc-rpc";
 
 const expiryAbi = [{
   type: "function", name: "expireTaskEvaluation", stateMutability: "nonpayable",
@@ -12,7 +13,7 @@ const expiryAbi = [{
 const privateKey = requiredSecret("PROTOCOL_OPERATOR_PRIVATE_KEY") as Hex;
 const account = privateKeyToAccount(privateKey);
 const config = runtimeConfig();
-const transport = http(config.BSC_TESTNET_RPC_URL);
+const transport = bscRpcTransport(config.BSC_TESTNET_RPC_URL);
 const publicClient = createPublicClient({ chain: bscTestnet, transport });
 const wallet = createWalletClient({ account, chain: bscTestnet, transport });
 let stopping = false;

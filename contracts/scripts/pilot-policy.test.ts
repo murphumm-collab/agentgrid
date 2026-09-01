@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bscTestnetGenesisHash, isPrivateNetworkAddress, validateBscTestnetIdentity, validatePilotRoleSeparation, validatePilotRpcUrl } from "./pilot-policy";
+import { bscTestnetGenesisHash, isPrivateNetworkAddress, publicBscRpcTransport, validateBscTestnetIdentity, validatePilotRoleSeparation, validatePilotRpcUrl } from "./pilot-policy";
 
 const address = (digit: string) => `0x${digit.repeat(40)}` as `0x${string}`;
 
@@ -11,6 +11,9 @@ describe("BSC pilot policy", () => {
     expect(validatePilotRpcUrl("https://bsc-testnet-dataseed.bnbchain.org")).toBe("https://bsc-testnet-dataseed.bnbchain.org/");
     expect(isPrivateNetworkAddress("192.168.1.2")).toBe(true);
     expect(isPrivateNetworkAddress("8.8.8.8")).toBe(false);
+    const configured = publicBscRpcTransport("https://rpc.example")({ chain: undefined, retryCount: 0, timeout: 0 });
+    expect(configured.config.retryCount).toBe(2);
+    expect(configured.value?.fetchOptions).toMatchObject({ redirect: "error" });
   });
 
   it("requires distinct role wallets separated from protocol authorities", () => {

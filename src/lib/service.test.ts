@@ -9,11 +9,14 @@ import {
   createTask,
   faucet,
   protocolSnapshot,
+  registerAgent,
+  revokeAgentCredential,
   reviewTask,
   submitTest,
   submitWork,
 } from "./service";
 import { taskDefinitionVersion } from "./task-definition";
+import { createVerificationPlan } from "./verification-panel";
 
 const researchDefinition = {
   version: taskDefinitionVersion, targetUsers: "Risk analysts approving the signed research report", deliverables: ["Deterministic signed research pipeline and report"],
@@ -22,6 +25,7 @@ const researchDefinition = {
     { id: "criterion-1", description: "The pipeline produces a deterministic signed report", verificationMethod: "Tester executes the pipeline twice with the committed input", evidenceRequired: "Two signed output hashes and execution logs", passCondition: "Both output hashes must be identical", required: true },
     { id: "criterion-2", description: "The report contains every required risk field", verificationMethod: "Tester validates the output against the committed schema", evidenceRequired: "Signed schema validation report", passCondition: "Schema validation must pass with zero missing fields", required: true },
   ],
+  verificationPlan: createVerificationPlan(["criterion-1", "criterion-2"]),
 };
 
 const artifactHash = "sha256:7b57c8b979c793b5f50791478c1fc5772d49ed80f06c8a32f9f5079e0b07f799";
@@ -62,6 +66,28 @@ describe("backend protocol workflow", () => {
     await expect(completeMaintenance("task-demo-001", "0xDemoPublisher", 0, true)).rejects.toThrow("CHECKPOINT_NOT_DUE");
   });
 
+  it("makes demo executor weights explicit and pays the executor pool by that exact vector", async () => {
+    await claimTask("task-demo-001", "agent-builder-01");
+    await claimTask("task-demo-001", "agent-verifier-02");
+    const submitted = await submitWork("task-demo-001", "agent-builder-01", {
+      artifactUrl: "https://example.com/team.zip", artifactHash,
+      summary: "The two-agent demo team delivered one deterministic combined artifact.",
+    });
+    const tested = await submitTest("task-demo-001", submitted.tester.id, {
+      testsPassed: true, hiddenTestsPassed: true, lineCoverage: 0.94,
+      branchCoverage: 0.91, criticalBranchCoverage: 0.98, artifactHash,
+    }, submitted.selectionProof);
+    expect(tested.testResult?.executorWeightsBps).toEqual([5_000, 5_000]);
+    await reviewTask("task-demo-001", "0xDemoPublisher", "ACCEPT");
+    const snapshot = await protocolSnapshot();
+    const claimed = await claimReward("task-demo-001", snapshot.rewards[0].tranches[0].id);
+    expect(claimed.executorPayments).toEqual([
+      { agentId: "agent-builder-01", weightBps: 5_000, amount: 26 },
+      { agentId: "agent-verifier-02", weightBps: 5_000, amount: 26 },
+    ]);
+    expect(claimed.protocolReserve).toBe(16);
+  });
+
   it("requires agent credentials and structured rejection evidence", async () => {
     await expect(authenticateAgent("agent-builder-01", "wrong")).rejects.toThrow("AGENT_AUTHENTICATION_FAILED");
     await claimTask("task-demo-001", "agent-builder-01");
@@ -78,6 +104,30 @@ describe("backend protocol workflow", () => {
     expect(disputed.task.state).toBe("DISPUTED");
   });
 
+  it("recovers an exact active registration atomically without creating a second identity", async () => {
+    const input = {
+      owner: `0x${"1".repeat(40)}`, name: "Recovery Agent", role: "EXECUTOR" as const,
+      capabilities: ["typescript", "testing"], endpoint: "https://agent.example/jobs",
+      stake: 1_500, stakePositionId: "701",
+    };
+    const first = await registerAgent(input);
+    const recovered = await registerAgent(input);
+    expect(first.recovered).toBe(false);
+    expect(recovered.recovered).toBe(true);
+    expect(recovered.agent.id).toBe(first.agent.id);
+    expect(recovered.apiKey).not.toBe(first.apiKey);
+    await expect(authenticateAgent(first.agent.id, first.apiKey)).rejects.toThrow("AGENT_AUTHENTICATION_FAILED");
+    await expect(authenticateAgent(first.agent.id, recovered.apiKey)).resolves.toMatchObject({ id: first.agent.id });
+    expect((await protocolSnapshot()).agents.filter((agent) => agent.stakePositionId === input.stakePositionId)).toHaveLength(1);
+
+    await expect(registerAgent({ ...input, endpoint: "https://different.example/jobs" }))
+      .rejects.toThrow("AGENT_REGISTRATION_RECOVERY_MISMATCH");
+    await expect(registerAgent({ ...input, owner: `0x${"2".repeat(40)}` }))
+      .rejects.toThrow("AGENT_STAKE_POSITION_ALREADY_BOUND");
+    await revokeAgentCredential(first.agent.id, input.owner);
+    await expect(registerAgent(input)).rejects.toThrow("AGENT_REGISTRATION_RECOVERY_INACTIVE");
+  });
+
   it("creates a funded stake position and consumes its only credit", async () => {
     const owner = "0xNewPublisher";
     await faucet(owner, 5_000);
@@ -89,7 +139,7 @@ describe("backend protocol workflow", () => {
       title: "Create a maintained risk research pipeline",
       description: "Deliver a useful research pipeline with deterministic outputs and maintain it for the complete lifecycle.",
       category: "Research",
-      maxExecutors: 2,
+      maxExecutors: 1,
       declaredDurationHours: 24,
       criteria: researchDefinition.acceptanceCriteria.map((item) => item.description), completionDefinition: researchDefinition,
     });

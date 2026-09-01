@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { keccak256, stringToHex } from "viem";
-import { assertPublisherArtifactRelease, assertTeamArtifactAccess } from "./artifact-access";
+import { assertPublisherArtifactRelease, assertTeamArtifactAccess, encryptedArtifactAccess } from "./artifact-access";
 
 const publisher = "0x1111111111111111111111111111111111111111";
 const sha256 = "a".repeat(64);
@@ -11,6 +11,16 @@ function task(state: string, overrides: Record<string, unknown> = {}) {
 }
 
 describe("publisher artifact release policy", () => {
+  it("constructs the machine contract with an exact committed ciphertext size", () => {
+    const access = encryptedArtifactAccess({
+      plaintextSha256: "a".repeat(64), sha256: "b".repeat(64), sizeBytes: 1024,
+      contentType: "application/gzip", encryptionAlgorithm: "AES-256-GCM", contentIv: "iv",
+    }, { decryptionKey: "key", downloadUrl: "https://storage.example/artifact" });
+    expect(access).toMatchObject({ artifactHash: `sha256:${"a".repeat(64)}`, ciphertextHash: `sha256:${"b".repeat(64)}`, sizeBytes: 1024, expiresInSeconds: 300 });
+    expect(() => encryptedArtifactAccess({ ...access, plaintextSha256: "a".repeat(64), sha256: "b".repeat(64), sizeBytes: 16 }, { decryptionKey: "key", downloadUrl: "https://storage.example/artifact" }))
+      .toThrow("ARTIFACT_SIZE_LIMIT_EXCEEDED");
+  });
+
   it.each(["OPEN", "CLAIMED", "SUBMITTED", "TESTING", "CORRECTION", "USER_REVIEW", "REJECTED"])(
     "keeps the deliverable encrypted while the task is %s",
     (state) => {

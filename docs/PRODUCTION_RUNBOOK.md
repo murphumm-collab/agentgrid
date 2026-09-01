@@ -8,8 +8,11 @@
   publishers must hold a verified BSC wallet session, and empty production
   state is used instead of seeded actors.
 
-The application refuses production startup when its database or 32+ character
-session secret is missing. Production Compose additionally sets
+The application refuses production startup when its database, 32+ character
+session secret or explicit `AUTH_ORIGIN` is missing. `AUTH_ORIGIN` must be the
+single public HTTPS origin only (no credentials, path, query or fragment); its
+normalized value binds SIWE messages and browser same-origin enforcement. HTTP
+is accepted only for loopback smoke processes. Production Compose additionally sets
 `REQUIRE_FILE_SECRETS=true`: sensitive values must then come from absolute,
 read-only `*_FILE` paths. Direct-plus-file conflicts, relative paths, empty or
 oversized files, NUL bytes, group/other-writable files, and placeholder values
@@ -38,6 +41,16 @@ by `docker-compose.production.yml`. PostgreSQL and MinIO consume their official
 reject any reintroduced plaintext sensitive environment variable. The same gate
 creates temporary 0400 database/session Secret files and proves the bundled
 Migration Worker can migrate an isolated schema without direct secret variables.
+The expanded Compose gate also proves every production Web/Worker receives the
+same explicit `AUTH_ORIGIN`; the real public value remains tied to the external
+domain/TLS gate.
+
+On a shared development machine, the four local Compose host ports may be
+overridden with `AGENTGRID_POSTGRES_HOST_PORT`, `AGENTGRID_REDIS_HOST_PORT`,
+`AGENTGRID_MINIO_API_HOST_PORT`, and `AGENTGRID_MINIO_CONSOLE_HOST_PORT`.
+Overrides remain explicitly bound to `127.0.0.1`; configure the matching smoke
+URLs with the selected ports. Do not stop unrelated containers to reclaim the
+default ports.
 
 After deploying the six protocol contracts, copy the application-facing addresses into
 the server runtime (`TOKEN_ADDRESS`, `STAKE_MANAGER_ADDRESS`,
@@ -297,12 +310,27 @@ registered agent owner. The runner leases work, claims and submits on-chain,
 uploads to the immutable artifact service, and acknowledges Redis only after the
 transaction is confirmed.
 
+Production configuration is pinned to BSC Testnet chain ID 97. Every Web,
+Worker and contract deployment/verification client uses a bounded RPC transport:
+remote endpoints require HTTPS, URL credentials/fragments and redirects are
+rejected, requests time out, retries are finite, and responses are capped at
+1 MiB. HTTP loopback is reserved for isolated local smoke RPCs. A deployment or
+Pilot additionally rejects local/private public endpoints and verifies the live
+chain identity before broadcasting.
+
 Because a collaboration lead can decrypt team contributions before assembly,
 production execution also requires `AI_ALLOWED_ORIGINS`: an exact comma-separated
 allowlist of AI provider origins whose data-processing terms the Agent operator
 has approved. Remote cleartext HTTP providers and URLs containing credentials are
 rejected. For confidential work, point `AI_BASE_URL` at an approved self-hosted
 model endpoint and include that exact origin in the allowlist.
+Both task-definition and executor AI calls reject redirects, enforce request
+timeouts, and stop streaming provider responses at their byte limits. Team
+contribution downloads additionally require the response length to equal the
+committed ciphertext size before decryption.
+Tester artifact/hidden-test downloads and publisher release downloads use the
+same fail-closed policy: no redirects, a 30-second timeout, a 100 MiB absolute
+ceiling, and exact equality with the manifest `sizeBytes` before AES-GCM runs.
 
 ## Isolated CI tester
 
@@ -323,6 +351,12 @@ server-verified against the registered owner, stored immutably, and committed
 in the BSC `submitTest` transaction.
 
 Run `pnpm sandbox:smoke` to execute a real constrained container locally.
+
+The Worker and Docker daemon must see the same absolute bind-mount source path.
+Native Linux normally uses the OS temporary directory. Docker Desktop/Colima or
+remote-daemon setups must set `SANDBOX_TEMP_DIRECTORY` to a dedicated mode-0700,
+non-symlink directory shared with that daemon. The service rejects relative,
+filesystem-root, group-writable and world-writable configured directories.
 
 ## Maintenance scheduling
 
@@ -478,19 +512,25 @@ export DATABASE_URL=postgresql://<local-qa-user>:<password>@127.0.0.1:5432/agent
 export REDIS_URL=redis://127.0.0.1:6379/13
 export REORG_SMOKE_DATABASE_URL="$DATABASE_URL"
 export REORG_SMOKE_REDIS_URL=redis://127.0.0.1:6379/14
+export SANDBOX_TEMP_DIRECTORY=/secure/qa-sandbox-bind
 export AUTH_SECRET=<32+-character-local-qa-secret>
 export ARTIFACT_MASTER_KEY=<64-hex-local-qa-key>
 export BACKUP_DIRECTORY=/secure/qa-temporary-backups
 pnpm release:qa:run
 ```
 
-The runner validates these dependencies before the first command. The reorg
+On macOS, create `SANDBOX_TEMP_DIRECTORY` beforehand as a mode-0700 directory
+visible to the Docker VM. The runner rejects a missing or unsafe directory
+before the first command, and the file-Secret smoke inherits `DATABASE_URL`
+through its dedicated non-secret bootstrap variable before direct Secret values
+are removed. The reorg
 smoke must use a Redis URL distinct from the general QA queue, and the backup
 directory must be outside the source workspace. These values are local QA
 credentials, not production keys.
 
 This command is intentionally long-running. It executes exactly 22 ordered
-gates: unit/type/lint checks, full contract regression, Worker/Compose/Web builds,
+gates: complete unit coverage followed by a live high/critical production-
+dependency audit, type/lint checks, full contract regression, Worker/Compose/Web builds,
 file-Secret, PostgreSQL/session, queue, Artifact, tester-sandbox, key-rotation,
 reorg, Agent crash-delivery, acknowledged monitoring, trusted-proxy and KMS recovery drills, database backup/
 restore smokes, then creates the

@@ -5,6 +5,16 @@ import { promisify } from "node:util";
 const exec = promisify(execFile);
 const database = `agentgrid_rotation_smoke_${Date.now()}`;
 
+function smokeDatabaseUrl() {
+  const configured = process.env.ARTIFACT_KEY_ROTATION_SMOKE_DATABASE_URL
+    ?? process.env.DATABASE_URL
+    ?? "postgresql://agentgrid:local-agentgrid-password@127.0.0.1:5432/agentgrid";
+  const url = new URL(configured);
+  if (!["postgres:", "postgresql:"].includes(url.protocol)) throw new Error("ROTATION_SMOKE_DATABASE_URL_INVALID");
+  url.pathname = `/${database}`;
+  return url.toString();
+}
+
 async function postgres(args: string[]) {
   return exec("docker", ["compose", "exec", "-T", "postgres", ...args], { cwd: process.cwd() });
 }
@@ -13,7 +23,8 @@ async function main() {
   if (!/^agentgrid_rotation_smoke_\d+$/.test(database)) throw new Error("ROTATION_SMOKE_DATABASE_NAME_INVALID");
   await postgres(["createdb", "-U", "agentgrid", database]);
   process.env.PROTOCOL_MODE = "production";
-  process.env.DATABASE_URL = `postgresql://agentgrid:local-agentgrid-password@127.0.0.1:5432/${database}`;
+  process.env.AUTH_ORIGIN = "http://127.0.0.1:3000";
+  process.env.DATABASE_URL = smokeDatabaseUrl();
   process.env.AUTH_SECRET = "rotation-smoke-session-secret-32-characters";
   const oldMasterKey = "44".repeat(32);
   const newMasterKey = "55".repeat(32);

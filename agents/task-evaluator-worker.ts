@@ -1,10 +1,11 @@
-import { createPublicClient, createWalletClient, http, keccak256, parseEther, stringToHex, type Hex } from "viem";
+import { createPublicClient, createWalletClient, keccak256, parseEther, stringToHex, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { bscTestnet } from "viem/chains";
 import { AgentProtocolClient } from "../src/sdk/client";
 import { chainContractAddresses, runtimeConfig } from "../src/lib/env";
 import { deterministicTaskEvaluation, taskEvaluationMessage } from "../src/lib/task-evaluation";
 import { requiredConfigValue, requiredSecret } from "../src/lib/secrets";
+import { bscRpcTransport } from "../src/lib/bsc-rpc";
 
 const evaluationAbi = [{
   type: "function", name: "submitEvaluation", stateMutability: "nonpayable",
@@ -41,30 +42,32 @@ async function evaluateOne(protocol: AgentProtocolClient, account: ReturnType<ty
     if (!/^\d+$/.test(taskId)) throw new Error("EVALUATION_JOB_TASK_ID_INVALID");
     const { evaluation } = await protocol.getTaskEvaluation(taskId);
     const report = deterministicTaskEvaluation(evaluation.spec);
-    const commitment = taskEvaluationMessage({ taskId, report });
+    const config = runtimeConfig();
+    const taskRegistry = chainContractAddresses().taskRegistry;
+    const signingDomain = { chainId: config.BSC_CHAIN_ID, taskRegistry, taskId, report };
+    const commitment = taskEvaluationMessage(signingDomain);
     const signature = await account.signMessage({ message: commitment.message });
     await protocol.heartbeatJob(leased.job.id);
-    const stored = await protocol.submitSignedTaskEvaluation(taskId, { report, signature });
+    const stored = await protocol.submitSignedTaskEvaluation(taskId, { chainId: config.BSC_CHAIN_ID, taskRegistry, report, signature });
     if (stored.reportHash.toLowerCase() !== commitment.reportHash.toLowerCase()) throw new Error("EVALUATION_REPORT_HASH_MISMATCH");
-    const config = runtimeConfig();
-    const transport = http(config.BSC_TESTNET_RPC_URL);
+    const transport = bscRpcTransport(config.BSC_TESTNET_RPC_URL);
     const wallet = createWalletClient({ account, chain: bscTestnet, transport });
     const publicClient = createPublicClient({ chain: bscTestnet, transport });
-    const existing = await publicClient.readContract({ address: chainContractAddresses().taskRegistry, abi: evaluationAbi, functionName: "evaluationReports", args: [BigInt(taskId), account.address] });
+    const existing = await publicClient.readContract({ address: taskRegistry, abi: evaluationAbi, functionName: "evaluationReports", args: [BigInt(taskId), account.address] });
     if (existing[7]) {
       if (existing[6].toLowerCase() !== commitment.reportHash.toLowerCase()) throw new Error("ONCHAIN_TASK_EVALUATION_EQUIVOCATION");
-      await protocol.completeJob(leased.job.id, { taskId, reportHash: commitment.reportHash, alreadySubmitted: true, approve: report.approve });
+      await protocol.completeJob(leased.job.id, { reportHash: commitment.reportHash, alreadySubmitted: true, approve: report.approve });
       return true;
     }
     await protocol.heartbeatJob(leased.job.id);
     const hash = await wallet.writeContract({
-      address: chainContractAddresses().taskRegistry, abi: evaluationAbi, functionName: "submitEvaluation",
+      address: taskRegistry, abi: evaluationAbi, functionName: "submitEvaluation",
       args: [BigInt(taskId), keccak256(stringToHex(report.category)), report.difficultyBps, report.estimatedHours,
         report.testabilityBps, parseEther(String(report.recommendedReward)), report.approve, commitment.reportHash],
     });
     const receipt = await publicClient.waitForTransactionReceipt({ hash, confirmations: config.CHAIN_CONFIRMATIONS });
     if (receipt.status !== "success") throw new Error("TASK_EVALUATION_TRANSACTION_REVERTED");
-    await protocol.completeJob(leased.job.id, { taskId, reportHash: commitment.reportHash, transactionHash: hash, approve: report.approve });
+    await protocol.completeJob(leased.job.id, { reportHash: commitment.reportHash, transactionHash: hash, approve: report.approve });
     console.log(JSON.stringify({ taskId, evaluator: account.address, approve: report.approve, reportHash: commitment.reportHash, transactionHash: hash }));
     return true;
   } finally { clearInterval(heartbeat); }

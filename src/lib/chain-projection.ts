@@ -12,6 +12,17 @@ const tokens = (value: Args[string] | undefined) => Number(formatEther(BigInt(St
 const iso = (value: string) => new Date(value).toISOString();
 const plusDays = (value: string, days: number) => new Date(new Date(value).getTime() + days * 86_400_000).toISOString();
 
+export function projectAgentStatuses(events: ChainProjectionRow[]) {
+  const statuses = new Map<string, boolean>();
+  for (const event of events) {
+    if (event.eventName !== "AgentStatusUpdated") continue;
+    const args = event.eventArgs ?? {};
+    const agent = id(args, "agent").toLowerCase();
+    if (agent) statuses.set(agent, scalar(args.active) === true);
+  }
+  return statuses;
+}
+
 export function projectChainBusiness(rows: { events: ChainProjectionRow[]; commitments: CommitmentProjectionRow[] }) {
   const positions = new Map<string, StakePosition>();
   const tasks = new Map<string, Task>();
@@ -28,7 +39,7 @@ export function projectChainBusiness(rows: { events: ChainProjectionRow[]; commi
       stakePositionId: positionId, state, maxExecutors: spec.maxExecutors,
       declaredDurationHours: spec.declaredDurationHours, createdAt,
       deadlineAt: new Date(new Date(createdAt).getTime() + (spec.declaredDurationHours + 48) * 3_600_000).toISOString(),
-      executorIds: [], testerId: null, testerSelectionProof: null,
+      executorIds: [], testerId: null, testerIds: [], testerSelectionProof: null,
       teamClosed: false, contributionHashes: {}, workRound: 1,
       criteria: spec.criteria.map((description, index) => ({ id: `criterion-${index + 1}`, description })),
       completionDefinition: spec.completionDefinition,
@@ -179,13 +190,24 @@ export function projectChainBusiness(rows: { events: ChainProjectionRow[]; commi
         if (task) { task.state = "TESTING"; task.testerId = id(args, "tester"); task.testerSelectionProof = id(args, "selectionProof"); }
         break;
       }
+      case "TesterPanelAssigned": {
+        const task = tasks.get(id(args, "taskId"));
+        if (task) {
+          task.state = "TESTING";
+          task.testerIds = [id(args, "tester0"), id(args, "tester1"), id(args, "tester2")];
+          task.testerId = task.testerIds[0];
+          task.testerSelectionProof = id(args, "selectionProof");
+        }
+        break;
+      }
       case "TestSubmitted": {
         const task = tasks.get(id(args, "taskId"));
         if (task) {
+          const maintenanceRound = Boolean(task.maintenanceRepairCheckpoint);
           task.state = args.passed ? (task.maintenanceRepairCheckpoint ? (task.maintenanceRepairCheckpoint === 3 ? "COMPLETED" : "MAINTENANCE") : "USER_REVIEW") : "CLAIMED";
           if (task.state === "COMPLETED") task.completedAt = event.blockTimestamp ?? undefined;
           if (args.passed) task.maintenanceRepairCheckpoint = null;
-          if (!args.passed) { task.workRound = (task.workRound ?? 1) + 1; task.contributionHashes = {}; }
+          if (!args.passed && !maintenanceRound) { task.workRound = (task.workRound ?? 1) + 1; task.contributionHashes = {}; }
         }
         break;
       }
@@ -216,6 +238,14 @@ export function projectChainBusiness(rows: { events: ChainProjectionRow[]; commi
         if (task && args.passed && checkpoint >= 1 && checkpoint <= 3) { task.maintenanceHealthy[checkpoint - 1] = true; if (checkpoint === 3) { task.state = "COMPLETED"; task.completedAt = event.blockTimestamp ?? undefined; } }
         break;
       }
+      case "MaintenancePanelRequested": {
+        const task = tasks.get(id(args, "taskId"));
+        if (task) {
+          task.state = "TESTING";
+          task.maintenanceRepairCheckpoint = Number(args.checkpoint);
+        }
+        break;
+      }
       case "MaintenanceRepairRequested": {
         const task = tasks.get(id(args, "taskId"));
         if (task) {
@@ -224,6 +254,7 @@ export function projectChainBusiness(rows: { events: ChainProjectionRow[]; commi
           task.contributionHashes = {};
           task.submission = null;
           task.testerId = null;
+          task.testerIds = [];
           task.testerSelectionProof = null;
           task.maintenanceRepairCheckpoint = Number(args.checkpoint);
         }

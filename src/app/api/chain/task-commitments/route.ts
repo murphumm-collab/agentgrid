@@ -1,14 +1,16 @@
 import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { createPublicClient, defineChain, getAddress, http, type Address } from "viem";
+import { createPublicClient, defineChain, getAddress, type Address } from "viem";
 import { requirePublisherRequest, requireWalletSession } from "@/lib/auth";
 import { taskRegistryAbi } from "@/lib/contracts";
 import { chainContractAddresses, isProductionMode, runtimeConfig } from "@/lib/env";
 import { apiError } from "@/lib/http";
 import { requiredTesterCapabilityMask } from "@/lib/agent-roles";
 import { bindTaskCommitmentEvaluationTransaction, createTaskCommitment, pendingTaskCommitmentForPublisher } from "@/lib/store-postgres";
-import { taskSpecHash, taskSpecSchema } from "@/lib/task-commitment";
+import { taskCommitmentRequestSchema, taskSpecHash, taskSpecSchema } from "@/lib/task-commitment";
 import { readJsonBody } from "@/lib/request-body";
+import { bscRpcTransport } from "@/lib/bsc-rpc";
+import { createTaskCommitmentResponseSchema, isoTimestamp, pendingTaskCommitmentResponseSchema } from "@/lib/production-response-schema";
 
 export const dynamic = "force-dynamic";
 const recoveryGraceMs = 2 * 60 * 1_000;
@@ -18,7 +20,7 @@ async function reconcilePendingTransaction(pending: Awaited<ReturnType<typeof pe
   if (!pending || pending.evaluationTransactionHash) return pending;
   const config = runtimeConfig();
   const chain = defineChain({ id: config.BSC_CHAIN_ID, name: "BSC Testnet", nativeCurrency: { name: "tBNB", symbol: "tBNB", decimals: 18 }, rpcUrls: { default: { http: [config.BSC_TESTNET_RPC_URL] } } });
-  const client = createPublicClient({ chain, transport: http(config.BSC_TESTNET_RPC_URL) });
+  const client = createPublicClient({ chain, transport: bscRpcTransport(config.BSC_TESTNET_RPC_URL) });
   try {
     const latest = await client.getBlockNumber();
     const recentStart = latest > BigInt(5_000) ? latest - BigInt(5_000) : BigInt(0);
@@ -44,10 +46,10 @@ export async function GET() {
     if (!isProductionMode()) throw new Error("CHAIN_COMMITMENTS_REQUIRE_PRODUCTION_MODE");
     const session = await requireWalletSession();
     const pending = await reconcilePendingTransaction(await pendingTaskCommitmentForPublisher(session.address));
-    if (!pending) return NextResponse.json({ pending: null }, { headers: privateHeaders });
+    if (!pending) return NextResponse.json(pendingTaskCommitmentResponseSchema.parse({ pending: null }), { headers: privateHeaders });
     const spec = taskSpecSchema.parse(pending.spec);
     const retryAfter = new Date(new Date(pending.createdAt).getTime() + recoveryGraceMs);
-    return NextResponse.json({ pending: {
+    return NextResponse.json(pendingTaskCommitmentResponseSchema.parse({ pending: {
       commitmentId: pending.id,
       positionId: String(spec.stakePositionId),
       specHash: pending.specHash,
@@ -59,7 +61,7 @@ export async function GET() {
         broadcastReady: Date.now() >= retryAfter.getTime(),
         retryAfter: retryAfter.toISOString(),
       }),
-    } }, { headers: privateHeaders });
+    } }), { headers: privateHeaders });
   } catch (error) {
     return apiError(error);
   }
@@ -68,12 +70,18 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     if (!isProductionMode()) throw new Error("CHAIN_COMMITMENTS_REQUIRE_PRODUCTION_MODE");
-    const body = await readJsonBody<{ publisher: string } & Record<string, unknown>>(request);
-    const publisher = await requirePublisherRequest(request, body.publisher);
-    const spec = taskSpecSchema.parse(body);
+    const input = taskCommitmentRequestSchema.parse(await readJsonBody(request));
+    const publisher = await requirePublisherRequest(request, input.publisher);
+    const { publisher: _claimedPublisher, ...spec } = input;
+    void _claimedPublisher;
     const specHash = taskSpecHash(spec);
     const commitment = await createTaskCommitment({ id: randomUUID(), publisher, specHash, spec });
-    return NextResponse.json({ ...commitment, spec, requestedReward: spec.requestedReward }, { status: 201 });
+    const response = createTaskCommitmentResponseSchema.parse({
+      ...commitment,
+      createdAt: isoTimestamp(commitment.createdAt),
+      requestedReward: spec.requestedReward,
+    });
+    return NextResponse.json(response, { status: 201, headers: privateHeaders });
   } catch (error) {
     return apiError(error);
   }

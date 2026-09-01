@@ -7,6 +7,7 @@ const previous = { ...process.env };
 
 function productionProxyEnvironment() {
   process.env.PROTOCOL_MODE = "production";
+  process.env.AUTH_ORIGIN = "https://agentgrid.example";
   process.env.DATABASE_URL = "postgresql://agentgrid:secret@127.0.0.1:5432/agentgrid";
   process.env.AUTH_SECRET = "production-auth-secret-at-least-thirty-two-characters";
   process.env.TRUST_PROXY = "true";

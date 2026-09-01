@@ -5,6 +5,7 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {StakeCreditManager} from "./StakeCreditManager.sol";
 import {RewardVault} from "./RewardVault.sol";
 import {AgentRegistry} from "./AgentRegistry.sol";
+import {VerificationPanel} from "./VerificationPanel.sol";
 
 contract TaskRegistry is Ownable {
     uint256 public constant ABUSIVE_REJECTION_SLASH_BPS = 500;
@@ -51,6 +52,7 @@ contract TaskRegistry is Ownable {
     address public coordinator;
     address public disputeResolver;
     address public publicationFeeRecipient;
+    VerificationPanel public verificationPanel;
     uint256 public nextTaskId = 1;
     mapping(uint256 => Task) public tasks;
     mapping(uint256 => ExecutionMode) private taskExecutionMode;
@@ -68,6 +70,7 @@ contract TaskRegistry is Ownable {
     mapping(uint256 => uint32) public teamReadyRound;
     mapping(uint256 => mapping(uint8 => bytes32)) private maintenanceEvidence;
     mapping(uint256 => uint8) private maintenanceRepairCheckpoint;
+    mapping(uint256 => address[3]) private taskTesters;
     struct EvaluationSelection {
         uint256 selectionBlock;
         uint256 candidateCount;
@@ -138,12 +141,14 @@ contract TaskRegistry is Ownable {
     event WorkSubmitted(uint256 indexed taskId, bytes32 artifactHash);
     event TesterRequested(uint256 indexed taskId, uint256 indexed selectionBlock, bytes32 candidateSetHash, uint256 candidateCount);
     event TesterAssigned(uint256 indexed taskId, address indexed tester, bytes32 selectionProof);
+    event TesterPanelAssigned(uint256 indexed taskId, address indexed tester0, address indexed tester1, address tester2, bytes32 selectionProof, uint32 workRound);
     event TestSubmitted(uint256 indexed taskId, bool passed, bytes32 evidenceHash);
     event CompetitionResultSubmitted(uint256 indexed taskId, bool passed, address indexed winner, bytes32 artifactHash, bytes32 evidenceHash);
     event UserReviewed(uint256 indexed taskId, bool accepted, bytes32 reasonHash);
     event RejectionResponded(uint256 indexed taskId, address indexed executor, bytes32 responseHash);
     event MaintenanceValidated(uint256 indexed taskId, uint8 indexed checkpoint, bool passed, bytes32 evidenceHash);
     event MaintenanceRepairRequested(uint256 indexed taskId, uint8 indexed checkpoint, uint32 indexed workRound, bytes32 evidenceHash);
+    event MaintenancePanelRequested(uint256 indexed taskId, uint8 indexed checkpoint, uint32 indexed workRound);
     event RejectionResolved(uint256 indexed taskId, bool executorWins, bytes32 resolutionHash, uint256 publisherSlash);
 
     constructor(
@@ -169,6 +174,11 @@ contract TaskRegistry is Ownable {
     modifier onlyDisputeResolver() {
         if (msg.sender != disputeResolver) revert Unauthorized();
         _;
+    }
+
+    function setVerificationPanel(VerificationPanel panel) external onlyOwner {
+        if (address(panel) == address(0) || address(verificationPanel) != address(0)) revert InvalidState();
+        verificationPanel = panel;
     }
 
     function setCoordinator(address newCoordinator) external onlyOwner {
@@ -582,75 +592,59 @@ contract TaskRegistry is Ownable {
         if (task.state != State.Submitted || selectionBlock == 0 || block.number <= selectionBlock || block.number > selectionBlock + 256) revert InvalidState();
         bytes32 proof = keccak256(abi.encode(blockhash(selectionBlock), taskId, task.candidateSetHash, task.testerCandidateCount));
         uint256 start = uint256(proof) % task.testerCandidateCount;
-        address tester;
-        for (uint256 i; i < task.testerCandidateCount; ++i) {
+        if (address(verificationPanel) == address(0)) revert InvalidState();
+        address[3] memory testers;
+        uint8 found;
+        for (uint256 i; i < task.testerCandidateCount && found < 3; ++i) {
             address candidate = agentRegistry.agentAt((start + i) % task.testerCandidateCount);
             if (
                 candidate != task.publisher && !isTaskExecutor[taskId][candidate] && !isTaskEvaluator[taskId][candidate] &&
                 agentRegistry.isEligibleFor(candidate, taskRequiredTesterCapabilities[taskId])
             ) {
-                tester = candidate;
-                break;
+                bool duplicate;
+                for (uint8 j; j < found; ++j) if (testers[j] == candidate) duplicate = true;
+                if (!duplicate) testers[found++] = candidate;
             }
         }
-        if (tester == address(0)) revert InvalidTesterSet();
-        task.tester = tester;
+        if (found != 3) revert InvalidTesterSet();
+        taskTesters[taskId] = testers;
+        task.tester = testers[0];
         task.selectionProof = proof;
         task.state = State.Testing;
-        emit TesterAssigned(taskId, tester, proof);
+        uint8 checkpoint = maintenanceRepairCheckpoint[taskId];
+        _startVerificationPanel(taskId, task, testers, checkpoint);
+        emit TesterPanelAssigned(taskId, testers[0], testers[1], testers[2], proof, task.workRound);
     }
 
-    function submitTest(uint256 taskId, bool passed, bytes32 evidenceHash, uint16[] calldata executorWeightsBps) external {
-        Task storage task = tasks[taskId];
-        if (msg.sender != task.tester) revert Unauthorized();
-        if (task.state != State.Testing || taskExecutionMode[taskId] != ExecutionMode.Collaboration || evidenceHash == bytes32(0)) revert InvalidState();
-        task.evidenceHash = evidenceHash;
-        if (passed) {
-            _storeExecutorWeights(taskId, task.executorCount, executorWeightsBps);
-            _finishSuccessfulTest(taskId, task, evidenceHash);
-        }
-        else {
-            _beginCorrection(taskId, task);
-        }
-        emit TestSubmitted(taskId, passed, evidenceHash);
-    }
-
-    function submitCompetitionTest(
-        uint256 taskId,
-        bool passed,
-        address winner,
-        bytes32 selectedArtifactHash,
-        bytes32 evidenceHash,
-        uint16[] calldata executorWeightsBps
+    function finalizeVerificationPanel(
+        uint256 taskId, uint32 workRound, uint8 checkpoint, bool passed,
+        address winner, bytes32 selectedArtifactHash, bytes32 aggregateEvidenceHash,
+        uint16[] calldata executorWeightsBps, address[3] calldata testers, uint16[3] calldata testerRewardWeightsBps
     ) external {
+        if (msg.sender != address(verificationPanel)) revert Unauthorized();
         Task storage task = tasks[taskId];
-        if (msg.sender != task.tester) revert Unauthorized();
-        if (task.state != State.Testing || taskExecutionMode[taskId] != ExecutionMode.Competition || evidenceHash == bytes32(0)) revert InvalidState();
-        task.evidenceHash = evidenceHash;
+        if (workRound != task.workRound || aggregateEvidenceHash == bytes32(0)) revert InvalidState();
+        for (uint8 i; i < 3; ++i) if (testers[i] != taskTesters[taskId][i] || testerRewardWeightsBps[i] == 0) revert InvalidTesterSet();
+        task.evidenceHash = aggregateEvidenceHash;
+        if (checkpoint != maintenanceRepairCheckpoint[taskId] || task.state != State.Testing) revert InvalidState();
         if (passed) {
-            if (
-                winner == address(0) || !isTaskExecutor[taskId][winner] ||
-                contributionRound[taskId][winner] != task.workRound ||
-                selectedArtifactHash == bytes32(0) || contributionHash[taskId][winner] != selectedArtifactHash
-            ) revert InvalidState();
-            _storeExecutorWeights(taskId, task.executorCount, executorWeightsBps);
-            competitionWinner[taskId] = winner;
-            task.artifactHash = selectedArtifactHash;
-            _finishSuccessfulTest(taskId, task, evidenceHash);
+            if (executorWeightsBps.length != task.executorCount) revert InvalidExecutorWeights();
+            taskExecutorWeightsBps[taskId] = executorWeightsBps;
+            if (checkpoint == 0 && taskExecutionMode[taskId] == ExecutionMode.Competition) {
+                if (winner == address(0) || !isTaskExecutor[taskId][winner] || contributionRound[taskId][winner] != task.workRound || contributionHash[taskId][winner] != selectedArtifactHash) revert InvalidState();
+                competitionWinner[taskId] = winner;
+                task.artifactHash = selectedArtifactHash;
+            } else if (winner != address(0) || selectedArtifactHash != bytes32(0)) revert InvalidState();
+            _finishSuccessfulTest(taskId, task, aggregateEvidenceHash);
         } else {
-            if (winner != address(0) || selectedArtifactHash != bytes32(0) || executorWeightsBps.length != 0) revert InvalidExecutorWeights();
-            competitionWinner[taskId] = address(0);
             _beginCorrection(taskId, task);
+            if (checkpoint != 0) {
+                emit MaintenanceValidated(taskId, checkpoint, false, aggregateEvidenceHash);
+                emit MaintenanceRepairRequested(taskId, checkpoint, task.workRound, aggregateEvidenceHash);
+            }
         }
-        emit CompetitionResultSubmitted(taskId, passed, winner, selectedArtifactHash, evidenceHash);
-    }
-
-    function _storeExecutorWeights(uint256 taskId, uint8 executorCount, uint16[] calldata executorWeightsBps) private {
-        if (executorWeightsBps.length != executorCount) revert InvalidExecutorWeights();
-        uint256 totalWeightBps;
-        for (uint256 i; i < executorWeightsBps.length; ++i) totalWeightBps += executorWeightsBps[i];
-        if (totalWeightBps != BPS) revert InvalidExecutorWeights();
-        taskExecutorWeightsBps[taskId] = executorWeightsBps;
+        if (checkpoint == 0 && taskExecutionMode[taskId] == ExecutionMode.Competition) emit CompetitionResultSubmitted(taskId, passed, passed ? winner : address(0), passed ? selectedArtifactHash : bytes32(0), aggregateEvidenceHash);
+        else emit TestSubmitted(taskId, passed, aggregateEvidenceHash);
     }
 
     function _resetTesterSelection(Task storage task) private {
@@ -666,6 +660,7 @@ contract TaskRegistry is Ownable {
         task.workRound += 1;
         task.contributionCount = 0;
         task.artifactHash = bytes32(0);
+        delete taskTesters[taskId];
         _resetTesterSelection(task);
         address[] storage executors = taskExecutors[taskId];
         for (uint256 i; i < executors.length; ++i) executorClaimedAt[taskId][executors[i]] = block.timestamp;
@@ -744,27 +739,27 @@ contract TaskRegistry is Ownable {
         emit RejectionResolved(taskId, executorWins, resolutionHash, publisherSlash);
     }
 
-    function validateMaintenance(uint256 taskId, uint8 checkpoint, bool passed, bytes32 evidenceHash) external {
+    function requestMaintenancePanel(uint256 taskId, uint8 checkpoint) external onlyCoordinator {
         Task storage task = tasks[taskId];
-        if (msg.sender != task.tester) revert Unauthorized();
         if (task.state != State.Maintenance || checkpoint == 0 || checkpoint > 3) revert InvalidState();
-        if (evidenceHash == bytes32(0) || maintenanceEvidence[taskId][checkpoint] != bytes32(0)) revert InvalidState();
+        if (maintenanceEvidence[taskId][checkpoint] != bytes32(0)) revert InvalidState();
         if (checkpoint > 1 && maintenanceEvidence[taskId][checkpoint - 1] == bytes32(0)) revert InvalidState();
         if (block.timestamp < rewardVault.checkpointDueAt(taskId, checkpoint)) revert InvalidState();
-        if (!passed) {
-            maintenanceRepairCheckpoint[taskId] = checkpoint;
-            _beginCorrection(taskId, task);
-            emit MaintenanceValidated(taskId, checkpoint, false, evidenceHash);
-            emit MaintenanceRepairRequested(taskId, checkpoint, task.workRound, evidenceHash);
-            return;
-        }
-        rewardVault.approveCheckpoint(taskId, checkpoint);
-        maintenanceEvidence[taskId][checkpoint] = evidenceHash;
-        if (checkpoint == 3) {
-            task.state = State.Completed;
-            stakeManager.releasePosition(task.positionId, taskId);
-        }
-        emit MaintenanceValidated(taskId, checkpoint, true, evidenceHash);
+        maintenanceRepairCheckpoint[taskId] = checkpoint;
+        task.state = State.Testing;
+        _startVerificationPanel(taskId, task, taskTesters[taskId], checkpoint);
+        emit MaintenancePanelRequested(taskId, checkpoint, task.workRound);
+        emit TesterPanelAssigned(taskId, taskTesters[taskId][0], taskTesters[taskId][1], taskTesters[taskId][2], task.selectionProof, task.workRound);
+    }
+
+    function _startVerificationPanel(uint256 taskId, Task storage task, address[3] memory testers, uint8 checkpoint) private {
+        bytes32[3] memory scopes = [
+            keccak256(abi.encode(task.specHash, task.workRound, checkpoint, uint8(0))),
+            keccak256(abi.encode(task.specHash, task.workRound, checkpoint, uint8(1))),
+            keccak256(abi.encode(task.specHash, task.workRound, checkpoint, uint8(2)))
+        ];
+        uint16[3] memory masks = [uint16(3), uint16(5), uint16(6)];
+        verificationPanel.startPanel(taskId, task.workRound, checkpoint, task.executorCount, testers, 7, masks, scopes);
     }
 
     function getTaskExecutors(uint256 taskId) external view returns (address[] memory) {
@@ -773,6 +768,10 @@ contract TaskRegistry is Ownable {
 
     function getTaskEvaluators(uint256 taskId) external view returns (address[3] memory) {
         return taskEvaluators[taskId];
+    }
+
+    function getTaskTesters(uint256 taskId) external view returns (address[3] memory) {
+        return taskTesters[taskId];
     }
 
     function getTaskExecutorWeightsBps(uint256 taskId) external view returns (uint16[] memory) {

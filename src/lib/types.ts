@@ -68,6 +68,8 @@ export interface Submission {
 
 export interface TestResult extends SoftwareEvidence {
   testerId: string;
+  testerIds?: string[];
+  reportHashes?: string[];
   passed: boolean;
   failures: string[];
   submittedAt: string;
@@ -149,6 +151,7 @@ export interface Task {
   contributionHashes?: Record<string, string>;
   workRound?: number;
   testerId: string | null;
+  testerIds?: string[];
   testerSelectionProof: string | null;
   criteria: AcceptanceCriterion[];
   completionDefinition?: TaskDefinition;

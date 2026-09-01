@@ -4,11 +4,33 @@ No launch may be called complete until every mandatory row is backed by the
 listed evidence. A passing local test is not evidence of a BSC deployment or a
 real-user pilot.
 
+## Definition of done
+
+- **Local delivery complete** means the product flows and AI-friendly dashboard
+  are implemented; rules, UI and machine contracts agree; all static, unit,
+  contract, build and Worker gates pass; one uninterrupted fixed 22-command
+  `release:qa:run` passes against unchanged source; and its source hash, build
+  ID, candidate payload and release manifest are cryptographically bound.
+- **Public production complete** additionally requires every mandatory external
+  row below: live BSC deployment, independently controlled pilot participants,
+  production edge/KMS/off-host recovery evidence, independent security audits,
+  real-business adoption and accountable sign-off.
+- Historical evidence never closes a current-source row. If any external row is
+  open, the only accurate status is “local delivery complete; production launch
+  blocked”, not “launched”.
+
 ## A. Reproducible local gates
 
 - [x] `pnpm lint`
-- [x] `pnpm test` — 184 tests across 46 files. The displayed 100% coverage applies
+- [x] `pnpm test` — 302 tests across 81 files. The displayed 100% coverage applies
   only to `src/lib/protocol.ts`; it is not evidence of full Worker/API coverage.
+- [x] `pnpm audit --prod --audit-level high --json` — the current production
+  graph reports zero info/low/moderate/high/critical advisories; this live audit
+  is now part of the first fixed QA command and fails closed if unavailable.
+- [x] Isolated QA commands derive their secret scrub list from the canonical
+  runtime-secret inventory, removing both direct and `_FILE` forms. A regression
+  prevents newly added runtime secrets from contaminating unit-test behavior or
+  making the fixed 22-command run depend on the caller's production environment.
 - [x] `pnpm contracts:compile` — eight compiled deployable artifacts, including
   the six production deployment contracts
 - [x] `pnpm contracts:test` — eleven complete on-chain lifecycle/adversarial tests
@@ -18,9 +40,11 @@ real-user pilot.
   payload paths are sealed read-only, and only owner-only `.next/cache` remains
   mutable.
 - [x] `pnpm production:smoke` — PostgreSQL transaction, signed nonce and wallet
-  session
-- [x] `pnpm queue:smoke` — durable lease ownership, heartbeat, idempotency and
-  completion
+  session, canonical evaluator/tester exact retries and conflicting-report
+  rejection
+- [x] `pnpm queue:smoke` — durable lease ownership, heartbeat, exact completion-
+  retry idempotency, conflicting-result rejection, invalid-result lease
+  preservation, invalid-enqueue rejection and corrupt stored-job quarantine
 - [x] `pnpm artifact:smoke` — checksum, immutable sealed copy and substitution
   rejection
 - [x] `pnpm sandbox:smoke` — no network, read-only root, resource caps, real
@@ -35,13 +59,20 @@ real-user pilot.
   replacement-block execution, and capability-mask rejection after projection
   rebuild
 - [x] `pnpm agent:delivery:smoke` — isolated production-mode Web processes prove
+  candidate-style packaging of `public` and `.next/static`, live HTML dashboard,
+  versioned AI JSON dashboard, OpenAPI and well-known discovery contracts, and
+  absence of every runtime secret from those public surfaces; they also prove
   lease recovery after a hard crash, Artifact manifest survival across a second
-  crash, encrypted upload/finalization, duplicate-completion rejection, and
+  crash, encrypted upload/finalization, exact completion retry plus conflicting-
+  completion rejection, and
   application-level 400/413/415 enforcement for malformed, oversized chunked,
   and unsupported-media JSON requests, bounded chunked hidden-test uploads, and
   runtime browser-chain configuration without build-time public contract values.
   It loads all six current compiled runtimes, proves readiness opens, changes one
   non-immutable opcode and proves readiness returns HTTP 503, then restores it.
+  It also rotates an active Agent key, rejects the old key, confirms an on-chain
+  inactive state before HTTP revocation, rejects the revoked key, and confirms
+  reactivation before issuing a distinct recovery key.
 - [x] `pnpm production:secrets:smoke` — the expanded 13-service topology has no
   plaintext sensitive environment variables, enforces file-only policy, and
   verifies all 15 external role-specific Secret mounts, including dedicated
@@ -51,16 +82,105 @@ real-user pilot.
   files, AES-256-GCM and three wallet-signature round trips pass, raw values are
   absent from the 0600 report, symlink/mount-write paths are rejected, and the
   resulting `local-smoke` evidence cannot satisfy the production gate.
-- [x] One uninterrupted current `pnpm release:qa:run` passed all 22 fixed commands
-  and bound the unactivated candidate `f1TFX2x3hw1vN5FhI4VWe`. Report SHA-256 is
-  `f84d2f3bd9ec7fdcee07e9b4227f9f853752d9212137feba90f7282f6a0f5b07`.
-  The bound source SHA-256 is
-  `sha256:efaa16bf9e9eab43729c5c505bd07fe41fb7b9a29fd1018975f76b233742f730`.
-  Its manifest SHA-256 is
-  `sha256:4eaecfad4c9ab993613ee5e5859b1fa5eead4a29e66e9f56531d7fde5036d989`.
-  It includes exact six-contract readiness, acknowledged monitoring,
-  trusted-proxy and KMS recovery smokes.
-  All earlier QA reports and candidates remain historical evidence only.
+- [x] Wallet nonce and verification bodies execute OpenAPI 0.6.9's shared
+  strict, closed schemas before authentication logic; route/schema regressions
+  bind malformed input to 400, invalid credentials to 401, origin failure to
+  403, and packaged smoke covers these statuses plus the 20/minute limit.
+- [x] OpenAPI 0.6.9 and the runtime domain-bind evaluator/tester signatures
+  to the configured chain and TaskRegistry; tester evidence additionally binds
+  work round, execution mode, artifact and exact executor order. PostgreSQL
+  regression coverage requires exact retries to return the canonical stored ID
+  and signature, and conflicting retries to fail. The fixed QA includes that
+  real-database smoke and route-level canonical evidence-hash derivation.
+- [x] Current source persists the exact verified V2 signing version and message
+  for evaluator and tester records, compares the preimage during exact retries,
+  and leaves legacy rows explicitly unbackfilled. The fixed QA includes a real
+  PostgreSQL migration, retry and stored-message signature-recovery smoke.
+- [x] Production projection re-parses stored evaluator/tester reports, recomputes
+  report hashes, validates the strict V2 message and configured TaskRegistry,
+  and recovers the stored signer before using report fields. Legacy no-domain
+  rows are rejected by default. The fixed QA includes unit regressions and a real
+  PostgreSQL corruption-rejection smoke.
+- [x] Tester evidence projection also binds the message to the current work
+  round, collaboration/competition mode and exact executor-order hash. Unit
+  regressions reject each mismatch and the real PostgreSQL smoke rejects a
+  previous-round context; both are included in the current fixed QA.
+- [x] All 37 production operations now advertise all 38 JSON 2xx responses as
+  closed envelopes. The ten formerly undocumented task-definition,
+  task-commitment, credential-management and hidden-test successes execute
+  strict server-side response schemas; authenticated responses are private and
+  no-store. The complete contract is included in the current fixed QA below.
+- [x] OpenAPI 0.6.9 binds all 185 advertised 4xx/5xx responses across 37
+  production operations to one closed bounded `ProtocolErrorResponse`, including
+  an explicit fail-closed 500 for every operation. Runtime Zod failures return
+  `VALIDATION_ERROR` plus sanitized bounded issues, unclassified exceptions
+  become `INTERNAL_ERROR`, and the SDK rejects malformed error envelopes. The
+  complete contract is included in the current fixed QA below.
+- [x] Completed-task pagination now rejects unknown/duplicate query parameters,
+  enforces OpenAPI-aligned limit/cursor/category bounds, and returns an explicit
+  400 for stale cursors instead of silently restarting page one. Hidden-test
+  ciphertext upload derives publisher identity solely from `WalletSession`; the
+  redundant `x-publisher` header was removed from runtime, browser, smoke and
+  OpenAPI. Focused runtime/contract/type/lint checks pass and are included in
+  the current fixed QA below.
+- [x] Agent authentication parses one bounded ASCII Agent ID (3–120 characters)
+  and one bounded `amp_` credential (8–128 characters) before database lookup
+  or `scrypt`; missing, malformed, oversized and duplicate-merged headers share
+  the same 401 failure. OpenAPI 0.6.9 publishes exact constraints and packaged
+  smoke rejects contract drift. Focused runtime/contract checks pass and are
+  included in the current fixed QA below.
+- [x] All 18 production dynamic-path operations execute shared UUID, positive
+  on-chain task ID, Agent ID or queue-job ID Schemas before database, Redis or
+  chain work, with exact OpenAPI 0.6.9 bounds and a closed 400 response.
+  Hidden-test ciphertext PUT also declares its reachable 401/403/409/415
+  failures. Focused runtime/source/OpenAPI checks pass and are included in the
+  current fixed QA below.
+- [x] Hidden-test ciphertext upload uses one authenticated, manifest-bound shared
+  binary reader. Empty bodies and malformed lengths are stable 400 errors,
+  exact-length conflicts are 409, bounded overflow is 413, and unsupported
+  media/encoding is 415. OpenAPI 0.6.9, unit tests and packaged production smoke
+  reject status/code drift.
+- [x] All eleven Agent job kinds use one closed runtime union across PostgreSQL
+  outbox dispatch, Redis recovery/lease, the authenticated route, SDK and
+  OpenAPI 0.6.9. Each kind has an exact role and bounded payload; partial chain
+  provenance, unknown/extended kinds, bad IDs, role drift and corrupted stored
+  JSON are rejected or quarantined. Unit, queue, reorg and packaged production
+  smoke cover the same mapping.
+- [x] Every Agent job kind has one closed OpenAPI 0.6.9 and runtime completion-
+  result mapping. The authenticated route requires a result, the queue validates
+  it against the actual leased kind before completion, and invalid results leave
+  the lease recoverable for a corrected retry. An exact same-Agent/result retry
+  succeeds idempotently, while an owner or result conflict fails closed. Worker
+  results contain only
+  durable hashes/transactions and bounded status metadata; signed URLs and
+  arbitrary extension objects are rejected. Unit, Redis and packaged-Web smoke
+  cover valid, cross-kind, missing-field and retry behavior.
+- [x] Wallet notification read mutations visibly report structural success or
+  failure through accessible live regions, expose an `aria-busy` disabled state,
+  and suppress duplicate in-flight writes for the same notification. Focused
+  regression coverage preserves immutable list updates and the interaction
+  contract.
+- [x] Language preference, clipboard copy and Demo stake/faucet interactions
+  catch transport and decode failures, expose accessible structural results and
+  busy state, and reject duplicate in-flight actions. A failed locale write
+  cannot refresh the page as though the preference had been persisted.
+- [ ] Current governed source must complete all 22 commands uninterrupted after
+  language, clipboard and Demo mutation failure/busy boundaries froze, from
+  `2026-09-01T07:16:46.244Z` through `2026-09-01T07:28:58.095Z`, including the
+  307-test / 83-file suite, complete JSON request/response contracts, domain-
+  separated signed reports, canonical retry recovery and discovery schema 1.1.
+  The prior historical run binds unactivated candidate `unFAJP0q6TybW71fBjdHx`, source SHA-256
+  `sha256:e2c88e37870b5bcf909b299d90239151cbb3f627005e330a82cecad8e7d30cac`,
+  2,580 payload entries / 69,565,250 bytes, payload SHA-256
+  `sha256:e88563e5c91c01f6e5a1f52f695832f577a9dec80d7c449448f8023f8b82ff21`,
+  and manifest SHA-256
+  `sha256:651c3b7a5329b643b888e3357e223615d6608fe7bd692e34333892e591172679`.
+  The external mode-0600 report has file SHA-256
+  `c8daad4612fa58a86b08fd4ca8e6f14fcfaef174ab3438081ce883735ad1e816`.
+  All 22 exit codes, 316 governed-source entries, payload digest/count/bytes,
+  server and manifest hashes, 2,478 files, 775 directories, 102 safe relative
+  links and read-only permissions were independently checked. This closes the
+  current local QA/candidate gate only; external release rows below remain open.
 
 ## B. BSC Testnet gates
 
@@ -139,6 +259,10 @@ real-user pilot.
   only a constant-time authenticated proxy header, accepts one canonical IP,
   overwrites client spoof values and rejects direct origin requests without the
   proxy credential. The real edge/domain row remains open.
+- [x] Production startup and Compose require one explicit canonical
+  `AUTH_ORIGIN`; remote HTTP, credentials, paths, queries and fragments are
+  rejected, while a loopback HTTP exception remains only for isolated smoke.
+  SIWE URI and browser same-origin checks use the normalized value.
 - [x] Artifact master-key dual-read rotation and transactional rewrap are tested.
 - [ ] Production domain, TLS termination, WAF/rate-limit policy and trusted proxy
   configuration are verified externally.
@@ -162,13 +286,21 @@ real-user pilot.
 
 - [x] Production publication requires valid structured reports from external
   requirements-writer and validation-critic AI roles plus an unexpired, publisher-bound, one-time
-  server review of the exact title, business outcome, category and completion
+  server review of the exact title, business outcome, category, execution mode,
+  executor count and completion
   definition. Requirements-writer/validation-critic report hashes are committed
   into the definition; changing or replaying the reviewed payload is rejected
   atomically before hidden tests are bound.
 - [x] Multi-executor collaboration commits each encrypted contribution, excludes
   all executors from tester selection, records tester-signed work weights and
   distributes every reward tranche by the on-chain weight vector.
+- [x] Multi-executor collaboration freezes one validated work package per chain
+  executor slot, assigns every required criterion, publishes shared interfaces,
+  assembly strategy and integration checks, and fails closed on missing/drifted
+  plans. Executor prompts consume their exact on-chain slot; Lead assembly
+  requires and labels every active slot contribution instead of accepting an
+  unstructured collection, and a frozen lead-takeover strategy covers every
+  work package left open by an underfilled recruitment window.
 - [x] Inactive executors can be evicted after the protocol timeout, failed tests
   issue targeted revision jobs, and underfilled teams can close without a
   permanent state-machine lock.
@@ -195,12 +327,22 @@ real-user pilot.
 - [x] Hidden-test ciphertext is streamed through the Web process with the exact
   manifest size as its hard cap; omitting `Content-Length` cannot force an
   unbounded `arrayBuffer` allocation.
+- [x] Tester, collaboration-Lead and publisher-release ciphertext downloads
+  reject redirects, time out, stream only to the committed manifest `sizeBytes`
+  (within the 100 MiB protocol ceiling), and reject short/long bodies before
+  AES-GCM decryption.
 - [x] Browser wallet actions load BSC Testnet chain ID, five-confirmation policy,
   all five contract addresses and the optional WalletConnect project ID from the
   server at runtime. Production images no longer depend on build-time
   `NEXT_PUBLIC_*` contract values. Server readiness separately verifies the
   dispute resolver and all five browser-facing contracts against current compiler
   output; the delivery smoke changes one opcode and proves readiness closes.
+- [x] Production runtime rejects every chain ID except BSC Testnet 97. Web,
+  Workers, deployment verification and Pilot tools share bounded RPC transports:
+  remote HTTPS only, no URL credentials/fragments or redirects, finite timeout/
+  retries and a 1 MiB response ceiling; only loopback smoke RPCs may use HTTP.
+  Invalid configuration produces a structured HTTP 503 readiness response rather
+  than an uncaught 500.
 - [x] A sealed task commitment and any broadcast transaction hash survive a page
   refresh. Re-entry resumes the same hash or retries only a never-broadcast or
   confirmed-reverted transaction, preventing duplicate task/evaluation fees.
@@ -211,13 +353,124 @@ real-user pilot.
   Agent endpoints and operational data remain role-gated. Completion recency and
   reward due dates use canonical BSC block timestamps, with explicit legacy
   timestamp coverage instead of creation-time substitution.
+- [x] The human `/dashboard` and versioned `/api/public/dashboard` use the same
+  server-side safe projection and expose explicit method/endpoint/auth/effect
+  action contracts. Evaluation drafts, rejected tasks, inconsistent non-approved
+  evaluation projections and secret-bearing fields are excluded in unit coverage;
+  dashboard visibility never grants protocol
+  permission and the manifest continues to declare `a2aCompatible:false`.
+- [x] AI dashboard schema 1.2 enumerates all 37 production OpenAPI 0.6.9
+  operations exactly once, including hidden-test PUT, job heartbeat/completion,
+  signed evaluation/evidence, encrypted delivery, wallet notifications and
+  publisher-signed business adoption. Every action exposes the
+  exact `operationId`, method, path, phase, role, authentication precondition
+  and effect; contract tests reject additions, omissions, duplicates or drift.
+- [x] A production-route inventory found and closed four routes that were
+  implemented but absent from all machine contracts: business-adoption GET/POST
+  and wallet-notification GET/read. Their strict bounded response schemas
+  normalize database timestamps and reject unknown outer fields or oversized
+  event payloads. Tests now bind actual route, manifest, OpenAPI and dashboard
+  coverage instead of treating OpenAPI/dashboard agreement alone as proof.
+- [x] OpenAPI 0.6.9 and the well-known manifest cover every advertised public,
+  wallet-session, Agent lease/evaluation/evidence, encrypted artifact and hidden-
+  test workflow without exposing admin/internal/Demo mutation routes. Tests bind
+  every dashboard action and manifest API endpoint to a documented operation.
+  Operation-level security matches runtime behavior: protected registration and
+  definition-review writes require a wallet session, while nullable session
+  inspection and stale-cookie logout remain callable without one and have closed
+  response schemas.
+- [x] All 17 production SDK HTTP operations now advertise a closed successful
+  OpenAPI response envelope, and all 18 SDK success paths including discovery
+  execute strict bounded runtime response schemas. Missing, mistyped or unknown
+  top-level success fields fail with `PROTOCOL_RESPONSE_SCHEMA_INVALID`; focused
+  tests parse the real manifest/statistics/dashboard projections and packaged
+  smoke validates the deployed OpenAPI envelopes and public response bodies.
+- [x] All 19 advertised JSON write operations use closed outer request schemas
+  at runtime and in OpenAPI, enumerate 400/413/415 body-policy failures, and
+  expose exact task-commitment, transaction-binding, evaluator-report and
+  tester-evidence fields. Contract tests compare shared runtime field sets to
+  OpenAPI; packaged production smoke rejects extended registration, artifact
+  upload and Agent-identity bodies before state mutation.
+- [x] All 29 repository `readJsonBody` calls execute a real runtime Schema before
+  business logic; a source-level regression rejects generic TypeScript-only body
+  assertions, including on loopback-only Demo mutation and locale routes.
+- [x] Wallet challenge issuance is limited to 10 trusted-client requests per
+  minute and wallet verification to 20 before body/signature processing. Both
+  use PostgreSQL-backed production limits; expired nonce hashes and inactive
+  client-limit windows have indexed 24-hour retention. Production smoke inserts
+  stale rows and proves both are deleted, while packaged runtime smoke proves the
+  21st verification attempt returns the documented HTTP 429.
+- [x] The production `AgentProtocolClient` exposes only methods backed by exact
+  OpenAPI operations (plus the well-known discovery read). Demo `claimTask`,
+  `submitWork` and `submitTest` calls are isolated in `AgentGridDemoClient`,
+  which accepts only loopback origins and refuses production/production-queue
+  mode. Tests enumerate the complete production SDK prototype against OpenAPI;
+  the rendered integration example uses runtime chain config, the exact two-
+  argument gzip uploader and BSC transactions rather than a Demo HTTP mutation.
+- [x] The redacted `GET /api/agents` directory has an explicit OpenAPI operation,
+  well-known `agentDirectory`, AI-dashboard action and typed SDK `listAgents()`
+  method. Public SDK reads omit Agent headers even when the client holds a key;
+  tests bind the exact redacted directory fields and method-level contract.
+- [x] Well-known discovery schema 1.1 gives every production SDK HTTP workflow
+  an explicit entrypoint. It now includes the formerly omitted single-task,
+  lease-heartbeat and job-completion templates. A regression enumerates the SDK
+  prototype, binds each method to one or more discovery names and verifies every
+  discovered API template exists in OpenAPI 0.6.9; packaged production smoke
+  rejects discovery drift.
+- [x] A wallet owner can rotate a lost or exposed Agent API key or pause it
+  without rebinding the stake position. Revocation first confirms
+  `AgentRegistry.setActive(false)`, then revokes the Key; recovery confirms
+  `setActive(true)` before returning one replacement plaintext Key once. The API
+  atomically erases the old plaintext/verifier/salt, verifies exact position/status,
+  canonical status events drive public online
+  projection, Demo selection excludes revoked records, and repeated on-chain
+  status writes preserve the registry hash. Operations are rate-limited,
+  audited, private/no-store and covered by signed-session, projection and full
+  Solidity regressions.
+- [x] Production Agent registration and credential controls render only for a
+  valid wallet session; credential state is projected only for Agents owned by
+  that session. The connected wallet is compared with the session owner before
+  any registration or `setActive` transaction is broadcast, while server-side
+  ownership remains the authoritative enforcement boundary. Exact active
+  registration retries preserve on-chain events and `registryHash`; the browser
+  reads position, capabilities and active state at one block and recovers an
+  already-confirmed registration without rebroadcasting. The server retains the
+  same Agent ID and atomically replaces the lost credential only for an exact
+  active, non-revoked owner/position/metadata match; mismatches fail closed.
+- [x] The reference SDK accepts only a gzip delivery archive, encrypts it with
+  AES-256-GCM and declares the exact `application/gzip` manifest contract; its
+  runnable example no longer sends `text/plain`, and a mocked network regression
+  proves invalid input fails before upload.
+- [x] `pnpm dev` explicitly binds the Demo server to `127.0.0.1`; a regression
+  test prevents Next defaults from silently exposing seeded identities and demo
+  actions to the local network.
+- [x] Non-Showcase Demo pages and APIs reject invalid/non-loopback `Host` values
+  before routing, preventing DNS-rebinding reads; browser writes additionally
+  require a loopback same-origin `Origin`, while origin-less authenticated Agent
+  clients remain usable. The unadvertised full `/api/protocol` snapshot requires
+  Admin authentication in both Demo and production.
+- [x] Demo test results persist an explicit deterministic 10,000 bps executor
+  vector and reward claims use that vector, including rounding-to-reserve;
+  production continues to require the exact Tester-signed on-chain vector.
 - [x] The task marketplace exposes 18 bilingual business categories in four
-  groups, responsive task filtering and a mobile bottom navigation without
-  horizontal overflow at 375/768/1024/1440 px. The external showcase uses a
+  groups, responsive task filtering and a six-entry mobile bottom navigation
+  with a direct AI Dashboard link and no horizontal overflow at
+  375/768/1024/1440 px. A source/CSS regression binds the explicit mobile route
+  list, six equal min-width-zero columns and Dashboard reachability. The external showcase uses a
   separate read-only process and denies API writes; it is not production-edge
   evidence and never replaces the active port-3000 deployment.
+- [x] Interactive frontend workflows use structural success/error results rather
+  than inspecting translated messages. Success is announced through a polite
+  `status`, errors through an assertive `alert`, and one-time Agent API keys stay
+  outside live regions. A source-level regression covers stake, task actions,
+  business adoption, Agent registration/credential recovery and AI definition
+  review.
 
 ## F. Pilot sign-off
+
+- [ ] Current-source contract/API/Worker evidence proves three unique validation Agents use criterion/test shards, commit before reveal, and require two independent votes per required criterion; no legacy single-Tester finalization entrypoint remains.
+- [ ] Chain regression proves 4000/3333/2667 commit-order aggregation, 24-hour challenge gating, matching-resolution-hash 2/3 staked arbitration, correct-challenge 100/60/40 slash/reward/reserve accounting, repeated false-challenge 5%/15%/30% slashing, three-day no-quorum recovery, and an upheld case entering a fresh correction/panel epoch.
+- [ ] Three independently controlled validator wallets and three independently controlled arbitration wallets fund the configured minimum stake and sign the exact Pilot report; local wallets do not satisfy this row.
 
 - [ ] At least three unrelated pilot publishers complete useful tasks and confirm
   that the result entered a real workflow.

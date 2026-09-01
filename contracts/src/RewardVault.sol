@@ -30,6 +30,7 @@ contract RewardVault is Ownable, ReentrancyGuard {
     address public immutable reserve;
     uint256 public immutable epochBudget;
     address public taskRegistry;
+    address public verificationPanel;
     mapping(uint256 => uint256) public epochSpent;
     mapping(bytes32 => uint256) public collaborationCount;
     mapping(uint256 => Grant) private grants;
@@ -37,7 +38,10 @@ contract RewardVault is Ownable, ReentrancyGuard {
     mapping(uint256 => bool) public evaluationFeeSettled;
     mapping(uint256 => mapping(uint8 => address[])) private checkpointExecutors;
     mapping(uint256 => mapping(uint8 => uint16[])) private checkpointExecutorWeightsBps;
-    mapping(uint256 => mapping(uint8 => address)) private checkpointTesters;
+    mapping(uint256 => address[3]) private grantTesters;
+    mapping(uint256 => uint16[3]) private grantTesterWeightsBps;
+    mapping(uint256 => mapping(uint8 => address[3])) private checkpointTesterPanels;
+    mapping(uint256 => mapping(uint8 => uint16[3])) private checkpointTesterPanelWeightsBps;
 
     error Unauthorized();
     error GrantExists();
@@ -60,6 +64,7 @@ contract RewardVault is Ownable, ReentrancyGuard {
     event CheckpointApproved(uint256 indexed taskId, uint8 indexed checkpoint);
     event RewardClaimed(uint256 indexed taskId, uint8 indexed checkpoint, uint256 amount);
     event ExecutorRewardPaid(uint256 indexed taskId, uint8 indexed checkpoint, address indexed executor, uint256 amount);
+    event TesterRewardPaid(uint256 indexed taskId, uint8 indexed checkpoint, address indexed tester, uint256 amount, uint16 weightBps);
     event EvaluationFeeRegistered(uint256 indexed taskId, uint256 amount);
     event EvaluationFeePaid(uint256 indexed taskId, address indexed evaluator, uint256 amount);
     event EvaluationFeeSettled(uint256 indexed taskId, uint256 reporterCount, uint256 reserveAmount);
@@ -79,6 +84,28 @@ contract RewardVault is Ownable, ReentrancyGuard {
         if (registry == address(0)) revert Unauthorized();
         if (taskRegistry != address(0)) revert RegistryAlreadySet();
         taskRegistry = registry;
+    }
+
+    function setVerificationPanel(address panel) external onlyOwner {
+        if (panel == address(0) || verificationPanel != address(0)) revert RegistryAlreadySet();
+        verificationPanel = panel;
+    }
+
+    function setTesterPanel(uint256 taskId, uint8 checkpoint, address[3] calldata testers, uint16[3] calldata weightsBps) external {
+        if (msg.sender != verificationPanel || checkpoint > 3 || checkpointTesterPanels[taskId][checkpoint][0] != address(0)) revert Unauthorized();
+        uint256 total;
+        for (uint8 i; i < 3; ++i) {
+            if (testers[i] == address(0)) revert EmptyReward();
+            for (uint8 j; j < i; ++j) if (testers[i] == testers[j]) revert EmptyReward();
+            total += weightsBps[i];
+        }
+        if (total != BPS) revert InvalidExecutorWeights();
+        checkpointTesterPanels[taskId][checkpoint] = testers;
+        checkpointTesterPanelWeightsBps[taskId][checkpoint] = weightsBps;
+        if (checkpoint == 0) {
+            grantTesters[taskId] = testers;
+            grantTesterWeightsBps[taskId] = weightsBps;
+        }
     }
 
     /// @notice Accounts for tokens already transferred by StakeCreditManager.
@@ -189,7 +216,6 @@ contract RewardVault is Ownable, ReentrancyGuard {
                 checkpointExecutors[taskId][checkpoint].push(executors[i]);
                 checkpointExecutorWeightsBps[taskId][checkpoint].push(executorWeightsBps[i]);
             }
-            checkpointTesters[taskId][checkpoint] = tester;
         }
         emit FutureParticipantsUpdated(taskId, fromCheckpoint, executors, executorWeightsBps, tester, keccak256(abi.encode(executors, executorWeightsBps, tester)));
     }
@@ -217,9 +243,21 @@ contract RewardVault is Ownable, ReentrancyGuard {
             executorsPaid += executorAmount;
             emit ExecutorRewardPaid(taskId, checkpoint, executor, executorAmount);
         }
-        address checkpointTester = checkpointTesters[taskId][checkpoint];
-        token.safeTransfer(checkpointTester == address(0) ? grant.tester : checkpointTester, testerAmount);
-        token.safeTransfer(reserve, amount - executorsPaid - testerAmount);
+        uint256 testersPaid;
+        address[3] memory testers = checkpointTesterPanels[taskId][checkpoint];
+        uint16[3] memory testerWeights = checkpointTesterPanelWeightsBps[taskId][checkpoint];
+        if (testers[0] == address(0)) {
+            testers = grantTesters[taskId];
+            testerWeights = grantTesterWeightsBps[taskId];
+        }
+        if (testers[0] == address(0)) revert EmptyReward();
+        for (uint8 i; i < 3; ++i) {
+            uint256 testerShare = (testerAmount * testerWeights[i]) / BPS;
+            token.safeTransfer(testers[i], testerShare);
+            testersPaid += testerShare;
+            emit TesterRewardPaid(taskId, checkpoint, testers[i], testerShare, testerWeights[i]);
+        }
+        token.safeTransfer(reserve, amount - executorsPaid - testersPaid);
         emit RewardClaimed(taskId, checkpoint, amount);
     }
 
@@ -241,12 +279,24 @@ contract RewardVault is Ownable, ReentrancyGuard {
         return grants[taskId];
     }
 
+    function getTesterPanel(uint256 taskId) external view returns (address[3] memory testers, uint16[3] memory weightsBps) {
+        return (grantTesters[taskId], grantTesterWeightsBps[taskId]);
+    }
+
+    function getCheckpointTesterPanel(uint256 taskId, uint8 checkpoint) external view returns (address[3] memory testers, uint16[3] memory weightsBps) {
+        if (checkpoint > 3) revert InvalidCheckpoint();
+        testers = checkpointTesterPanels[taskId][checkpoint];
+        weightsBps = checkpointTesterPanelWeightsBps[taskId][checkpoint];
+        if (testers[0] == address(0)) return (grantTesters[taskId], grantTesterWeightsBps[taskId]);
+    }
+
     function getCheckpointParticipants(uint256 taskId, uint8 checkpoint) external view returns (address[] memory executors, uint16[] memory weights, address tester) {
         if (checkpoint > 3) revert InvalidCheckpoint();
+        Grant storage grant = grants[taskId];
         if (checkpointExecutors[taskId][checkpoint].length == 0) {
-            Grant storage grant = grants[taskId];
             return (grant.executors, grant.executorWeightsBps, grant.tester);
         }
-        return (checkpointExecutors[taskId][checkpoint], checkpointExecutorWeightsBps[taskId][checkpoint], checkpointTesters[taskId][checkpoint]);
+        address[3] storage testers = checkpointTesterPanels[taskId][checkpoint];
+        return (checkpointExecutors[taskId][checkpoint], checkpointExecutorWeightsBps[taskId][checkpoint], testers[0] == address(0) ? grant.tester : testers[0]);
     }
 }

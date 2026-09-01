@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import {
-  createPublicClient, createWalletClient, formatEther, getAddress, http, parseEther,
+  createPublicClient, createWalletClient, formatEther, getAddress, parseEther,
   type Abi, type Address, type Hash,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
@@ -13,9 +13,10 @@ import {
   readDeploymentRunState, saveDeploymentRunState,
 } from "./deployment-run-state";
 import { requiredConfigValue, requiredSecret } from "../../src/lib/secrets";
+import { publicBscRpcTransport } from "./pilot-policy";
 
 const ACKNOWLEDGEMENT = "I_UNDERSTAND_THIS_BROADCASTS_BSC_TESTNET_TRANSACTIONS";
-const contractKeys = ["token", "stakeManager", "agentRegistry", "rewardVault", "taskRegistry", "disputeResolver"] as const;
+const contractKeys = ["token", "stakeManager", "agentRegistry", "rewardVault", "taskRegistry", "verificationPanel", "verificationArbitrationCourt", "disputeResolver"] as const;
 type ContractKey = typeof contractKeys[number];
 
 async function main() {
@@ -27,8 +28,9 @@ async function main() {
   const rpcUrl = requiredConfigValue("BSC_TESTNET_RPC_URL");
   const privateKey = requiredSecret("DEPLOYER_PRIVATE_KEY") as `0x${string}`;
   const account = privateKeyToAccount(privateKey);
-  const publicClient = createPublicClient({ chain: bscTestnet, transport: http(rpcUrl) });
-  const walletClient = createWalletClient({ account, chain: bscTestnet, transport: http(rpcUrl) });
+  const transport = publicBscRpcTransport(rpcUrl);
+  const publicClient = createPublicClient({ chain: bscTestnet, transport });
+  const walletClient = createWalletClient({ account, chain: bscTestnet, transport });
   const artifacts = compileContracts();
 
   const actualChainId = await publicClient.getChainId();
@@ -54,7 +56,7 @@ async function main() {
   if (!Number.isInteger(quorum) || quorum < 2 || quorum > arbitrators.length) throw new Error("ARBITRATOR_QUORUM_INVALID");
 
   const runtimeBytecodeHashes = Object.fromEntries(
-    ["TestToken", "StakeCreditManager", "AgentRegistry", "RewardVault", "TaskRegistry", "DisputeResolver"]
+    ["TestToken", "StakeCreditManager", "AgentRegistry", "RewardVault", "TaskRegistry", "VerificationPanel", "VerificationArbitrationCourt", "DisputeResolver"]
       .map((name) => [name, runtimeBytecodeHash(artifacts[name])]),
   );
   const configuration = {
@@ -123,17 +125,22 @@ async function main() {
   const agentRegistry = await deploy("deploy.agentRegistry", "agentRegistry", "AgentRegistry", [stakeManager]);
   const rewardVault = await deploy("deploy.rewardVault", "rewardVault", "RewardVault", [token, reserve, parseEther("100000"), deployer]);
   const taskRegistry = await deploy("deploy.taskRegistry", "taskRegistry", "TaskRegistry", [stakeManager, rewardVault, agentRegistry, coordinator, deployer]);
+  const verificationPanel = await deploy("deploy.verificationPanel", "verificationPanel", "VerificationPanel", [taskRegistry, rewardVault, deployer]);
+  const verificationArbitrationCourt = await deploy("deploy.verificationArbitrationCourt", "verificationArbitrationCourt", "VerificationArbitrationCourt", [token, verificationPanel, agentRegistry, reserve, arbitrators.slice(0, 3)]);
   const disputeResolver = await deploy("deploy.disputeResolver", "disputeResolver", "DisputeResolver", [taskRegistry, arbitrators, quorum, deployer]);
 
   await write("wire.stakeManager", stakeManager, "StakeCreditManager", "setTaskRegistry", [taskRegistry]);
   await write("wire.disputeResolver", taskRegistry, "TaskRegistry", "setDisputeResolver", [disputeResolver]);
+  await write("wire.verificationPanel", taskRegistry, "TaskRegistry", "setVerificationPanel", [verificationPanel]);
+  await write("wire.rewardVaultVerificationPanel", rewardVault, "RewardVault", "setVerificationPanel", [verificationPanel]);
+  await write("wire.verificationArbitrationCourt", verificationPanel, "VerificationPanel", "setArbitrationCourt", [verificationArbitrationCourt]);
   await write("wire.rewardVault", rewardVault, "RewardVault", "setTaskRegistry", [taskRegistry]);
   await write("fund.rewardReserve", token, "TestToken", "mintRewardReserve", [rewardVault, parseEther("100000")]);
   for (const [name, address] of Object.entries({ TestToken: token, StakeCreditManager: stakeManager, RewardVault: rewardVault, TaskRegistry: taskRegistry, DisputeResolver: disputeResolver })) {
     await write(`ownership.${name}`, address as Address, name, "transferOwnership", [owner]);
   }
 
-  const contracts = { token, stakeManager, agentRegistry, rewardVault, taskRegistry, disputeResolver };
+  const contracts = { token, stakeManager, agentRegistry, rewardVault, taskRegistry, verificationPanel, verificationArbitrationCourt, disputeResolver };
   if (contractKeys.some((key) => !state.contracts[key])) throw new Error("DEPLOYMENT_CONTRACT_SET_INCOMPLETE");
   const deployment = {
     ...configuration,

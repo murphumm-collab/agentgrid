@@ -3,17 +3,19 @@ import { keccak256, stringToHex } from "viem";
 import { openArtifactKey } from "@/lib/artifact-crypto";
 import { createArtifactDownload } from "@/lib/artifacts";
 import { apiError } from "@/lib/http";
-import { assertTeamArtifactAccess } from "@/lib/artifact-access";
+import { assertTeamArtifactAccess, encryptedArtifactAccess } from "@/lib/artifact-access";
 import { isProductionMode } from "@/lib/env";
 import { authenticateAgent, protocolSnapshot } from "@/lib/service";
 import { hiddenTestForTask, readyArtifactsForTask } from "@/lib/store-postgres";
 import { readJsonBody } from "@/lib/request-body";
 import { roleCanLease } from "@/lib/agent-roles";
+import { agentIdBodySchema } from "@/lib/agent-delivery-schema";
+import { onchainTaskIdPathParameterSchema } from "@/lib/path-parameters";
 
 export async function POST(request: NextRequest, context: { params: Promise<{ taskId: string }> }) {
   try {
-    const { taskId } = await context.params;
-    const body = await readJsonBody<{ agentId: string }>(request);
+    const taskId = onchainTaskIdPathParameterSchema.parse((await context.params).taskId);
+    const body = agentIdBodySchema.parse(await readJsonBody(request));
     const agent = await authenticateAgent(body.agentId, request.headers.get("x-agent-key"));
     const snapshot = await protocolSnapshot();
     const task = snapshot.tasks.find((item) => item.id === taskId);
@@ -34,10 +36,9 @@ export async function POST(request: NextRequest, context: { params: Promise<{ ta
       const commitment = keccak256(stringToHex(`sha256:${artifact.plaintextSha256}`));
       if (commitments[contributor.owner.toLowerCase()]?.toLowerCase() !== commitment.toLowerCase()) continue;
       deliveries.push({
-        contributor: contributor.owner, artifactHash: `sha256:${artifact.plaintextSha256}`, ciphertextHash: `sha256:${artifact.sha256}`,
-        contentType: artifact.contentType, sizeBytes: artifact.sizeBytes, contentIv: artifact.contentIv,
-        encryptionAlgorithm: artifact.encryptionAlgorithm, decryptionKey: openArtifactKey(artifact),
-        downloadUrl: await createArtifactDownload(artifact.objectKey), expiresInSeconds: 300,
+        slot: task.executorIds.findIndex((owner) => owner.toLowerCase() === contributor.owner.toLowerCase()) + 1,
+        contributor: contributor.owner,
+        ...encryptedArtifactAccess(artifact, { decryptionKey: openArtifactKey(artifact), downloadUrl: await createArtifactDownload(artifact.objectKey) }),
       });
       deliveredOwners.add(contributor.owner.toLowerCase());
     }
@@ -46,12 +47,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ ta
       taskId,
       workRound: task.workRound ?? 1,
       contributions: deliveries,
-      ...(hiddenTest ? { hiddenTest: {
-        artifactHash: `sha256:${hiddenTest.plaintextSha256}`, ciphertextHash: `sha256:${hiddenTest.sha256}`,
-        contentType: hiddenTest.contentType, sizeBytes: hiddenTest.sizeBytes, contentIv: hiddenTest.contentIv,
-        encryptionAlgorithm: hiddenTest.encryptionAlgorithm, decryptionKey: openArtifactKey(hiddenTest),
-        downloadUrl: await createArtifactDownload(hiddenTest.objectKey), expiresInSeconds: 300,
-      } } : {}),
+      ...(hiddenTest ? { hiddenTest: encryptedArtifactAccess(hiddenTest, { decryptionKey: openArtifactKey(hiddenTest), downloadUrl: await createArtifactDownload(hiddenTest.objectKey) }) } : {}),
     });
   } catch (error) { return apiError(error); }
 }

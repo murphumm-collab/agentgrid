@@ -1,12 +1,13 @@
-import { createPublicClient, formatEther, getAddress, http, parseEther } from "viem";
+import { createPublicClient, formatEther, getAddress, parseEther } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { bscTestnet } from "viem/chains";
 import { compileContracts } from "./compiler";
 import { configuredSecret } from "../../src/lib/secrets";
+import { publicBscRpcTransport } from "./pilot-policy";
 
 async function main() {
   const rpcUrl = process.env.BSC_TESTNET_RPC_URL ?? "https://bsc-testnet-dataseed.bnbchain.org";
-  const client = createPublicClient({ chain: bscTestnet, transport: http(rpcUrl) });
+  const client = createPublicClient({ chain: bscTestnet, transport: publicBscRpcTransport(rpcUrl) });
   const chainId = await client.getChainId();
   if (chainId !== bscTestnet.id) throw new Error(`WRONG_CHAIN_${chainId}`);
   const artifacts = compileContracts();

@@ -2,13 +2,13 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import {
-  createWalletClient, decodeEventLog, formatEther, http, keccak256, parseEther, stringToHex,
+  createWalletClient, decodeEventLog, formatEther, keccak256, parseEther, stringToHex,
   type Abi, type Address, type Hash, type TransactionReceipt,
 } from "viem";
 import { bscTestnet } from "viem/chains";
 import { compileContracts } from "./compiler";
 import { runPilotPreflight, type PilotPreflightContext, type PilotPreflightReport } from "./pilot-preflight";
-import { pilotRoleNames, type PilotRoleName } from "./pilot-policy";
+import { pilotRoleNames, publicBscRpcTransport, type PilotRoleName } from "./pilot-policy";
 
 type RecordedTransaction = { hash: Hash; blockNumber?: string; gasUsed?: string; status?: "success" | "reverted" };
 interface PilotRunState {
@@ -56,7 +56,7 @@ function parseState(file: string) {
 }
 
 function wallet(context: PilotPreflightContext, role: PilotRoleName) {
-  return createWalletClient({ account: context.accounts[role], chain: bscTestnet, transport: http(context.rpcUrl) });
+  return createWalletClient({ account: context.accounts[role], chain: bscTestnet, transport: publicBscRpcTransport(context.rpcUrl) });
 }
 
 async function runTransaction(

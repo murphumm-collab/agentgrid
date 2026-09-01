@@ -1,4 +1,4 @@
-import { createPublicClient, createWalletClient, http, keccak256, stringToHex, type Hex } from "viem";
+import { createPublicClient, createWalletClient, encodeAbiParameters, keccak256, stringToHex, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { bscTestnet } from "viem/chains";
 import { AgentProtocolClient } from "../src/sdk/client";
@@ -6,13 +6,14 @@ import { completeAgentJob } from "../src/lib/agent-queue";
 import { readAgentProjectArchive } from "../src/lib/agent-artifact-builder";
 import { calculateContributionWeights, contributionFormulaVersion } from "../src/lib/contribution-weights";
 import { competitionScoreBps, competitionWeightsBps } from "../src/lib/competition-scoring";
-import { taskRegistryAbi } from "../src/lib/contracts";
+import { taskRegistryAbi, verificationPanelAbi } from "../src/lib/contracts";
 import { chainContractAddresses, runtimeConfig } from "../src/lib/env";
 import { decryptArtifactDownload, downloadAndRunSandbox } from "../src/lib/sandbox";
 import { evidenceMessage } from "../src/lib/signed-evidence";
 import { requiredConfigValue, requiredSecret } from "../src/lib/secrets";
 import { automatedCriterionResults } from "../src/lib/criterion-verification";
 import type { TaskDefinition } from "../src/lib/task-definition";
+import { bscRpcTransport } from "../src/lib/bsc-rpc";
 
 function required(name: string) { return ["AGENT_API_KEY", "AGENT_WALLET_PRIVATE_KEY"].includes(name) ? requiredSecret(name) : requiredConfigValue(name); }
 let heartbeatTimer: ReturnType<typeof setInterval> | undefined;
@@ -23,11 +24,13 @@ async function main() {
   if (!leased) { console.log("No assigned test job."); return; }
   heartbeatTimer = setInterval(() => { void protocol.heartbeatJob(leased.job.id).catch(() => undefined); }, Math.max(5_000, Math.floor(leased.leaseSeconds * 1_000 / 3)));
   const taskId = String(leased.job.payload.taskId);
-  const task = ((await protocol.listTasks()).tasks as Array<{ id: string; executionMode?: "COLLABORATION" | "COMPETITION"; maintenanceRepairCheckpoint?: number | null; completionDefinition?: TaskDefinition }>).find((item) => item.id === taskId);
+  const verificationShard = Number(leased.job.payload.shard);
+  if (!Number.isInteger(verificationShard) || verificationShard < 0 || verificationShard > 2) throw new Error("VERIFICATION_SHARD_MISSING");
+  const task = ((await protocol.listTasks()).tasks as Array<{ id: string; workRound?: number; executionMode?: "COLLABORATION" | "COMPETITION"; maintenanceRepairCheckpoint?: number | null; completionDefinition?: TaskDefinition }>).find((item) => item.id === taskId);
   if (!task) throw new Error("TEST_TASK_NOT_INDEXED");
   const account = privateKeyToAccount(required("AGENT_WALLET_PRIVATE_KEY") as Hex);
   const config = runtimeConfig();
-  const transport = http(config.BSC_TESTNET_RPC_URL);
+  const transport = bscRpcTransport(config.BSC_TESTNET_RPC_URL);
   const wallet = createWalletClient({ account, chain: bscTestnet, transport });
   const publicClient = createPublicClient({ chain: bscTestnet, transport });
   const checkpoint = leased.job.kind === "MAINTENANCE_VALIDATION" ? Number(leased.job.payload.checkpoint) : undefined;
@@ -90,24 +93,51 @@ async function main() {
     contributionWork = calculateContributionWeights(finalManifest, ordered.map((item, index) => ({ contributor: item.contributor, manifest: contributionManifests[index] })), executors[0]);
     executorWeightsBps = contributionWork.map((item) => item.weightBps);
   }
-  const criterionResults = task.completionDefinition ? automatedCriterionResults(task.completionDefinition, report, artifact.artifactHash) : [];
-  const finalPassed = report.passed && (!task.completionDefinition || task.completionDefinition.acceptanceCriteria.every((criterion, index) => !criterion.required || criterionResults[index]?.passed));
+  const allowedCriterionIds = task.completionDefinition?.verificationPlan?.shards[verificationShard]?.criterionIds;
+  if (!allowedCriterionIds) throw new Error("VERIFICATION_SHARD_NOT_COMMITTED");
+  const criterionResults = task.completionDefinition ? automatedCriterionResults(task.completionDefinition, report, artifact.artifactHash).filter((result) => allowedCriterionIds.includes(result.criterionId)) : [];
+  const finalPassed = report.passed && criterionResults.every((result) => result.passed);
   const signedReport = { ...report, passed: finalPassed, criterionResults, contributionWork, contributionFormulaVersion, executorWeightsBps, ...(competitionResult ? { competition: competitionResult } : {}), ...(task.maintenanceRepairCheckpoint ? { maintenanceRepairCheckpoint: task.maintenanceRepairCheckpoint } : {}) };
-  const commitment = evidenceMessage({ taskId, artifactHash: artifact.artifactHash, report: signedReport });
+  const signingDomain = {
+    chainId: config.BSC_CHAIN_ID, taskRegistry: chainContractAddresses().taskRegistry, taskId,
+    verificationShard,
+    workRound: task.workRound ?? 1, executionMode: task.executionMode ?? "COLLABORATION", executorOrder: [...executors],
+    artifactHash: artifact.artifactHash, report: signedReport,
+  } as const;
+  const commitment = evidenceMessage(signingDomain);
   const signature = await account.signMessage({ message: commitment.message });
   await protocol.heartbeatJob(leased.job.id);
-  const evidence = await protocol.submitSignedEvidence({ taskId, artifactHash: artifact.artifactHash, report: signedReport as unknown as Record<string, unknown>, signature });
+  const evidence = await protocol.submitSignedEvidence({ ...signingDomain, report: signedReport as unknown as Record<string, unknown>, signature });
   await protocol.heartbeatJob(leased.job.id);
-  const hash = checkpoint
-    ? await wallet.writeContract({ address: chainContractAddresses().taskRegistry, abi: taskRegistryAbi, functionName: "validateMaintenance", args: [BigInt(taskId), checkpoint, finalPassed, evidence.evidenceHash as Hex] })
-    : competition
-      ? await wallet.writeContract({
-        address: chainContractAddresses().taskRegistry, abi: taskRegistryAbi, functionName: "submitCompetitionTest",
-        args: [BigInt(taskId), finalPassed, (competitionResult?.winner ?? `0x${"0".repeat(40)}`) as Hex,
-          competitionResult?.selectedArtifactHash ? keccak256(stringToHex(competitionResult.selectedArtifactHash)) : `0x${"0".repeat(64)}`,
-          evidence.evidenceHash as Hex, executorWeightsBps],
-      })
-    : await wallet.writeContract({ address: chainContractAddresses().taskRegistry, abi: taskRegistryAbi, functionName: "submitTest", args: [BigInt(taskId), finalPassed, evidence.evidenceHash as Hex, executorWeightsBps] });
+  if (checkpoint) throw new Error("MAINTENANCE_PANEL_WORKER_NOT_IMPLEMENTED");
+  const panelAddress = await publicClient.readContract({ address: chainContractAddresses().taskRegistry, abi: taskRegistryAbi, functionName: "verificationPanel" });
+  const criterionPassMask = criterionResults.reduce((mask, result) => result.passed ? mask | (1 << (Number(result.criterionId.split("-")[1]) - 1)) : mask, 0);
+  const winner = (competitionResult?.winner ?? `0x${"0".repeat(40)}`) as Hex;
+  const selectedArtifactHash = competitionResult?.selectedArtifactHash ? keccak256(stringToHex(competitionResult.selectedArtifactHash)) : `0x${"0".repeat(64)}` as Hex;
+  // Deterministic recovery secret: the signed evidence is durable and an
+  // idempotent retry recreates this salt after a crash between commit/reveal.
+  // Other validators cannot derive it from the public commitment.
+  const salt = keccak256(signature as Hex);
+  const shardCommitment = keccak256(encodeAbiParameters([
+    { type: "uint256" }, { type: "uint32" }, { type: "uint8" }, { type: "uint8" }, { type: "uint16" },
+    { type: "address" }, { type: "bytes32" }, { type: "bytes32" }, { type: "uint16[]" }, { type: "bytes32" },
+  ], [BigInt(taskId), task.workRound ?? 1, 0, verificationShard, criterionPassMask, winner, selectedArtifactHash, evidence.evidenceHash as Hex, finalPassed ? executorWeightsBps : [], salt]));
+  const existingReport = await publicClient.readContract({ address: panelAddress, abi: verificationPanelAbi, functionName: "getReport", args: [BigInt(taskId), account.address] });
+  if (existingReport.commitment !== `0x${"0".repeat(64)}` && existingReport.commitment.toLowerCase() !== shardCommitment.toLowerCase()) throw new Error("VERIFICATION_COMMITMENT_CONFLICT");
+  if (existingReport.commitment === `0x${"0".repeat(64)}`) {
+    const commitHash = await wallet.writeContract({ address: panelAddress, abi: verificationPanelAbi, functionName: "commitShard", args: [BigInt(taskId), shardCommitment] });
+    const commitReceipt = await publicClient.waitForTransactionReceipt({ hash: commitHash, confirmations: config.CHAIN_CONFIRMATIONS });
+    if (commitReceipt.status !== "success") throw new Error("CHAIN_TEST_COMMIT_REVERTED");
+  }
+  let revealReady = false;
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    const panel = await publicClient.readContract({ address: panelAddress, abi: verificationPanelAbi, functionName: "getPanel", args: [BigInt(taskId)] });
+    if (Number(panel.status) === 2) { revealReady = true; break; }
+    await new Promise((resolve) => setTimeout(resolve, 5_000));
+    await protocol.heartbeatJob(leased.job.id);
+  }
+  if (!revealReady) throw new Error("VERIFICATION_PANEL_REVEAL_NOT_READY");
+  const hash = await wallet.writeContract({ address: panelAddress, abi: verificationPanelAbi, functionName: "revealShard", args: [BigInt(taskId), criterionPassMask, winner, selectedArtifactHash, evidence.evidenceHash as Hex, finalPassed ? executorWeightsBps : [], salt] });
   const receipt = await publicClient.waitForTransactionReceipt({ hash, confirmations: config.CHAIN_CONFIRMATIONS });
   if (receipt.status !== "success") throw new Error("CHAIN_TEST_SUBMISSION_REVERTED");
   await completeAgentJob(leased.job.id, required("AGENT_ID"), { reportHash: evidence.reportHash, evidenceHash: evidence.evidenceHash, transactionHash: hash, passed: finalPassed });

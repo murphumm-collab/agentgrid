@@ -3,6 +3,7 @@ x-app-environment: &app-environment
   REQUIRE_FILE_SECRETS: "true"
   DATABASE_URL_FILE: /run/secrets/database_url
   AUTH_SECRET_FILE: /run/secrets/auth_secret
+  AUTH_ORIGIN: ${AUTH_ORIGIN:?AUTH_ORIGIN is required}
   REDIS_URL: redis://redis:6379
   S3_ENDPOINT: http://minio:9000
 

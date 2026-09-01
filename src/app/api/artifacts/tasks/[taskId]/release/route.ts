@@ -1,18 +1,19 @@
 import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { assertSameOrigin, readWalletSession } from "@/lib/auth";
-import { assertPublisherArtifactRelease } from "@/lib/artifact-access";
+import { assertPublisherArtifactRelease, encryptedArtifactAccess } from "@/lib/artifact-access";
 import { openArtifactKey } from "@/lib/artifact-crypto";
 import { createArtifactDownload } from "@/lib/artifacts";
 import { apiError } from "@/lib/http";
 import { protocolSnapshot } from "@/lib/service";
 import { readyArtifactsForTask, recordArtifactRelease } from "@/lib/store-postgres";
 import { keccak256, stringToHex } from "viem";
+import { onchainTaskIdPathParameterSchema } from "@/lib/path-parameters";
 
 export async function POST(request: NextRequest, context: { params: Promise<{ taskId: string }> }) {
   try {
     assertSameOrigin(request);
-    const { taskId } = await context.params;
+    const taskId = onchainTaskIdPathParameterSchema.parse((await context.params).taskId);
     const session = await readWalletSession();
     if (!session) throw new Error("AUTHENTICATION_REQUIRED");
     const task = (await protocolSnapshot()).tasks.find((item) => item.id === taskId);
@@ -34,9 +35,9 @@ export async function POST(request: NextRequest, context: { params: Promise<{ ta
     });
     return NextResponse.json({
       releaseId,
-      artifactHash: `sha256:${artifact.plaintextSha256}`, ciphertextHash: `sha256:${artifact.sha256}`,
-      contentType: artifact.contentType, encryptionAlgorithm: artifact.encryptionAlgorithm, contentIv: artifact.contentIv,
-      decryptionKey: openArtifactKey(artifact), downloadUrl: await createArtifactDownload(artifact.objectKey), expiresInSeconds,
+      ...encryptedArtifactAccess(artifact, {
+        decryptionKey: openArtifactKey(artifact), downloadUrl: await createArtifactDownload(artifact.objectKey), expiresInSeconds,
+      }),
     });
   } catch (error) { return apiError(error); }
 }

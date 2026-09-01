@@ -16,6 +16,7 @@ describe("production environment", () => {
 
   it("refuses production mode without durable state and a session secret", () => {
     process.env.PROTOCOL_MODE = "production";
+    process.env.AUTH_ORIGIN = "https://agentgrid.example";
     delete process.env.DATABASE_URL;
     delete process.env.AUTH_SECRET;
     resetRuntimeConfigForTests();
@@ -24,10 +25,37 @@ describe("production environment", () => {
 
   it("accepts an explicit production configuration", () => {
     process.env.PROTOCOL_MODE = "production";
+    process.env.AUTH_ORIGIN = "https://agentgrid.example/";
     process.env.DATABASE_URL = "postgresql://agentgrid:secret@127.0.0.1:5432/agentgrid";
     process.env.AUTH_SECRET = "production-secret-with-more-than-thirty-two-characters";
     resetRuntimeConfigForTests();
-    expect(runtimeConfig().PROTOCOL_MODE).toBe("production");
+    expect(runtimeConfig()).toMatchObject({ PROTOCOL_MODE: "production", AUTH_ORIGIN: "https://agentgrid.example" });
+  });
+
+  it("requires one explicit canonical production authentication origin", () => {
+    process.env.PROTOCOL_MODE = "production";
+    process.env.DATABASE_URL = "postgresql://agentgrid:secret@127.0.0.1:5432/agentgrid";
+    process.env.AUTH_SECRET = "production-secret-with-more-than-thirty-two-characters";
+    delete process.env.AUTH_ORIGIN;
+    resetRuntimeConfigForTests();
+    expect(() => runtimeConfig()).toThrow("AUTH_ORIGIN_REQUIRED_IN_PRODUCTION");
+    process.env.AUTH_ORIGIN = "https://agentgrid.example/app";
+    resetRuntimeConfigForTests();
+    expect(() => runtimeConfig()).toThrow("AUTH_ORIGIN_MUST_BE_ORIGIN_ONLY");
+  });
+
+  it("pins production to BSC Testnet and a protected RPC transport", () => {
+    process.env.PROTOCOL_MODE = "production";
+    process.env.AUTH_ORIGIN = "https://agentgrid.example";
+    process.env.DATABASE_URL = "postgresql://agentgrid:secret@127.0.0.1:5432/agentgrid";
+    process.env.AUTH_SECRET = "production-secret-with-more-than-thirty-two-characters";
+    process.env.BSC_CHAIN_ID = "56";
+    resetRuntimeConfigForTests();
+    expect(() => runtimeConfig()).toThrow("BSC_TESTNET_CHAIN_ID_REQUIRED_IN_PRODUCTION");
+    process.env.BSC_CHAIN_ID = "97";
+    process.env.BSC_TESTNET_RPC_URL = "http://rpc.example";
+    resetRuntimeConfigForTests();
+    expect(() => runtimeConfig()).toThrow("BSC_RPC_HTTPS_REQUIRED");
   });
 
   it("enables public showcase mode only when explicitly requested", () => {
@@ -75,6 +103,7 @@ describe("production environment", () => {
       AUTH_SECRET: "production-session-secret-at-least-32-characters",
     };
     process.env.PROTOCOL_MODE = "production";
+    process.env.AUTH_ORIGIN = "https://agentgrid.example";
     process.env.REQUIRE_FILE_SECRETS = "true";
     for (const [name, value] of Object.entries(values)) {
       const filename = path.join(folder, name.toLowerCase());

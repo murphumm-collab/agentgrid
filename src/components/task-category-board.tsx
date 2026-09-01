@@ -9,6 +9,7 @@ import { formatDate } from "@/lib/format";
 import type { Locale } from "@/lib/i18n";
 import { t } from "@/lib/i18n";
 import type { Task } from "@/lib/types";
+import { isPublicTask } from "@/lib/public-task-view";
 
 const ALL = "__all__";
 type GroupFilter = TaskCategoryGroup | typeof ALL;
@@ -16,8 +17,8 @@ type GroupFilter = TaskCategoryGroup | typeof ALL;
 export function TaskCategoryBoard({ tasks, locale }: { tasks: Task[]; locale: Locale }) {
   const [selectedCategory, setSelectedCategory] = useState(ALL);
   const [selectedGroup, setSelectedGroup] = useState<GroupFilter>(ALL);
-  // Defense in depth: evaluation requests are private drafts, never marketplace inventory.
-  const marketTasks = useMemo(() => tasks.filter((task) => task.state !== "EVALUATING"), [tasks]);
+  // Defense in depth: private evaluation requests and rejected tasks are never marketplace inventory.
+  const marketTasks = useMemo(() => tasks.filter(isPublicTask), [tasks]);
   const categories = useMemo(() => {
     const observed = [...new Set(marketTasks.map((task) => task.category).filter(Boolean))];
     return [...primaryTaskCategories, ...observed.filter((category) => !primaryTaskCategories.includes(category))];

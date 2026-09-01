@@ -2,15 +2,13 @@ import { createHash, randomBytes } from "node:crypto";
 import { cookies } from "next/headers";
 import { SignJWT, jwtVerify } from "jose";
 import { getAddress, verifyMessage, type Address } from "viem";
-import { z } from "zod";
 import { isProductionMode, runtimeConfig } from "./env";
 import { consumeAuthNonce, storeAuthNonce } from "./store-postgres";
+import { walletAddressSchema, type WalletChallengeResponse } from "./auth-schema";
 
 export const SESSION_COOKIE = "agentgrid-session";
 const nonceTtlMs = 5 * 60 * 1_000;
 const demoNonces = new Map<string, { address: string; chainId: number; expiresAt: number; messageHash: string }>();
-
-const addressSchema = z.string().regex(/^0x[a-fA-F0-9]{40}$/);
 
 function hashNonce(nonce: string) {
   return createHash("sha256").update(nonce).digest("hex");
@@ -27,7 +25,7 @@ export function buildSignInMessage(input: { address: Address; nonce: string; iss
 }
 
 export async function createWalletChallenge(rawAddress: string) {
-  const address = getAddress(addressSchema.parse(rawAddress));
+  const address = getAddress(walletAddressSchema.parse(rawAddress));
   const nonce = randomBytes(16).toString("hex");
   const issuedAt = new Date();
   const expiresAt = new Date(issuedAt.getTime() + nonceTtlMs);
@@ -40,8 +38,8 @@ export async function createWalletChallenge(rawAddress: string) {
   return { address, nonce, chainId, issuedAt: issuedAt.toISOString(), expiresAt: expiresAt.toISOString(), message };
 }
 
-export async function verifyWalletChallenge(input: { address: string; nonce: string; message: string; signature: `0x${string}` }) {
-  const address = getAddress(addressSchema.parse(input.address));
+export async function verifyWalletChallenge(input: WalletChallengeResponse) {
+  const address = getAddress(walletAddressSchema.parse(input.address));
   const expectedNonceHash = hashNonce(input.nonce);
   const messageHash = hashNonce(input.message);
   const chainId = runtimeConfig().BSC_CHAIN_ID;
@@ -96,7 +94,8 @@ export async function requirePublisherRequest(request: Request, claimedAddress?:
   assertSameOrigin(request);
   const cookieHeader = request.headers.get("cookie") ?? "";
   const encoded = cookieHeader.split(";").map((part) => part.trim()).find((part) => part.startsWith(`${SESSION_COOKIE}=`))?.slice(SESSION_COOKIE.length + 1);
-  const session = await requireWalletSession(encoded ? decodeURIComponent(encoded) : undefined);
+  if (!encoded) throw new Error("WALLET_AUTHENTICATION_REQUIRED");
+  const session = await requireWalletSession(decodeURIComponent(encoded));
   if (claimedAddress && session.address.toLowerCase() !== claimedAddress.toLowerCase()) throw new Error("PUBLISHER_IDENTITY_MISMATCH");
   return session.address;
 }

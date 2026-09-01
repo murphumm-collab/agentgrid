@@ -7,6 +7,7 @@ import type { RewardGrant, Task } from "@/lib/types";
 import { t, type Locale } from "@/lib/i18n";
 import { claimRewardOnChain, respondToRejectionOnChain, reviewTaskOnChain } from "@/lib/chain-actions";
 import { releasePublisherArtifact } from "@/lib/artifact-delivery";
+import { ActionNotice, type ActionResult } from "./action-notice";
 
 async function post(path: string, body?: unknown, agent?: { id: string; key: string }) {
   const response = await fetch(path, {
@@ -25,14 +26,14 @@ async function post(path: string, body?: unknown, agent?: { id: string; key: str
 export function TaskActions({ task, reward, locale, production = false, isPublisher = false }: { task: Task; reward: RewardGrant | null; locale: Locale; production?: boolean; isPublisher?: boolean }) {
   const router = useRouter();
   const [loading, setLoading] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
+  const [result, setResult] = useState<ActionResult | null>(null);
   const [rejectionEvidence, setRejectionEvidence] = useState("");
   const [appealEvidence, setAppealEvidence] = useState("");
 
   async function run(label: string, action: () => Promise<unknown>) {
-    setLoading(label); setMessage(null);
-    try { await action(); setMessage(`${label} ${t(locale, "completedSuffix")}`); router.refresh(); }
-    catch (error) { setMessage(error instanceof Error ? error.message : t(locale, "actionFailed")); }
+    setLoading(label); setResult(null);
+    try { await action(); setResult({ tone: "success", message: `${label} ${t(locale, "completedSuffix")}` }); router.refresh(); }
+    catch (error) { setResult({ tone: "error", message: error instanceof Error ? error.message : t(locale, "actionFailed") }); }
     finally { setLoading(null); }
   }
 
@@ -44,7 +45,7 @@ export function TaskActions({ task, reward, locale, production = false, isPublis
   };
   return (
     <div className="action-stack">
-      {message && <div className={`notice ${message.endsWith(t(locale, "completedSuffix")) ? "success" : "error"}`}>{message}</div>}
+      {result && <ActionNotice tone={result.tone}>{result.message}</ActionNotice>}
       {task.state === "EVALUATING" && <div className="notice"><ShieldCheck size={15} style={{ verticalAlign: "middle", marginRight: 8 }} />{locale === "zh" ? `任务尚未公开。申请时已占用 Task Credit 并扣除 3 AGT 不可退评估费；协议正在收集 3 名随机评估 Agent 的报告（${task.evaluation?.completed ?? 0}/${task.evaluation?.required ?? 3}）。至少 2 票通过后才另扣发布费并进入市场；拒绝或超时会释放 Credit。` : `This task is not public. The request already occupied its Task Credit and charged the non-refundable 3 AGT evaluation fee. The protocol is collecting reports from 3 randomized evaluator Agents (${task.evaluation?.completed ?? 0}/${task.evaluation?.required ?? 3}). At least 2 approvals charge the separate publication fee and open the task; rejection or expiry releases the Credit.`}</div>}
       {task.state === "OPEN" && (
         production

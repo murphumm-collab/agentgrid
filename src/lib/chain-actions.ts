@@ -5,22 +5,41 @@ import { bscTestnet } from "viem/chains";
 import { agentRegistryAbi, rewardVaultAbi, stakeManagerAbi, taskRegistryAbi, tokenAbi } from "./contracts";
 import { loadBrowserChainConfig } from "./browser-chain-config";
 import { browserWalletProvider } from "./browser-wallet";
+import { agentRegistrationRequiresTransaction, assertWalletSessionAccount } from "./agent-management";
 
 declare global { interface Window { ethereum?: EIP1193Provider } }
 
-export async function registerAgentPosition(positionId: bigint, capabilities: number = 7) {
-  const { account, wallet, publicClient, contracts, confirmations } = await clients();
+export async function registerAgentPosition(positionId: bigint, capabilities: number = 7, sessionOwner?: string) {
+  const { account, wallet, publicClient, contracts, confirmations } = await clients(sessionOwner);
+  const blockNumber = await publicClient.getBlockNumber();
+  const [registeredPosition, registeredCapabilities, active] = await Promise.all([
+    publicClient.readContract({ address: contracts.agentRegistry, abi: agentRegistryAbi, functionName: "agentPosition", args: [account], blockNumber }),
+    publicClient.readContract({ address: contracts.agentRegistry, abi: agentRegistryAbi, functionName: "agentCapabilities", args: [account], blockNumber }),
+    publicClient.readContract({ address: contracts.agentRegistry, abi: agentRegistryAbi, functionName: "agentActive", args: [account], blockNumber }),
+  ]);
+  if (!agentRegistrationRequiresTransaction(
+    { positionId: registeredPosition, capabilities: registeredCapabilities, active },
+    { positionId, capabilities },
+  )) return { account, hash: null, alreadyRegistered: true as const };
   const hash = await wallet.writeContract({ account, address: contracts.agentRegistry, abi: agentRegistryAbi, functionName: "registerWithCapabilities", args: [positionId, capabilities] });
   await confirmed(hash, publicClient, confirmations);
-  return { account, hash };
+  return { account, hash, alreadyRegistered: false as const };
 }
 
-async function clients() {
+export async function setAgentActive(active: boolean, sessionOwner?: string) {
+  const { account, wallet, publicClient, contracts, confirmations } = await clients(sessionOwner);
+  const hash = await wallet.writeContract({ account, address: contracts.agentRegistry, abi: agentRegistryAbi, functionName: "setActive", args: [active] });
+  await confirmed(hash, publicClient, confirmations);
+  return { account, hash, active };
+}
+
+async function clients(expectedAccount?: string) {
   const { contracts, confirmations } = await loadBrowserChainConfig();
   const provider = browserWalletProvider();
   const wallet = createWalletClient({ chain: bscTestnet, transport: custom(provider) });
   const [account] = await wallet.requestAddresses();
   if (!account) throw new Error("WALLET_NOT_CONNECTED");
+  assertWalletSessionAccount(account, expectedAccount);
   if (await wallet.getChainId() !== bscTestnet.id) await wallet.switchChain({ id: bscTestnet.id });
   return { account, wallet, publicClient: createPublicClient({ chain: bscTestnet, transport: custom(provider) }), contracts, confirmations };
 }
@@ -69,7 +88,7 @@ export async function publishCommittedTask(
   return hash;
 }
 
-async function writeRegistry(functionName: "claimTask" | "closeTeam" | "submitContribution" | "submitWork" | "submitTest" | "review" | "respondToRejection" | "validateMaintenance", args: readonly unknown[]) {
+async function writeRegistry(functionName: "claimTask" | "closeTeam" | "submitContribution" | "submitWork" | "review" | "respondToRejection", args: readonly unknown[]) {
   const { account, wallet, publicClient, contracts, confirmations } = await clients();
   const hash = await wallet.writeContract({ account, address: contracts.taskRegistry, abi: taskRegistryAbi, functionName, args } as never);
   await confirmed(hash, publicClient, confirmations);
@@ -81,10 +100,8 @@ export const claimTaskOnChain = (taskId: bigint) => writeRegistry("claimTask", [
 export const closeTaskTeamOnChain = (taskId: bigint) => writeRegistry("closeTeam", [taskId]);
 export const submitContributionOnChain = (taskId: bigint, artifact: string) => writeRegistry("submitContribution", [taskId, evidenceHash(artifact)]);
 export const submitWorkOnChain = (taskId: bigint, artifact: string) => writeRegistry("submitWork", [taskId, evidenceHash(artifact)]);
-export const submitTestOnChain = (taskId: bigint, passed: boolean, evidence: string, executorWeightsBps: readonly number[] = [10_000]) => writeRegistry("submitTest", [taskId, passed, evidenceHash(evidence), executorWeightsBps]);
 export const reviewTaskOnChain = (taskId: bigint, accepted: boolean, reason: string) => writeRegistry("review", [taskId, accepted, accepted ? `0x${"0".repeat(64)}` : evidenceHash(reason)]);
 export const respondToRejectionOnChain = (taskId: bigint, response: string) => writeRegistry("respondToRejection", [taskId, evidenceHash(response)]);
-export const validateMaintenanceOnChain = (taskId: bigint, checkpoint: number, passed: boolean, evidence: string) => writeRegistry("validateMaintenance", [taskId, checkpoint, passed, evidenceHash(evidence)]);
 
 export async function claimRewardOnChain(taskId: bigint, checkpoint: number) {
   const { account, wallet, publicClient, contracts, confirmations } = await clients();

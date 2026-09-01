@@ -20,6 +20,7 @@ contract AgentRegistry {
     mapping(address => uint256) public agentPosition;
     mapping(uint256 => address) public positionAgent;
     mapping(address => uint8) public agentCapabilities;
+    mapping(address => bool) public agentActive;
     address[] private registeredAgents;
     bytes32 public registryHash;
 
@@ -29,6 +30,7 @@ contract AgentRegistry {
 
     event AgentRegistered(address indexed agent, uint256 indexed positionId, uint256 stake);
     event AgentCapabilitiesUpdated(address indexed agent, uint8 capabilities);
+    event AgentStatusUpdated(address indexed agent, bool active);
 
     constructor(StakeCreditManager stakeManager_) {
         stakeManager = stakeManager_;
@@ -55,13 +57,32 @@ contract AgentRegistry {
         }
         (address owner, uint256 amount, , , uint256 withdrawalRequestedAt) = stakeManager.positions(positionId);
         if (owner != msg.sender || amount < stakeManager.MINIMUM_STAKE() || withdrawalRequestedAt != 0) revert Unauthorized();
+        if (previous == positionId && agentCapabilities[msg.sender] == capabilities && agentActive[msg.sender]) return;
         agentPosition[msg.sender] = positionId;
         positionAgent[positionId] = msg.sender;
         agentCapabilities[msg.sender] = capabilities;
+        agentActive[msg.sender] = true;
         if (previous == 0) registeredAgents.push(msg.sender);
         registryHash = keccak256(abi.encode(registryHash, msg.sender, positionId));
         emit AgentRegistered(msg.sender, positionId, amount);
         emit AgentCapabilitiesUpdated(msg.sender, capabilities);
+        emit AgentStatusUpdated(msg.sender, true);
+    }
+
+    /// @notice Temporarily removes or restores this wallet from every future
+    /// evaluator/tester/executor eligibility check without starting withdrawal.
+    /// Repeated writes are idempotent and do not perturb the registry snapshot.
+    function setActive(bool active) external {
+        uint256 positionId = agentPosition[msg.sender];
+        if (positionId == 0) revert Unauthorized();
+        if (active) {
+            (address owner, uint256 amount, , , uint256 withdrawalRequestedAt) = stakeManager.positions(positionId);
+            if (owner != msg.sender || amount < stakeManager.MINIMUM_STAKE() || withdrawalRequestedAt != 0) revert Unauthorized();
+        }
+        if (agentActive[msg.sender] == active) return;
+        agentActive[msg.sender] = active;
+        registryHash = keccak256(abi.encode(registryHash, msg.sender, positionId, active));
+        emit AgentStatusUpdated(msg.sender, active);
     }
 
     function agentCount() external view returns (uint256) {
@@ -73,6 +94,7 @@ contract AgentRegistry {
     }
 
     function isEligible(address agent) public view returns (bool) {
+        if (!agentActive[agent]) return false;
         uint256 positionId = agentPosition[agent];
         if (positionId == 0) return false;
         (address owner, uint256 amount, , , uint256 withdrawalRequestedAt) = stakeManager.positions(positionId);

@@ -3,7 +3,8 @@ import { spawn } from "node:child_process";
 import fs, { constants as fsConstants, promises as fsp } from "node:fs";
 import path from "node:path";
 import {
-  applicationQaReportSchema, requiredApplicationQaCommands, validateApplicationQaRuntimeEnvironment, type ApplicationQaReport,
+  applicationQaCommandEnvironment, applicationQaReportSchema, requiredApplicationQaCommands,
+  validateApplicationQaRuntimeEnvironment, type ApplicationQaEnvironmentProfile, type ApplicationQaReport,
 } from "../src/lib/application-qa-evidence";
 import { candidateReleaseManifestSchema, verifyCandidatePayload } from "../src/lib/candidate-release";
 
@@ -54,26 +55,7 @@ function commandTimeoutMs() {
   return value;
 }
 
-const isolatedTestEnvironmentKeys = [
-  "DATABASE_URL", "DATABASE_URL_FILE", "REDIS_URL", "AUTH_SECRET", "AUTH_SECRET_FILE", "ARTIFACT_MASTER_KEY",
-  "ARTIFACT_MASTER_KEY_FILE", "ARTIFACT_PREVIOUS_MASTER_KEYS", "ADMIN_API_KEY", "ADMIN_API_KEY_FILE",
-  "S3_ACCESS_KEY", "S3_ACCESS_KEY_FILE", "S3_SECRET_KEY", "S3_SECRET_KEY_FILE",
-  "SPEC_ASSISTANT_AI_API_KEY", "SPEC_ASSISTANT_AI_API_KEY_FILE",
-  "ALERT_WEBHOOK_SECRET", "ALERT_WEBHOOK_SECRET_FILE",
-] as const;
-
-function commandEnvironment(profile: "demo-test-isolation" | "file-secret-isolation" | "qa-production-runtime") {
-  if (profile === "qa-production-runtime") return process.env;
-  const environment = {
-    ...process.env,
-    PROTOCOL_MODE: profile === "demo-test-isolation" ? "demo" : "production",
-    REQUIRE_FILE_SECRETS: "false",
-  };
-  for (const key of isolatedTestEnvironmentKeys) delete environment[key];
-  return environment;
-}
-
-async function runCommand(id: string, args: readonly string[], environmentProfile: "demo-test-isolation" | "file-secret-isolation" | "qa-production-runtime", cwd: string, retainStdout = false) {
+async function runCommand(id: string, args: readonly string[], environmentProfile: ApplicationQaEnvironmentProfile, cwd: string, retainStdout = false) {
   const started = new Date();
   const stdout = createHash("sha256");
   const stderr = createHash("sha256");
@@ -83,7 +65,7 @@ async function runCommand(id: string, args: readonly string[], environmentProfil
   let failure: "timeout" | "output" | undefined;
   process.stderr.write(`[application-qa] starting ${id}\n`);
   const exitCode = await new Promise<number>((resolve, reject) => {
-    const child = spawn("pnpm", [...args], { cwd, env: commandEnvironment(environmentProfile), stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn("pnpm", [...args], { cwd, env: applicationQaCommandEnvironment(process.env, environmentProfile), stdio: ["ignore", "pipe", "pipe"] });
     let settled = false;
     const finish = (callback: () => void) => { if (!settled) { settled = true; callback(); } };
     const timer = setTimeout(() => { failure = "timeout"; child.kill("SIGKILL"); }, commandTimeoutMs());

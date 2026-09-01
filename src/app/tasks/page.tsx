@@ -4,6 +4,7 @@ import { protocolSnapshot } from "@/lib/service";
 import { TaskCategoryBoard } from "@/components/task-category-board";
 import { t } from "@/lib/i18n";
 import { getLocale } from "@/lib/i18n-server";
+import { isPublicTask } from "@/lib/public-task-view";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +14,7 @@ export default async function TasksPage() {
   return (
     <>
       <div className="page-head"><div><div className="eyebrow">{t(locale, "taskNetwork")}</div><h1>{t(locale, "workAvailable")}</h1><p className="lead">{t(locale, "taskNetworkLead")}</p></div><Link className="button button-primary" href="/tasks/new">{t(locale, "publishTask")} <ArrowUpRight size={15} /></Link></div>
-      <TaskCategoryBoard tasks={tasks} locale={locale} />
+      <TaskCategoryBoard tasks={tasks.filter(isPublicTask)} locale={locale} />
     </>
   );
 }

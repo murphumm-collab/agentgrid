@@ -1,5 +1,5 @@
 import { isIP } from "node:net";
-import type { Address } from "viem";
+import { http, type Address } from "viem";
 
 export const bscTestnetGenesisHash = "0x6d3c66c5357ec91d5c43af47e234a939b22557cbb552dc45bebbceeed90fbe34";
 export const pilotRoleNames = ["publisher", "evaluator1", "evaluator2", "evaluator3", "executor", "tester", "coordinator"] as const;
@@ -28,6 +28,15 @@ export function validatePilotRpcUrl(raw: string) {
   if (hostname === "localhost" || hostname.endsWith(".localhost") || hostname.endsWith(".local")) throw new Error("PILOT_RPC_LOCALHOST_FORBIDDEN");
   if (isPrivateNetworkAddress(hostname)) throw new Error("PILOT_RPC_PRIVATE_ADDRESS_FORBIDDEN");
   return url.toString();
+}
+
+export function publicBscRpcTransport(raw: string) {
+  return http(validatePilotRpcUrl(raw), {
+    timeout: 10_000,
+    retryCount: 2,
+    maxResponseBodySize: 1024 * 1024,
+    fetchOptions: { redirect: "error" },
+  });
 }
 
 export function validatePilotRoleSeparation(

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { publicCompletedTask, publicTaskStatistics } from "./public-task-view";
+import { isPublicTask, publicCompletedTask, publicTaskStatistics } from "./public-task-view";
 import type { RewardGrant, Task } from "./types";
 
 const task = {
@@ -33,5 +33,16 @@ describe("public completed task views", () => {
     expect(stats.completedTasksWithTrustedTimestamp).toBe(1);
     expect(stats.completionTimestampCoverage).toBe(1);
     expect(stats.completedByCategory).toEqual({ Development: 1 });
+  });
+
+  it("keeps evaluation drafts, inconsistent pending projections and every rejected representation private", () => {
+    expect(isPublicTask({ ...task, state: "EVALUATING" })).toBe(false);
+    expect(isPublicTask({ ...task, state: "REJECTED" })).toBe(false);
+    expect(isPublicTask({ ...task, state: "OPEN", evaluation: { status: "PENDING", required: 3, completed: 0 } })).toBe(false);
+    expect(isPublicTask({ ...task, state: "OPEN", evaluation: { status: "IN_PROGRESS", required: 3, completed: 1 } })).toBe(false);
+    expect(isPublicTask({ ...task, state: "OPEN", evaluation: { status: "REJECTED", required: 3, completed: 2 } })).toBe(false);
+    expect(isPublicTask({ ...task, state: "OPEN", evaluation: { status: "APPROVED", required: 3, completed: 3 } })).toBe(true);
+    expect(isPublicTask({ ...task, state: "OPEN" })).toBe(true);
+    expect(() => publicCompletedTask({ ...task, evaluation: { status: "PENDING", required: 3, completed: 0 } })).toThrow("TASK_NOT_PUBLIC");
   });
 });

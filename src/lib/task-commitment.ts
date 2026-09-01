@@ -1,8 +1,9 @@
 import { keccak256, stringToHex } from "viem";
 import { z } from "zod";
-import { assessTaskDefinition, taskDefinitionSchema } from "./task-definition";
+import { assessTaskDefinition, collaborationPlanBlockers, taskDefinitionSchema, verificationPlanBlockers } from "./task-definition";
+import { walletAddressSchema } from "./auth-schema";
 
-export const taskSpecSchema = z.object({
+export const taskSpecFieldsSchema = z.object({
   definitionReviewId: z.string().uuid(),
   stakePositionId: z.coerce.number().int().positive(),
   title: z.string().trim().min(8).max(160),
@@ -16,14 +17,29 @@ export const taskSpecSchema = z.object({
   requestedReward: z.coerce.number().positive().max(1_000_000_000),
   hiddenTestManifestId: z.string().uuid(),
   hiddenTestPlaintextSha256: z.string().regex(/^[0-9a-fA-F]{64}$/).transform((value) => value.toLowerCase()),
-}).superRefine((spec, context) => {
+}).strict();
+
+function validateTaskSpec(spec: z.output<typeof taskSpecFieldsSchema>, context: z.RefinementCtx) {
   const committed = spec.completionDefinition.acceptanceCriteria;
   if (spec.criteria.length !== committed.length || spec.criteria.some((criterion, index) => criterion !== committed[index]?.description)) {
     context.addIssue({ code: "custom", path: ["criteria"], message: "CRITERIA_DEFINITION_MISMATCH" });
   }
   const assessment = assessTaskDefinition(spec.completionDefinition);
   if (!assessment.ready) context.addIssue({ code: "custom", path: ["completionDefinition"], message: `COMPLETION_DEFINITION_NOT_READY:${[...assessment.blockers, ...assessment.warnings].join(",")}` });
-});
+  for (const blocker of collaborationPlanBlockers(spec.completionDefinition, spec.executionMode, spec.maxExecutors)) {
+    context.addIssue({ code: "custom", path: ["completionDefinition", "collaborationPlan"], message: blocker });
+  }
+  for (const blocker of verificationPlanBlockers(spec.completionDefinition)) context.addIssue({ code: "custom", path: ["completionDefinition", "verificationPlan"], message: blocker });
+}
+
+export const taskSpecSchema = taskSpecFieldsSchema.superRefine(validateTaskSpec);
+export const taskCommitmentRequestSchema = taskSpecFieldsSchema.extend({
+  publisher: walletAddressSchema,
+}).superRefine(validateTaskSpec);
+export const taskCommitmentTransactionSchema = z.object({
+  publisher: walletAddressSchema,
+  transactionHash: z.string().regex(/^0x[a-fA-F0-9]{64}$/),
+}).strict();
 
 export type TaskSpec = z.infer<typeof taskSpecSchema>;
 

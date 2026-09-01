@@ -19,6 +19,9 @@ export const browserChainConfigSchema = z.object({
     agentRegistry: address,
     taskRegistry: address,
     rewardVault: address,
+    verificationPanel: address,
+    verificationArbitrationCourt: address,
+    disputeResolver: address,
   }).strict(),
 }).strict();
 
@@ -32,6 +35,9 @@ export interface BrowserChainConfig {
     agentRegistry: Address;
     taskRegistry: Address;
     rewardVault: Address;
+    verificationPanel: Address;
+    verificationArbitrationCourt: Address;
+    disputeResolver: Address;
   };
 }
 

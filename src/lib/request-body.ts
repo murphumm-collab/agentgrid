@@ -8,7 +8,7 @@ function jsonMediaType(value: string | null) {
   return mediaType === "application/json" || /^application\/[a-z0-9!#$&^_.+-]+\+json$/.test(mediaType);
 }
 
-async function readBodyBytes(request: Request, limit: number, maximumLimit: number) {
+async function readBodyBytes(request: Request, limit: number, maximumLimit: number, emptyBodyError: string) {
   if (!Number.isInteger(limit) || limit < 1 || limit > maximumLimit) throw new Error("REQUEST_BODY_LIMIT_INVALID");
   const contentEncoding = request.headers.get("content-encoding")?.trim().toLowerCase();
   if (contentEncoding && contentEncoding !== "identity") throw new Error("CONTENT_ENCODING_UNSUPPORTED");
@@ -17,7 +17,7 @@ async function readBodyBytes(request: Request, limit: number, maximumLimit: numb
     if (!/^\d+$/.test(declaredLength)) throw new Error("CONTENT_LENGTH_INVALID");
     if (Number(declaredLength) > limit) throw new Error("REQUEST_BODY_TOO_LARGE");
   }
-  if (!request.body) throw new Error("INVALID_JSON_BODY");
+  if (!request.body) throw new Error(emptyBodyError);
 
   const reader = request.body.getReader();
   const chunks: Uint8Array[] = [];
@@ -36,23 +36,36 @@ async function readBodyBytes(request: Request, limit: number, maximumLimit: numb
   } finally {
     reader.releaseLock();
   }
-  if (bytes === 0) throw new Error("INVALID_JSON_BODY");
+  if (bytes === 0) throw new Error(emptyBodyError);
   const payload = new Uint8Array(bytes);
   let offset = 0;
   for (const chunk of chunks) { payload.set(chunk, offset); offset += chunk.byteLength; }
   return payload;
 }
 
-export async function readBinaryBody(request: Request, limit: number): Promise<Uint8Array> {
+export async function readBinaryBody(request: Request, limit: number, exactBytes?: number): Promise<Uint8Array> {
   const contentType = request.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase();
   if (contentType !== "application/octet-stream") throw new Error("BINARY_CONTENT_TYPE_REQUIRED");
-  return readBodyBytes(request, limit, maximumBinaryBodyLimit);
+  if (exactBytes !== undefined && (!Number.isInteger(exactBytes) || exactBytes < 1 || exactBytes > limit)) {
+    throw new Error("BINARY_EXACT_LENGTH_INVALID");
+  }
+  const declaredLength = request.headers.get("content-length");
+  if (declaredLength !== null) {
+    if (!/^\d+$/.test(declaredLength)) throw new Error("CONTENT_LENGTH_INVALID");
+    if (Number(declaredLength) > limit) throw new Error("REQUEST_BODY_TOO_LARGE");
+    if (Number(declaredLength) > 0 && exactBytes !== undefined && Number(declaredLength) !== exactBytes) {
+      throw new Error("BINARY_CONTENT_LENGTH_MISMATCH");
+    }
+  }
+  const payload = await readBodyBytes(request, limit, maximumBinaryBodyLimit, "BINARY_BODY_REQUIRED");
+  if (exactBytes !== undefined && payload.byteLength !== exactBytes) throw new Error("BINARY_CONTENT_LENGTH_MISMATCH");
+  return payload;
 }
 
 export async function readJsonBody<T = unknown>(request: Request, limit = defaultJsonBodyLimit): Promise<T> {
   if (!Number.isInteger(limit) || limit < 1 || limit > 1024 * 1024) throw new Error("JSON_BODY_LIMIT_INVALID");
   if (!jsonMediaType(request.headers.get("content-type"))) throw new Error("JSON_CONTENT_TYPE_REQUIRED");
-  const payload = await readBodyBytes(request, limit, 1024 * 1024);
+  const payload = await readBodyBytes(request, limit, 1024 * 1024, "INVALID_JSON_BODY");
   let text: string;
   try { text = new TextDecoder("utf-8", { fatal: true }).decode(payload); }
   catch { throw new Error("JSON_BODY_INVALID_UTF8"); }

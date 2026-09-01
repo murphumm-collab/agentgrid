@@ -3,12 +3,12 @@ import { lookup } from "node:dns/promises";
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { createPublicClient, formatEther, getAddress, http, parseAbi, parseEther, type Address } from "viem";
+import { createPublicClient, formatEther, getAddress, parseAbi, parseEther, type Address } from "viem";
 import { privateKeyToAccount, type PrivateKeyAccount } from "viem/accounts";
 import { bscTestnet } from "viem/chains";
 import { z } from "zod";
 import { configuredSecret } from "../../src/lib/secrets";
-import { isPrivateNetworkAddress, pilotRoleNames, validateBscTestnetIdentity, validatePilotRoleSeparation, validatePilotRpcUrl, type PilotRoleName } from "./pilot-policy";
+import { isPrivateNetworkAddress, pilotRoleNames, publicBscRpcTransport, validateBscTestnetIdentity, validatePilotRoleSeparation, validatePilotRpcUrl, type PilotRoleName } from "./pilot-policy";
 import { compileContracts } from "./compiler";
 import { verifyRuntimeBytecode } from "./bytecode-verification";
 
@@ -19,7 +19,8 @@ const deploymentSchema = z.object({
   startBlock: z.string().regex(/^\d+$/),
   contracts: z.object({
     token: addressSchema, stakeManager: addressSchema, agentRegistry: addressSchema,
-    rewardVault: addressSchema, taskRegistry: addressSchema, disputeResolver: addressSchema,
+    rewardVault: addressSchema, taskRegistry: addressSchema, verificationPanel: addressSchema,
+    verificationArbitrationCourt: addressSchema, disputeResolver: addressSchema,
   }).strict(),
 }).passthrough().superRefine((deployment, context) => {
   const arbitrators = deployment.arbitrators.map((address) => address.toLowerCase());
@@ -90,7 +91,7 @@ export async function runPilotPreflight(options: { requirePristine?: boolean; si
     if (!options.silent) console.log(JSON.stringify(report));
     return { report };
   }
-  const publicClient = createPublicClient({ chain: bscTestnet, transport: http(rpcUrl) });
+  const publicClient = createPublicClient({ chain: bscTestnet, transport: publicBscRpcTransport(rpcUrl) });
   try {
     const resolved = await lookup(new URL(rpcUrl).hostname, { all: true });
     if (!resolved.length || resolved.some((entry) => isPrivateNetworkAddress(entry.address))) throw new Error("PILOT_RPC_DNS_PRIVATE_ADDRESS_FORBIDDEN");
@@ -124,7 +125,11 @@ export async function runPilotPreflight(options: { requirePristine?: boolean; si
   }
 
   try {
-    const artifactNames = { token: "TestToken", stakeManager: "StakeCreditManager", agentRegistry: "AgentRegistry", rewardVault: "RewardVault", taskRegistry: "TaskRegistry", disputeResolver: "DisputeResolver" } as const;
+    const artifactNames = {
+      token: "TestToken", stakeManager: "StakeCreditManager", agentRegistry: "AgentRegistry",
+      rewardVault: "RewardVault", taskRegistry: "TaskRegistry", verificationPanel: "VerificationPanel",
+      verificationArbitrationCourt: "VerificationArbitrationCourt", disputeResolver: "DisputeResolver",
+    } as const;
     const compiled = compileContracts();
     const contractEntries = Object.entries(deployment.contracts) as Array<[keyof typeof artifactNames, Address]>;
     const codes = await Promise.all(contractEntries.map(([, address]) => publicClient.getCode({ address })));
@@ -132,28 +137,42 @@ export async function runPilotPreflight(options: { requirePristine?: boolean; si
     if (contractsWithCode !== Object.keys(deployment.contracts).length) blockers.push("PILOT_DEPLOYED_BYTECODE_MISSING");
     contractEntries.forEach(([name], index) => verifyRuntimeBytecode(name, codes[index], compiled[artifactNames[name]]));
     const runtimeBytecodeVerified = true;
-    const taskAbi = parseAbi(["function nextTaskId() view returns(uint256)", "function coordinator() view returns(address)", "function disputeResolver() view returns(address)", "function agentRegistry() view returns(address)"]);
+    const taskAbi = parseAbi(["function nextTaskId() view returns(uint256)", "function coordinator() view returns(address)", "function disputeResolver() view returns(address)", "function agentRegistry() view returns(address)", "function verificationPanel() view returns(address)"]);
     const agentAbi = parseAbi(["function agentCount() view returns(uint256)", "function stakeManager() view returns(address)"]);
     const registryAbi = parseAbi(["function taskRegistry() view returns(address)"]);
     const resolverAbi = parseAbi(["function registry() view returns(address)", "function quorum() view returns(uint256)", "function isArbitrator(address) view returns(bool)"]);
     const tokenAbi = parseAbi(["function balanceOf(address) view returns(uint256)"]);
     const ownableAbi = parseAbi(["function owner() view returns(address)"]);
+    const vaultAbi = parseAbi(["function taskRegistry() view returns(address)", "function verificationPanel() view returns(address)"]);
+    const panelAbi = parseAbi(["function registry() view returns(address)", "function rewardVault() view returns(address)", "function arbitrationCourt() view returns(address)"]);
+    const courtAbi = parseAbi(["function token() view returns(address)", "function panel() view returns(address)", "function agentRegistry() view returns(address)", "function reserve() view returns(address)", "function isArbitrator(address) view returns(bool)"]);
     const [
-      nextTaskId, registeredAgents, onchainCoordinator, disputeResolver, taskAgentRegistry, agentStakeManager,
-      stakeRegistry, vaultRegistry, resolverRegistry, resolverQuorum, reserveBalance, arbitratorChecks, ownership,
+      nextTaskId, registeredAgents, onchainCoordinator, disputeResolver, taskAgentRegistry, taskPanel, agentStakeManager,
+      stakeRegistry, vaultRegistry, vaultPanel, resolverRegistry, resolverQuorum, reserveBalance, arbitratorChecks,
+      panelRegistry, panelVault, panelCourt, courtToken, courtPanel, courtAgentRegistry, courtReserve, courtArbitrators, ownership,
     ] = await Promise.all([
       publicClient.readContract({ address: deployment.contracts.taskRegistry, abi: taskAbi, functionName: "nextTaskId" }),
       publicClient.readContract({ address: deployment.contracts.agentRegistry, abi: agentAbi, functionName: "agentCount" }),
       publicClient.readContract({ address: deployment.contracts.taskRegistry, abi: taskAbi, functionName: "coordinator" }),
       publicClient.readContract({ address: deployment.contracts.taskRegistry, abi: taskAbi, functionName: "disputeResolver" }),
       publicClient.readContract({ address: deployment.contracts.taskRegistry, abi: taskAbi, functionName: "agentRegistry" }),
+      publicClient.readContract({ address: deployment.contracts.taskRegistry, abi: taskAbi, functionName: "verificationPanel" }),
       publicClient.readContract({ address: deployment.contracts.agentRegistry, abi: agentAbi, functionName: "stakeManager" }),
       publicClient.readContract({ address: deployment.contracts.stakeManager, abi: registryAbi, functionName: "taskRegistry" }),
-      publicClient.readContract({ address: deployment.contracts.rewardVault, abi: registryAbi, functionName: "taskRegistry" }),
+      publicClient.readContract({ address: deployment.contracts.rewardVault, abi: vaultAbi, functionName: "taskRegistry" }),
+      publicClient.readContract({ address: deployment.contracts.rewardVault, abi: vaultAbi, functionName: "verificationPanel" }),
       publicClient.readContract({ address: deployment.contracts.disputeResolver, abi: resolverAbi, functionName: "registry" }),
       publicClient.readContract({ address: deployment.contracts.disputeResolver, abi: resolverAbi, functionName: "quorum" }),
       publicClient.readContract({ address: deployment.contracts.token, abi: tokenAbi, functionName: "balanceOf", args: [deployment.contracts.rewardVault] }),
       Promise.all(deployment.arbitrators.map((address) => publicClient.readContract({ address: deployment.contracts.disputeResolver, abi: resolverAbi, functionName: "isArbitrator", args: [address] }))),
+      publicClient.readContract({ address: deployment.contracts.verificationPanel, abi: panelAbi, functionName: "registry" }),
+      publicClient.readContract({ address: deployment.contracts.verificationPanel, abi: panelAbi, functionName: "rewardVault" }),
+      publicClient.readContract({ address: deployment.contracts.verificationPanel, abi: panelAbi, functionName: "arbitrationCourt" }),
+      publicClient.readContract({ address: deployment.contracts.verificationArbitrationCourt, abi: courtAbi, functionName: "token" }),
+      publicClient.readContract({ address: deployment.contracts.verificationArbitrationCourt, abi: courtAbi, functionName: "panel" }),
+      publicClient.readContract({ address: deployment.contracts.verificationArbitrationCourt, abi: courtAbi, functionName: "agentRegistry" }),
+      publicClient.readContract({ address: deployment.contracts.verificationArbitrationCourt, abi: courtAbi, functionName: "reserve" }),
+      Promise.all(deployment.arbitrators.slice(0, 3).map((address) => publicClient.readContract({ address: deployment.contracts.verificationArbitrationCourt, abi: courtAbi, functionName: "isArbitrator", args: [address] }))),
       Promise.all([deployment.contracts.token, deployment.contracts.stakeManager, deployment.contracts.rewardVault, deployment.contracts.taskRegistry, deployment.contracts.disputeResolver]
         .map((address) => publicClient.readContract({ address, abi: ownableAbi, functionName: "owner" }))),
     ]);
@@ -161,9 +180,14 @@ export async function runPilotPreflight(options: { requirePristine?: boolean; si
     const wiringVerified =
       equal(onchainCoordinator, deployment.coordinator) && equal(disputeResolver, deployment.contracts.disputeResolver) &&
       equal(taskAgentRegistry, deployment.contracts.agentRegistry) && equal(agentStakeManager, deployment.contracts.stakeManager) &&
-      equal(stakeRegistry, deployment.contracts.taskRegistry) && equal(vaultRegistry, deployment.contracts.taskRegistry) &&
+      equal(taskPanel, deployment.contracts.verificationPanel) && equal(stakeRegistry, deployment.contracts.taskRegistry) &&
+      equal(vaultRegistry, deployment.contracts.taskRegistry) && equal(vaultPanel, deployment.contracts.verificationPanel) &&
       equal(resolverRegistry, deployment.contracts.taskRegistry) && Number(resolverQuorum) === deployment.arbitratorQuorum &&
-      arbitratorChecks.every(Boolean) && reserveBalance >= parseEther("100000") && ownership.every((owner) => equal(owner, deployment.owner));
+      arbitratorChecks.every(Boolean) && equal(panelRegistry, deployment.contracts.taskRegistry) && equal(panelVault, deployment.contracts.rewardVault) &&
+      equal(panelCourt, deployment.contracts.verificationArbitrationCourt) && equal(courtToken, deployment.contracts.token) &&
+      equal(courtPanel, deployment.contracts.verificationPanel) && equal(courtAgentRegistry, deployment.contracts.agentRegistry) &&
+      equal(courtReserve, deployment.reserve) && courtArbitrators.every(Boolean) &&
+      reserveBalance >= parseEther("100000") && ownership.every((owner) => equal(owner, deployment.owner));
     if (!wiringVerified) blockers.push("PILOT_DEPLOYMENT_WIRING_INVALID");
     if (options.requirePristine !== false && (nextTaskId !== 1n || registeredAgents !== 0n)) blockers.push("PILOT_REQUIRES_PRISTINE_DEPLOYMENT");
     report.deployment = {

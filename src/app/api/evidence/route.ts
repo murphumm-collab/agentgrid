@@ -1,57 +1,40 @@
 import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
 import { apiError } from "@/lib/http";
 import { authenticateAgent, protocolSnapshot } from "@/lib/service";
-import { verifyEvidenceSignature } from "@/lib/signed-evidence";
+import { storedEvidenceHash, testEvidenceSigningVersion, verifyEvidenceSignature } from "@/lib/signed-evidence";
 import { readyArtifactsForTask, storeSignedTestEvidence } from "@/lib/store-postgres";
 import { keccak256, stringToHex } from "viem";
 import { competitionScoreBps, competitionWeightsBps } from "@/lib/competition-scoring";
 import { contributionFormulaVersion } from "@/lib/contribution-weights";
 import { evidenceJsonBodyLimit, readJsonBody } from "@/lib/request-body";
 import { roleCanLease } from "@/lib/agent-roles";
-import { criterionVerificationResultsSchema, validateCriterionEvidenceBindings, validateCriterionResults } from "@/lib/criterion-verification";
-
-const reportSchema = z.object({
-  passed: z.boolean(), exitCode: z.number().int(), timedOut: z.boolean(), durationMs: z.number().int().nonnegative().max(11 * 60_000),
-  testsPassed: z.boolean(), hiddenTestsPassed: z.boolean(), lineCoverage: z.number().min(0).max(1), branchCoverage: z.number().min(0).max(1),
-  functionCoverage: z.number().min(0).max(1), criticalBranchCoverage: z.number().min(0).max(1),
-  stdout: z.string().max(50_000), stderr: z.string().max(50_000),
-  sandbox: z.object({ network: z.literal("none"), readOnlyRoot: z.literal(true), memoryMb: z.number().int().max(512), cpus: z.number().max(1), pids: z.number().int().max(128), image: z.string().min(1).max(200) }),
-  contributionWork: z.array(z.object({
-    contributor: z.string().regex(/^0x[0-9a-fA-F]{40}$/), acceptedBytes: z.number().int().nonnegative().max(5_750_000),
-    acceptedFiles: z.number().int().nonnegative().max(100), weightBps: z.number().int().min(0).max(10_000),
-  }).strict()).max(32),
-  contributionFormulaVersion: z.literal(contributionFormulaVersion).optional(),
-  executorWeightsBps: z.array(z.number().int().min(0).max(10_000)).max(32),
-  competition: z.object({
-    winner: z.string().regex(/^0x[0-9a-fA-F]{40}$/).nullable(),
-    selectedArtifactHash: z.string().regex(/^sha256:[0-9a-f]{64}$/).nullable(),
-    candidates: z.array(z.object({
-      contributor: z.string().regex(/^0x[0-9a-fA-F]{40}$/), artifactHash: z.string().regex(/^sha256:[0-9a-f]{64}$/),
-      passed: z.boolean(), lineCoverage: z.number().min(0).max(1), branchCoverage: z.number().min(0).max(1),
-      functionCoverage: z.number().min(0).max(1), criticalBranchCoverage: z.number().min(0).max(1),
-      scoreBps: z.number().int().min(0).max(10_000),
-    }).strict()).min(1).max(32),
-  }).strict().optional(),
-  maintenanceRepairCheckpoint: z.number().int().min(1).max(3).optional(),
-  // Optional only for legacy tasks. Do not add a Zod default here: the tester
-  // signs the exact JSON object and parsing must not mutate that signed object.
-  criterionResults: criterionVerificationResultsSchema.optional(),
-}).strict();
-const schema = z.object({ taskId: z.string().regex(/^\d+$/), testerAgentId: z.string().min(3).max(120), artifactHash: z.string().regex(/^sha256:[0-9a-f]{64}$/), report: reportSchema, signature: z.string().regex(/^0x[0-9a-fA-F]{130}$/) }).strict();
+import { validateCriterionEvidenceBindings, validateCriterionSubset } from "@/lib/criterion-verification";
+import { signedEvidenceSubmissionSchema } from "@/lib/test-evidence-schema";
+import { chainContractAddresses, runtimeConfig } from "@/lib/env";
 
 export async function POST(request: NextRequest) {
   try {
-    const input = schema.parse(await readJsonBody(request, evidenceJsonBodyLimit));
+    const input = signedEvidenceSubmissionSchema.parse(await readJsonBody(request, evidenceJsonBodyLimit));
     const agent = await authenticateAgent(input.testerAgentId, request.headers.get("x-agent-key"), "tests:submit");
     if (!roleCanLease(agent.role, "TESTER")) throw new Error("AGENT_ROLE_DENIED");
     const task = (await protocolSnapshot()).tasks.find((item) => item.id === input.taskId);
-    if (!task || task.testerId?.toLowerCase() !== agent.owner.toLowerCase()) throw new Error("TESTER_NOT_ASSIGNED");
+    const testerIds = task?.testerIds?.length ? task.testerIds : task?.testerId ? [task.testerId] : [];
+    const assignedShard = testerIds.findIndex((tester) => tester.toLowerCase() === agent.owner.toLowerCase());
+    if (!task || assignedShard < 0) throw new Error("TESTER_NOT_ASSIGNED");
+    if (input.verificationShard !== assignedShard) throw new Error("VERIFICATION_SHARD_MISMATCH");
     if (task.state !== "TESTING" && task.state !== "MAINTENANCE") throw new Error("TASK_NOT_ACCEPTING_EVIDENCE");
+    const configuredRegistry = chainContractAddresses().taskRegistry;
+    if (input.chainId !== runtimeConfig().BSC_CHAIN_ID) throw new Error("SIGNING_CHAIN_MISMATCH");
+    if (input.taskRegistry.toLowerCase() !== configuredRegistry.toLowerCase()) throw new Error("SIGNING_TASK_REGISTRY_MISMATCH");
+    if (input.workRound !== (task.workRound ?? 1)) throw new Error("EVIDENCE_WORK_ROUND_MISMATCH");
+    if (input.executionMode !== task.executionMode) throw new Error("EVIDENCE_EXECUTION_MODE_MISMATCH");
+    if (input.executorOrder.length !== task.executorIds.length || input.executorOrder.some((address, index) => address.toLowerCase() !== task.executorIds[index].toLowerCase())) throw new Error("EVIDENCE_EXECUTOR_ORDER_MISMATCH");
     const criterionResults = input.report.criterionResults ?? [];
     if (task.completionDefinition) {
-      validateCriterionResults(task.completionDefinition, criterionResults, input.report.passed);
+      const shard = task.completionDefinition.verificationPlan?.shards[assignedShard];
+      if (!shard) throw new Error("VERIFICATION_SHARD_NOT_COMMITTED");
+      validateCriterionSubset(task.completionDefinition, shard.criterionIds, criterionResults, input.report.passed);
       validateCriterionEvidenceBindings(criterionResults, input.artifactHash);
     }
     else if (criterionResults.length) throw new Error("LEGACY_TASK_CRITERION_RESULTS_FORBIDDEN");
@@ -86,9 +69,17 @@ export async function POST(request: NextRequest) {
       const chainCommitment = keccak256(stringToHex(input.artifactHash));
       if (!task.submission || task.submission.artifactHash.toLowerCase() !== chainCommitment.toLowerCase()) throw new Error("EVIDENCE_CHAIN_COMMITMENT_MISMATCH");
     }
-    const verified = await verifyEvidenceSignature({ ...input, signature: input.signature as `0x${string}`, expectedAddress: agent.owner });
-    const evidence = await storeSignedTestEvidence({ id: randomUUID(), ...input, testerAddress: verified.signer, reportHash: verified.reportHash });
-    const evidenceHash = keccak256(stringToHex(JSON.stringify({ reportHash: verified.reportHash, signer: verified.signer.toLowerCase(), signature: input.signature.toLowerCase() })));
-    return NextResponse.json({ id: evidence.id, reportHash: verified.reportHash, evidenceHash, signer: verified.signer }, { status: 201 });
+    const verified = await verifyEvidenceSignature({
+      chainId: input.chainId, taskRegistry: input.taskRegistry, taskId: input.taskId, workRound: input.workRound,
+      verificationShard: input.verificationShard,
+      executionMode: input.executionMode, executorOrder: input.executorOrder, artifactHash: input.artifactHash,
+      report: input.report, signature: input.signature as `0x${string}`, expectedAddress: agent.owner,
+    });
+    const evidence = await storeSignedTestEvidence({
+      id: randomUUID(), ...input, testerAddress: verified.signer, reportHash: verified.reportHash,
+      signingVersion: testEvidenceSigningVersion, signingMessage: verified.message,
+    });
+    const evidenceHash = storedEvidenceHash(evidence);
+    return NextResponse.json({ id: evidence.id, reportHash: evidence.reportHash, evidenceHash, signer: evidence.testerAddress }, { status: 201 });
   } catch (error) { return apiError(error); }
 }

@@ -1,5 +1,7 @@
 import { z } from "zod";
 import { enforceProductionFileSecrets, resolvedRuntimeSecretEnvironment } from "./secrets";
+import { validatedBscRpcUrl } from "./bsc-rpc";
+import { validatedAuthOrigin } from "./auth-origin";
 
 const schema = z.object({
   PROTOCOL_MODE: z.enum(["demo", "production"]).default("demo"),
@@ -34,6 +36,8 @@ const schema = z.object({
   TASK_REGISTRY_ADDRESS: z.string().regex(/^0x[0-9a-fA-F]{40}$/).optional(),
   REWARD_VAULT_ADDRESS: z.string().regex(/^0x[0-9a-fA-F]{40}$/).optional(),
   DISPUTE_RESOLVER_ADDRESS: z.string().regex(/^0x[0-9a-fA-F]{40}$/).optional(),
+  VERIFICATION_PANEL_ADDRESS: z.string().regex(/^0x[0-9a-fA-F]{40}$/).optional(),
+  VERIFICATION_ARBITRATION_COURT_ADDRESS: z.string().regex(/^0x[0-9a-fA-F]{40}$/).optional(),
   NEXT_PUBLIC_TOKEN_ADDRESS: z.string().regex(/^0x[0-9a-fA-F]{40}$/).optional(),
   NEXT_PUBLIC_STAKE_MANAGER_ADDRESS: z.string().regex(/^0x[0-9a-fA-F]{40}$/).optional(),
   NEXT_PUBLIC_AGENT_REGISTRY_ADDRESS: z.string().regex(/^0x[0-9a-fA-F]{40}$/).optional(),
@@ -49,6 +53,10 @@ let cached: RuntimeConfig | undefined;
 export function runtimeConfig(): RuntimeConfig {
   cached ??= schema.parse({ ...process.env, ...resolvedRuntimeSecretEnvironment() });
   if (cached.PROTOCOL_MODE === "production") {
+    if (!process.env.AUTH_ORIGIN?.trim()) throw new Error("AUTH_ORIGIN_REQUIRED_IN_PRODUCTION");
+    cached.AUTH_ORIGIN = validatedAuthOrigin(cached.AUTH_ORIGIN);
+    if (cached.BSC_CHAIN_ID !== 97) throw new Error("BSC_TESTNET_CHAIN_ID_REQUIRED_IN_PRODUCTION");
+    cached.BSC_TESTNET_RPC_URL = validatedBscRpcUrl(cached.BSC_TESTNET_RPC_URL);
     if (!cached.DATABASE_URL) throw new Error("DATABASE_URL_REQUIRED_IN_PRODUCTION");
     if (!cached.AUTH_SECRET) throw new Error("AUTH_SECRET_REQUIRED_IN_PRODUCTION");
     if (cached.TRUST_PROXY && !cached.TRUSTED_PROXY_SHARED_SECRET) throw new Error("TRUSTED_PROXY_SHARED_SECRET_REQUIRED_IN_PRODUCTION");
@@ -73,8 +81,10 @@ export function chainContractAddresses() {
 export function chainDeploymentAddresses() {
   const contracts = chainContractAddresses();
   const disputeResolver = runtimeConfig().DISPUTE_RESOLVER_ADDRESS;
-  if (!disputeResolver) throw new Error("DISPUTE_RESOLVER_ADDRESS_REQUIRED");
-  return { ...contracts, disputeResolver: disputeResolver as `0x${string}` };
+  const verificationPanel = runtimeConfig().VERIFICATION_PANEL_ADDRESS;
+  const verificationArbitrationCourt = runtimeConfig().VERIFICATION_ARBITRATION_COURT_ADDRESS;
+  if (!disputeResolver || !verificationPanel || !verificationArbitrationCourt) throw new Error("DEPLOYMENT_CONTRACT_ADDRESSES_REQUIRED");
+  return { ...contracts, verificationPanel: verificationPanel as `0x${string}`, verificationArbitrationCourt: verificationArbitrationCourt as `0x${string}`, disputeResolver: disputeResolver as `0x${string}` };
 }
 
 export function isProductionMode() {
