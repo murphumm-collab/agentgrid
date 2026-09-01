@@ -193,7 +193,7 @@ export const agentJobCompletionSchemas = {
     coordinatorAlreadyFinalizedResult("buildSelectionPool"),
   ]),
   FINALIZE_EVALUATION_PANEL: z.union([
-    coordinatorTransactionResult(["finalizeEvaluationPanel", "rescheduleSelectionPool"]),
+    coordinatorTransactionResult(["finalizeEvaluationPanel", "rescheduleSelectionPool", "recoverSelectionPool"]),
     coordinatorAlreadyFinalizedResult("finalizeEvaluationPanel"),
   ]),
   FINALIZE_TASK_EVALUATION: z.union([
@@ -205,7 +205,7 @@ export const agentJobCompletionSchemas = {
     coordinatorAlreadyFinalizedResult("requestTester"),
   ]),
   FINALIZE_TESTER: z.union([
-    coordinatorTransactionResult(["finalizeTester", "requestTester", "rescheduleSelectionPool"]),
+    coordinatorTransactionResult(["finalizeTester", "requestTester", "rescheduleSelectionPool", "recoverSelectionPool"]),
     coordinatorAlreadyFinalizedResult("finalizeTester"),
   ]),
   START_MAINTENANCE_PANEL: z.union([

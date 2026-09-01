@@ -5,7 +5,7 @@ import solc from "solc";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createPublicClient, createWalletClient, custom, defineChain, keccak256,
-  parseEther, stringToHex, type Abi, type Address,
+  encodeAbiParameters, parseEther, stringToHex, type Abi, type Address,
 } from "viem";
 import { mnemonicToAccount } from "viem/accounts";
 import { compileContracts, type ContractArtifact } from "../scripts/compiler";
@@ -140,7 +140,7 @@ describe("AgentRegistry paginated selection pool", () => {
     }
   });
 
-  it("persists objective exhaustion instead of silently resampling a smaller live set", async () => {
+  it("persists objective exhaustion and recovers only after a later registry change", async () => {
     const poolId = keccak256(stringToHex("task-44-exhausted-validator"));
     await write(0, requester, "SelectionRequesterHarness", "start", [poolId, 44n, 2, false]);
     await write(1, registry, "AgentRegistry", "buildSelectionPool", [poolId, 5]);
@@ -151,16 +151,47 @@ describe("AgentRegistry paginated selection pool", () => {
 
     for (let attempts = 0; attempts < 8; attempts += 1) {
       await write(6, requester, "SelectionRequesterHarness", "draw", [poolId, 1]);
-      const status = await read("selectionPoolStatus", [poolId]) as readonly [bigint, bigint, number, boolean, Hex];
+      const status = await read("selectionPoolStatus", [poolId]) as readonly [bigint, bigint, number, boolean, Hex, bigint, Hex, Hex];
       if (status[1] === 0n) break;
     }
-    const exhausted = await read("selectionPoolStatus", [poolId]) as readonly [bigint, bigint, number, boolean, Hex];
+    const exhausted = await read("selectionPoolStatus", [poolId]) as readonly [bigint, bigint, number, boolean, Hex, bigint, Hex, Hex];
     expect(exhausted[1]).toBe(0n);
     expect(exhausted[2]).toBe(2);
+    expect(exhausted[5]).toBeGreaterThan(0n);
+    expect(exhausted[6]).toBe(`0x${"0".repeat(64)}`);
+    expect(exhausted[7]).not.toBe(`0x${"0".repeat(64)}`);
     for (let index = 0; index < 257; index += 1) await publicClient.request({ method: "evm_mine" as never });
     await expect(write(6, requester, "SelectionRequesterHarness", "reschedule", [poolId])).rejects.toThrow();
     await write(6, requester, "SelectionRequesterHarness", "draw", [poolId, 1]);
-    const unchanged = await read("selectionPoolStatus", [poolId]) as readonly [bigint, bigint, number, boolean, Hex];
+    const unchanged = await read("selectionPoolStatus", [poolId]) as readonly [bigint, bigint, number, boolean, Hex, bigint, Hex, Hex];
     expect(unchanged).toEqual(exhausted);
+
+    await write(6, token, "TestToken", "faucet");
+    await write(6, token, "TestToken", "approve", [stakeManager, parseEther("1000")]);
+    await write(6, stakeManager, "StakeCreditManager", "createPosition", [parseEther("1000")]);
+    await write(6, registry, "AgentRegistry", "register", [6n]);
+    await write(0, requester, "SelectionRequesterHarness", "draw", [poolId, 1]);
+    const recovered = await read("selectionPoolStatus", [poolId]) as readonly [bigint, bigint, number, boolean, Hex, bigint, Hex, Hex];
+    expect(recovered[6]).not.toBe(`0x${"0".repeat(64)}`);
+
+    const successorPoolId = recovered[6];
+    const successorBeforeBuild = await read("selectionPoolStatus", [successorPoolId]) as readonly [bigint, bigint, number, boolean, Hex, bigint, Hex, Hex];
+    expect(successorBeforeBuild[0]).toBe(exhausted[0]);
+    expect(successorBeforeBuild[3]).toBe(false);
+    expect(successorBeforeBuild[4]).not.toBe(`0x${"0".repeat(64)}`);
+    expect(successorBeforeBuild[7]).toBe(keccak256(encodeAbiParameters(
+      [{ type: "bytes32" }, { type: "bytes32" }, { type: "string" }],
+      [exhausted[7], successorPoolId, "EXHAUSTED_SELECTION_RECOVERY_ENTROPY"],
+    )));
+    await write(0, requester, "SelectionRequesterHarness", "draw", [poolId, 1]);
+    expect((await read("selectionPoolStatus", [poolId]) as readonly unknown[])[6]).toBe(successorPoolId);
+    await write(0, registry, "AgentRegistry", "buildSelectionPool", [successorPoolId, 6]);
+    for (let index = 0; index < 6; index += 1) await publicClient.request({ method: "evm_mine" as never });
+    await write(0, requester, "SelectionRequesterHarness", "draw", [successorPoolId, 16]);
+    const successor = await read("selectionPoolStatus", [successorPoolId]) as readonly [bigint, bigint, number, boolean, Hex, bigint, Hex, Hex];
+    expect(successor[2]).toBe(3);
+    const winners = await Promise.all([0, 1, 2].map((slot) => read("selectionPoolWinner", [successorPoolId, slot]) as Promise<Address>));
+    expect(new Set(winners.map((winner) => winner.toLowerCase())).size).toBe(3);
+    expect(winners.map((winner) => winner.toLowerCase())).toContain(wallets[6].account!.address.toLowerCase());
   });
 });

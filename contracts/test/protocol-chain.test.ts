@@ -12,6 +12,7 @@ import {
   stringToHex,
   type Abi,
   type Address,
+  type Hex,
 } from "viem";
 import { mnemonicToAccount } from "viem/accounts";
 import { compileContracts, type ContractArtifact } from "../scripts/compiler";
@@ -399,6 +400,65 @@ describe("AgentGrid Solidity protocol", () => {
     for (const evaluator of evaluators) {
       expect(await read(addresses.token, "TestToken", "balanceOf", [evaluator.account!.address])).toBe(9_000n * 10n ** 18n + parseEther("0.7") / 3n);
     }
+  });
+
+  it("recovers exhausted evaluator and validator task pools only after a later registry change", async () => {
+    const { evaluators } = await createEvaluatingTask("task-path-selection-recovery");
+    let selection = await read(addresses.taskRegistry, "TaskRegistry", "evaluationSelections", [1n]) as readonly unknown[];
+    const evaluatorRootPool = selection[4] as Hex;
+    await write(owner, addresses.agentRegistry, "AgentRegistry", "buildSelectionPool", [evaluatorRootPool, 64]);
+    for (const evaluator of evaluators) await write(evaluator, addresses.agentRegistry, "AgentRegistry", "setActive", [false]);
+    for (let index = 0; index < 6; index += 1) await provider.request({ method: "evm_mine", params: [] });
+    await write(owner, addresses.taskRegistry, "TaskRegistry", "finalizeEvaluationPanel", [1n]);
+    const exhaustedEvaluatorPool = await read(addresses.agentRegistry, "AgentRegistry", "selectionPoolStatus", [evaluatorRootPool]) as readonly unknown[];
+    expect(exhaustedEvaluatorPool[1]).toBe(0n);
+    expect(exhaustedEvaluatorPool[5]).toBeGreaterThan(0n);
+
+    for (const evaluator of evaluators) await write(evaluator, addresses.agentRegistry, "AgentRegistry", "setActive", [true]);
+    await write(owner, addresses.taskRegistry, "TaskRegistry", "finalizeEvaluationPanel", [1n]);
+    selection = await read(addresses.taskRegistry, "TaskRegistry", "evaluationSelections", [1n]) as readonly unknown[];
+    const evaluatorSuccessorPool = selection[4] as Hex;
+    expect(evaluatorSuccessorPool).not.toBe(evaluatorRootPool);
+    await write(owner, addresses.agentRegistry, "AgentRegistry", "buildSelectionPool", [evaluatorSuccessorPool, 64]);
+    for (let index = 0; index < 6; index += 1) await provider.request({ method: "evm_mine", params: [] });
+    await write(owner, addresses.taskRegistry, "TaskRegistry", "finalizeEvaluationPanel", [1n]);
+    expect(new Set(((await read(addresses.taskRegistry, "TaskRegistry", "getTaskEvaluators", [1n])) as Address[]).map((address) => address.toLowerCase())).size).toBe(3);
+
+    for (let index = 0; index < evaluators.length; index += 1) {
+      await write(evaluators[index], addresses.taskRegistry, "TaskRegistry", "submitEvaluation", [
+        1n, keccak256(stringToHex("development")), 5_000, 10, 8_000, parseEther("1000"), true,
+        keccak256(stringToHex(`recovered-evaluation-${index}`)),
+      ]);
+    }
+    await write(owner, addresses.taskRegistry, "TaskRegistry", "finalizeTaskEvaluation", [1n]);
+    await registerAgent(executor, 5n);
+    await registerTesterPool(6n);
+    await write(executor, addresses.taskRegistry, "TaskRegistry", "claimTask", [1n]);
+    const artifactHash = keccak256(stringToHex("recovered-selection-artifact"));
+    await write(executor, addresses.taskRegistry, "TaskRegistry", "submitContribution", [1n, artifactHash]);
+    await write(executor, addresses.taskRegistry, "TaskRegistry", "submitWork", [1n, artifactHash]);
+    await write(owner, addresses.taskRegistry, "TaskRegistry", "requestTester", [1n]);
+    let task = await read(addresses.taskRegistry, "TaskRegistry", "tasks", [1n]) as readonly unknown[];
+    const testerRootPool = task[10] as Hex;
+    await write(owner, addresses.agentRegistry, "AgentRegistry", "buildSelectionPool", [testerRootPool, 64]);
+    for (const validator of [tester, testerB, testerC]) await write(validator, addresses.agentRegistry, "AgentRegistry", "setActive", [false]);
+    for (let index = 0; index < 6; index += 1) await provider.request({ method: "evm_mine", params: [] });
+    await write(owner, addresses.taskRegistry, "TaskRegistry", "finalizeTester", [1n]);
+    const exhaustedTesterPool = await read(addresses.agentRegistry, "AgentRegistry", "selectionPoolStatus", [testerRootPool]) as readonly unknown[];
+    expect(exhaustedTesterPool[1]).toBe(0n);
+    expect(exhaustedTesterPool[5]).toBeGreaterThan(0n);
+
+    for (const validator of [tester, testerB, testerC]) await write(validator, addresses.agentRegistry, "AgentRegistry", "setActive", [true]);
+    await write(owner, addresses.taskRegistry, "TaskRegistry", "finalizeTester", [1n]);
+    task = await read(addresses.taskRegistry, "TaskRegistry", "tasks", [1n]) as readonly unknown[];
+    const testerSuccessorPool = task[10] as Hex;
+    expect(testerSuccessorPool).not.toBe(testerRootPool);
+    await write(owner, addresses.agentRegistry, "AgentRegistry", "buildSelectionPool", [testerSuccessorPool, 64]);
+    for (let index = 0; index < 6; index += 1) await provider.request({ method: "evm_mine", params: [] });
+    await write(owner, addresses.taskRegistry, "TaskRegistry", "finalizeTester", [1n]);
+    task = await read(addresses.taskRegistry, "TaskRegistry", "tasks", [1n]) as readonly unknown[];
+    expect(task[19]).toBe(5);
+    expect(new Set(((await read(addresses.taskRegistry, "TaskRegistry", "getTaskTesters", [1n])) as Address[]).map((address) => address.toLowerCase())).size).toBe(3);
   });
 
   it("releases a rejected evaluation without charging the publication fee and pays only reporters", async () => {

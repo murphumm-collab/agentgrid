@@ -39,35 +39,35 @@
     },
     "agentRegistry": {
       "name": "AgentRegistry",
-      "normalizedRuntimeBytecodeHash": "0x4a96c336d351c136b0c3333645df39080883167e4c0a5c3cbf12f6d0f97d640d",
+      "normalizedRuntimeBytecodeHash": "0x8e197319c3937e1314122ef2549ae7008e85a902ef32231ef919738939c35f19",
       "immutableReferences": [
         {
           "length": 32,
-          "start": 800
+          "start": 811
         },
         {
           "length": 32,
-          "start": 4556
+          "start": 4977
         },
         {
           "length": 32,
-          "start": 6572
+          "start": 7188
         },
         {
           "length": 32,
-          "start": 8373
+          "start": 9072
         },
         {
           "length": 32,
-          "start": 9337
+          "start": 10036
         },
         {
           "length": 32,
-          "start": 10761
+          "start": 11480
         },
         {
           "length": 32,
-          "start": 11683
+          "start": 12402
         }
       ]
     },
@@ -119,7 +119,7 @@
     },
     "taskRegistry": {
       "name": "TaskRegistry",
-      "normalizedRuntimeBytecodeHash": "0xc5458416e77e1c4166102b51f0b7d1ce7133411eb1a281036933cadf80ce99f7",
+      "normalizedRuntimeBytecodeHash": "0xe43f74325412c3ecaea021fd82f67984462562a11d6e3cd91ae99e6ebb77dd15",
       "immutableReferences": [
         {
           "length": 32,
@@ -147,19 +147,19 @@
         },
         {
           "length": 32,
-          "start": 17726
+          "start": 17718
         },
         {
           "length": 32,
-          "start": 20566
+          "start": 20591
         },
         {
           "length": 32,
-          "start": 21908
+          "start": 21980
         },
         {
           "length": 32,
-          "start": 22273
+          "start": 22345
         },
         {
           "length": 32,
@@ -183,15 +183,15 @@
         },
         {
           "length": 32,
-          "start": 19010
+          "start": 19002
         },
         {
           "length": 32,
-          "start": 20288
+          "start": 20313
         },
         {
           "length": 32,
-          "start": 23498
+          "start": 23570
         },
         {
           "length": 32,
@@ -211,23 +211,23 @@
         },
         {
           "length": 32,
-          "start": 15968
+          "start": 15965
         },
         {
           "length": 32,
-          "start": 16496
+          "start": 16471
         },
         {
           "length": 32,
-          "start": 17851
+          "start": 17843
         },
         {
           "length": 32,
-          "start": 20867
+          "start": 20857
         },
         {
           "length": 32,
-          "start": 21252
+          "start": 21326
         },
         {
           "length": 32,

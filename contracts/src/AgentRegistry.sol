@@ -68,7 +68,10 @@ contract AgentRegistry {
         bool evaluatorPanel;
         bool complete;
         bytes32 candidateSetHash;
+        bytes32 entropySeed;
         bytes32 drawProof;
+        uint64 exhaustedVersion;
+        bytes32 successorPoolId;
     }
 
     StakeCreditManager public immutable stakeManager;
@@ -84,17 +87,17 @@ contract AgentRegistry {
     mapping(address => mapping(uint8 => uint32)) public independentPositiveOutcomeCount;
     mapping(bytes32 => bool) public creditedQualityRelationship;
     mapping(bytes32 => mapping(uint256 => uint8)) public positiveRelationshipOutcomesInEpoch;
-    mapping(address => AgentStateCheckpoint[]) private agentStateCheckpoints;
+    mapping(address => AgentStateCheckpoint[]) internal agentStateCheckpoints;
     mapping(address => mapping(uint8 => QualityCheckpoint[])) private qualityCheckpoints;
-    address[] private registeredAgents;
+    address[] internal registeredAgents;
     bytes32 public registryHash;
     uint64 public registryVersion;
     address public selectionRequester;
     mapping(bytes32 => SelectionPool) public selectionPools;
-    mapping(bytes32 => address[]) private selectionPoolCandidates;
-    mapping(bytes32 => uint256[]) private selectionPoolWeights;
-    mapping(bytes32 => uint256[]) private selectionPoolRemainingWeights;
-    mapping(bytes32 => uint256[]) private selectionPoolFenwick;
+    mapping(bytes32 => address[]) internal selectionPoolCandidates;
+    mapping(bytes32 => uint256[]) internal selectionPoolWeights;
+    mapping(bytes32 => uint256[]) internal selectionPoolRemainingWeights;
+    mapping(bytes32 => uint256[]) internal selectionPoolFenwick;
     mapping(bytes32 => address[3]) private selectionPoolWinners;
 
     uint16 public constant MAX_SELECTION_BUILD_PAGE = 64;
@@ -136,6 +139,11 @@ contract AgentRegistry {
     event SelectionPoolSealed(bytes32 indexed poolId, uint256 indexed taskId, uint256 selectionBlock, uint256 eligibleCandidates, uint256 totalWeight, bool evaluatorPanel);
     event SelectionPoolCandidatePruned(bytes32 indexed poolId, address indexed candidate, uint64 drawNonce);
     event SelectionPoolCandidateSelected(bytes32 indexed poolId, uint256 indexed taskId, address indexed candidate, uint8 slot, bytes32 drawProof);
+    event SelectionPoolExhausted(bytes32 indexed poolId, uint256 indexed taskId, uint64 indexed exhaustedVersion, uint8 selectedCount);
+    event SelectionPoolRecovered(
+        bytes32 indexed exhaustedPoolId, bytes32 indexed successorPoolId, uint256 indexed taskId,
+        uint64 exhaustedVersion, uint64 recoveryVersion
+    );
 
     constructor(StakeCreditManager stakeManager_) {
         stakeManager = stakeManager_;
@@ -418,10 +426,20 @@ contract AgentRegistry {
             msg.sender != selectionRequester || poolId == bytes32(0) || taskId == 0 ||
             capability == 0 || selectionPools[poolId].requester != address(0)
         ) revert InvalidSelectionPool();
+        _startSelectionPool(poolId, taskId, capability, evaluatorPanel, msg.sender);
+    }
+
+    function _startSelectionPool(
+        bytes32 poolId, uint256 taskId, uint8 capability, bool evaluatorPanel, address requester
+    ) private {
+        if (
+            poolId == bytes32(0) || taskId == 0 || capability == 0 || requester == address(0) ||
+            selectionPools[poolId].requester != address(0)
+        ) revert InvalidSelectionPool();
         uint256 count = registeredAgents.length;
         if (count < SELECTION_POOL_SIZE) revert InvalidSelectionPool();
         SelectionPool storage pool = selectionPools[poolId];
-        pool.requester = msg.sender;
+        pool.requester = requester;
         pool.taskId = taskId;
         pool.candidateCount = count;
         pool.snapshotVersion = registryVersion;
@@ -432,14 +450,16 @@ contract AgentRegistry {
         // Fenwick trees are one-indexed. Index zero is a permanent sentinel.
         selectionPoolFenwick[poolId].push(0);
         emit SelectionPoolStarted(
-            poolId, taskId, msg.sender, count, pool.snapshotVersion,
+            poolId, taskId, requester, count, pool.snapshotVersion,
             pool.snapshotTime, capability, evaluatorPanel, pool.candidateSetHash
         );
     }
 
     /// @notice Adds the next bounded, sequential candidate page. No caller can
-    /// skip a prefix, stop the pool early, or see the future draw entropy while
-    /// choosing pages. Every frozen eligible candidate keeps its exact weight.
+    /// skip a prefix or stop the pool early. Root entropy is scheduled only
+    /// after completion; a recovered pool inherits observed predecessor entropy
+    /// but still must build the entire deterministic prefix. Every frozen
+    /// eligible candidate keeps its exact weight.
     function buildSelectionPool(bytes32 poolId, uint16 maxCandidates) external {
         SelectionPool storage pool = selectionPools[poolId];
         if (
@@ -459,7 +479,7 @@ contract AgentRegistry {
         emit SelectionPoolProgress(poolId, end, pool.candidateCount, pool.totalWeight);
         if (end == pool.candidateCount) {
             pool.complete = true;
-            pool.selectionBlock = block.number + SELECTION_ENTROPY_DELAY;
+            if (pool.drawProof == bytes32(0)) pool.selectionBlock = block.number + SELECTION_ENTROPY_DELAY;
             emit SelectionPoolSealed(
                 poolId, pool.taskId, pool.selectionBlock,
                 selectionPoolCandidates[poolId].length, pool.totalWeight, pool.evaluatorPanel
@@ -478,6 +498,7 @@ contract AgentRegistry {
         ) revert InvalidSelectionPool();
         pool.selectionBlock = block.number + SELECTION_ENTROPY_DELAY;
         pool.drawNonce = 0;
+        pool.entropySeed = bytes32(0);
         pool.drawProof = bytes32(0);
         emit SelectionPoolSealed(
             poolId, pool.taskId, pool.selectionBlock,
@@ -489,7 +510,8 @@ contract AgentRegistry {
     /// pruning at most maxPrunes unsafe/conflicted candidates in this transaction.
     /// Partial progress persists across permissionless TaskRegistry retries.
     function drawSelectionPanel(bytes32 poolId, uint8 maxPrunes) external returns (
-        address[3] memory winners, bool finalized, uint256 selectionBlock, bytes32 drawProof
+        address[3] memory winners, bool finalized, uint256 selectionBlock,
+        bytes32 drawProof, bytes32 successorPoolId
     ) {
         SelectionPool storage pool = selectionPools[poolId];
         if (
@@ -498,8 +520,9 @@ contract AgentRegistry {
             (pool.drawProof == bytes32(0) && block.number > pool.selectionBlock + 256)
         ) revert InvalidSelectionPool();
         if (pool.drawProof == bytes32(0)) {
+            pool.entropySeed = blockhash(pool.selectionBlock);
             pool.drawProof = keccak256(abi.encode(
-                blockhash(pool.selectionBlock), poolId, pool.taskId, pool.candidateSetHash,
+                pool.entropySeed, poolId, pool.taskId, pool.candidateSetHash,
                 pool.candidateCount, pool.snapshotVersion, pool.snapshotTime,
                 pool.capability, pool.evaluatorPanel
             ));
@@ -507,7 +530,7 @@ contract AgentRegistry {
         uint8 pruned;
         while (pool.selectedCount < SELECTION_POOL_SIZE && pool.totalWeight != 0) {
             uint256 ticket = uint256(keccak256(abi.encode(
-                pool.drawProof, pool.selectedCount, pool.drawNonce, "PAGINATED_WEIGHTED_SELECTION"
+                pool.entropySeed, pool.selectedCount, pool.drawNonce, "PAGINATED_WEIGHTED_SELECTION"
             ))) % pool.totalWeight;
             uint256 index = _selectionIndexForTicket(selectionPoolFenwick[poolId], ticket);
             address candidate = selectionPoolCandidates[poolId][index];
@@ -537,6 +560,33 @@ contract AgentRegistry {
         finalized = pool.selectedCount == SELECTION_POOL_SIZE;
         selectionBlock = pool.selectionBlock;
         drawProof = pool.drawProof;
+        if (!finalized && pool.totalWeight == 0) {
+            if (pool.exhaustedVersion == 0) {
+                pool.exhaustedVersion = registryVersion;
+                emit SelectionPoolExhausted(poolId, pool.taskId, registryVersion, pool.selectedCount);
+            } else if (pool.successorPoolId == bytes32(0) && registryVersion > pool.exhaustedVersion) {
+                successorPoolId = keccak256(abi.encode(poolId, "EXHAUSTED_SELECTION_SUCCESSOR"));
+                pool.successorPoolId = successorPoolId;
+                _startSelectionPool(
+                    successorPoolId, pool.taskId, pool.capability, pool.evaluatorPanel, pool.requester
+                );
+                SelectionPool storage successor = selectionPools[successorPoolId];
+                successor.selectionBlock = pool.selectionBlock;
+                successor.entropySeed = keccak256(abi.encode(
+                    pool.entropySeed, successorPoolId, "EXHAUSTED_SELECTION_RECOVERY_ENTROPY"
+                ));
+                successor.drawProof = keccak256(abi.encode(
+                    successor.entropySeed, successorPoolId, successor.taskId, successor.candidateSetHash,
+                    successor.candidateCount, successor.snapshotVersion, successor.snapshotTime,
+                    successor.capability, successor.evaluatorPanel
+                ));
+                emit SelectionPoolRecovered(
+                    poolId, successorPoolId, pool.taskId, pool.exhaustedVersion, registryVersion
+                );
+            } else {
+                successorPoolId = pool.successorPoolId;
+            }
+        }
     }
 
     function selectionPoolCandidate(bytes32 poolId, uint256 index) external view returns (address candidate, uint256 frozenWeight) {
@@ -551,10 +601,23 @@ contract AgentRegistry {
 
     function selectionPoolStatus(bytes32 poolId) external view returns (
         uint256 selectionBlock, uint256 remainingWeight, uint8 selectedCount,
-        bool complete, bytes32 drawProof
+        bool complete, bytes32 drawProof, uint64 exhaustedVersion,
+        bytes32 successorPoolId, bytes32 entropySeed
     ) {
         SelectionPool storage pool = selectionPools[poolId];
-        return (pool.selectionBlock, pool.totalWeight, pool.selectedCount, pool.complete, pool.drawProof);
+        return (
+            pool.selectionBlock, pool.totalWeight, pool.selectedCount, pool.complete,
+            pool.drawProof, pool.exhaustedVersion, pool.successorPoolId, pool.entropySeed
+        );
+    }
+
+    function canRecoverSelectionPool(bytes32 poolId) external view returns (bool) {
+        SelectionPool storage pool = selectionPools[poolId];
+        return (
+            pool.complete && pool.totalWeight == 0 && pool.selectedCount < SELECTION_POOL_SIZE &&
+            pool.exhaustedVersion != 0 && pool.successorPoolId == bytes32(0) &&
+            registryVersion > pool.exhaustedVersion
+        );
     }
 
     function _appendSelectionWeight(bytes32 poolId, address candidate, uint256 weight) private {
@@ -614,7 +677,7 @@ contract AgentRegistry {
         emit RegistrySnapshotAdvanced(registryVersion, registryHash);
     }
 
-    function _writeStateCheckpoint(address agent) private {
+    function _writeStateCheckpoint(address agent) internal {
         agentStateCheckpoints[agent].push(AgentStateCheckpoint({
             version: registryVersion,
             positionId: agentPosition[agent],

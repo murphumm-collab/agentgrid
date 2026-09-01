@@ -22,13 +22,17 @@ function findImports(importPath: string): { contents?: string; error?: string } 
   return { error: `Import not found: ${importPath}` };
 }
 
-export function compileContracts(): Record<string, ContractArtifact> {
-  const sources = Object.fromEntries(
+export function compileContracts(additionalSources: Record<string, { content: string }> = {}): Record<string, ContractArtifact> {
+  const productionSources = Object.fromEntries(
     fs
       .readdirSync(path.resolve(contractsRoot, "src"))
       .filter((file) => file.endsWith(".sol"))
       .map((file) => [file, { content: fs.readFileSync(path.resolve(contractsRoot, "src", file), "utf8") }]),
   );
+  for (const name of Object.keys(additionalSources)) {
+    if (name in productionSources) throw new Error(`Additional Solidity source cannot replace production source: ${name}`);
+  }
+  const sources = { ...productionSources, ...additionalSources };
   const input = {
     language: "Solidity",
     sources,

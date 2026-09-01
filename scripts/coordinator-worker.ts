@@ -17,6 +17,7 @@ const wallet = createWalletClient({ account, chain: bscTestnet, transport });
 const registry = chainContractAddresses().taskRegistry;
 const deployment = chainDeploymentAddresses();
 const selectionRegistry = deployment.agentRegistry;
+const zeroHash = `0x${"0".repeat(64)}` as Hex;
 const evaluationCoordinatorAbi = [
   { type: "function", name: "finalizeEvaluationPanel", stateMutability: "nonpayable", inputs: [{ name: "taskId", type: "uint256" }], outputs: [] },
   { type: "function", name: "finalizeTaskEvaluation", stateMutability: "nonpayable", inputs: [{ name: "taskId", type: "uint256" }], outputs: [] },
@@ -161,6 +162,13 @@ async function coordinate() {
       }
       let hash: Hex;
       while (true) {
+        if (leased.job.kind === "FINALIZE_EVALUATION_PANEL") {
+          const status = await publicClient.readContract({ address: selectionRegistry, abi: agentRegistryAbi, functionName: "selectionPoolStatus", args: [leased.job.payload.poolId] });
+          if (status[1] === 0n && status[5] !== 0n && status[6] === zeroHash) {
+            const recoverable = await publicClient.readContract({ address: selectionRegistry, abi: agentRegistryAbi, functionName: "canRecoverSelectionPool", args: [leased.job.payload.poolId] });
+            if (!recoverable) throw new Error("EVALUATION_SELECTION_WAITING_FOR_REGISTRY_CHANGE");
+          }
+        }
         await heartbeatAgentJob(leased.job.id, "protocol-coordinator");
         hash = await wallet.writeContract({ address: registry, abi: evaluationCoordinatorAbi, functionName, args: [BigInt(taskId)] });
         const receipt = await publicClient.waitForTransactionReceipt({ hash, confirmations: config.CHAIN_CONFIRMATIONS });
@@ -169,6 +177,10 @@ async function coordinate() {
         const selection = await publicClient.readContract({ address: registry, abi: evaluationCoordinatorAbi, functionName: "evaluationSelections", args: [BigInt(taskId)] });
         if (selection[7]) break;
         const poolId = leased.job.payload.poolId;
+        if (String(selection[4]).toLowerCase() !== poolId.toLowerCase()) {
+          await completeAgentJob(leased.job.id, "protocol-coordinator", { transactionHash: hash, phase: "recoverSelectionPool" });
+          return true;
+        }
         const status = await publicClient.readContract({ address: selectionRegistry, abi: agentRegistryAbi, functionName: "selectionPoolStatus", args: [poolId] });
         if (status[1] === 0n) throw new Error("EVALUATION_SELECTION_POOL_EXHAUSTED");
       }
@@ -206,12 +218,21 @@ async function coordinate() {
       }
       let hash: Hex;
       while (true) {
+        const pendingStatus = await publicClient.readContract({ address: selectionRegistry, abi: agentRegistryAbi, functionName: "selectionPoolStatus", args: [leased.job.payload.poolId] });
+        if (pendingStatus[1] === 0n && pendingStatus[5] !== 0n && pendingStatus[6] === zeroHash) {
+          const recoverable = await publicClient.readContract({ address: selectionRegistry, abi: agentRegistryAbi, functionName: "canRecoverSelectionPool", args: [leased.job.payload.poolId] });
+          if (!recoverable) throw new Error("TESTER_SELECTION_WAITING_FOR_REGISTRY_CHANGE");
+        }
         await heartbeatAgentJob(leased.job.id, "protocol-coordinator");
         hash = await wallet.writeContract({ address: registry, abi: taskRegistryAbi, functionName: "finalizeTester", args: [BigInt(taskId)] });
         const receipt = await publicClient.waitForTransactionReceipt({ hash, confirmations: config.CHAIN_CONFIRMATIONS });
         if (receipt.status !== "success") throw new Error("FINALIZE_TESTER_TRANSACTION_REVERTED");
         task = await publicClient.readContract({ address: registry, abi: evaluationCoordinatorAbi, functionName: "tasks", args: [BigInt(taskId)] });
         if (Number(task[19]) === 5) break;
+        if (String(task[10]).toLowerCase() !== leased.job.payload.poolId.toLowerCase()) {
+          await completeAgentJob(leased.job.id, "protocol-coordinator", { phase: "recoverSelectionPool", transactionHash: hash });
+          return true;
+        }
         const status = await publicClient.readContract({ address: selectionRegistry, abi: agentRegistryAbi, functionName: "selectionPoolStatus", args: [leased.job.payload.poolId] });
         if (status[1] === 0n) throw new Error("TESTER_SELECTION_POOL_EXHAUSTED");
       }

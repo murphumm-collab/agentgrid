@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "AgentGrid Agent API",
-    "version": "0.8.13",
+    "version": "0.8.14",
     "description": "Discovery, public task/proof views and the authenticated Agent job, encrypted artifact and publisher hidden-test workflows. Admin, internal operations and Demo-only mutation routes are intentionally excluded. Artifact bytes and hidden tests are never returned by public endpoints."
   },
   "servers": [
@@ -4119,24 +4119,32 @@
               "scalability": {
                 "type": "object",
                 "additionalProperties": false,
-                "required": ["status", "frozenWeightEntrypoint", "liveSafetyWeightEntrypoint", "currentSelectionComplexity", "requiredReplacement", "randomWindowAccepted", "poolPrimitive"],
+                "required": ["status", "frozenWeightEntrypoint", "liveSafetyWeightEntrypoint", "currentSelectionComplexity", "requiredReplacement", "randomWindowAccepted", "governedGasRegistrySize", "governedTransactionGasLimit", "governedGasRegression", "poolPrimitive"],
                 "properties": {
-                  "status": { "const": "LOCAL_RELEASE_GATE_OPEN" },
+                  "status": { "const": "LOCAL_GOVERNED_GAS_GATE_PASS" },
                   "frozenWeightEntrypoint": { "const": "AgentRegistry.frozenSelectionWeightAt(address,uint8,uint64,uint64)" },
                   "liveSafetyWeightEntrypoint": { "const": "AgentRegistry.selectionWeightAt(address,uint8,uint64,uint64)" },
                   "currentSelectionComplexity": { "const": "TASK_PATH_BOUNDED_PAGINATED_FENWICK" },
-                  "requiredReplacement": { "const": "EXHAUSTED_POOL_RECOVERY_AND_GOVERNED_MAXIMUM_REGISTRY_BSC_GAS_EVIDENCE" },
+                  "requiredReplacement": { "const": "NONE" },
                   "randomWindowAccepted": { "const": false },
+                  "governedGasRegistrySize": { "const": 65536 },
+                  "governedTransactionGasLimit": { "const": 30000000 },
+                  "governedGasRegression": { "const": "PASS" },
                   "poolPrimitive": {
                     "type": "object",
                     "additionalProperties": false,
-                    "required": ["boundedBuildPageMax", "boundedPrunesPerTransactionMax", "entropyScheduledAfterCompleteBuild", "frozenAuditWeightsPreserved", "taskRegistryIntegration"],
+                    "required": ["boundedBuildPageMax", "boundedPrunesPerTransactionMax", "rootEntropyScheduledAfterCompleteBuild", "successorEntropyInheritedWithMandatoryCompleteBuild", "frozenAuditWeightsPreserved", "taskRegistryIntegration", "exhaustedPoolRecovery", "successorBinding", "observedEntropyResampling", "partialProofContinuationAfterBlockhashExpiry"],
                     "properties": {
                       "boundedBuildPageMax": { "const": 64 },
                       "boundedPrunesPerTransactionMax": { "const": 16 },
-                      "entropyScheduledAfterCompleteBuild": { "const": true },
+                      "rootEntropyScheduledAfterCompleteBuild": { "const": true },
+                      "successorEntropyInheritedWithMandatoryCompleteBuild": { "const": true },
                       "frozenAuditWeightsPreserved": { "const": true },
-                      "taskRegistryIntegration": { "const": "INTEGRATED" }
+                      "taskRegistryIntegration": { "const": "INTEGRATED" },
+                      "exhaustedPoolRecovery": { "const": "OBJECTIVE_EXHAUSTION_THEN_REGISTRY_VERSION_ADVANCE" },
+                      "successorBinding": { "const": "DETERMINISTIC_PREDECESSOR_ID_AND_INHERITED_ENTROPY" },
+                      "observedEntropyResampling": { "const": "FORBIDDEN" },
+                      "partialProofContinuationAfterBlockhashExpiry": { "const": true }
                     }
                   }
                 }
@@ -6901,7 +6909,7 @@
             "additionalProperties": false,
             "required": ["phase", "transactionHash"],
             "properties": {
-              "phase": { "type": "string", "enum": ["finalizeEvaluationPanel", "rescheduleSelectionPool"] },
+              "phase": { "type": "string", "enum": ["finalizeEvaluationPanel", "rescheduleSelectionPool", "recoverSelectionPool"] },
               "transactionHash": { "type": "string", "pattern": "^0x[0-9a-fA-F]{64}$" }
             }
           },
@@ -6989,7 +6997,7 @@
             "additionalProperties": false,
             "required": ["phase", "transactionHash"],
             "properties": {
-              "phase": { "type": "string", "enum": ["finalizeTester", "requestTester", "rescheduleSelectionPool"] },
+              "phase": { "type": "string", "enum": ["finalizeTester", "requestTester", "rescheduleSelectionPool", "recoverSelectionPool"] },
               "transactionHash": { "type": "string", "pattern": "^0x[0-9a-fA-F]{64}$" }
             }
           },

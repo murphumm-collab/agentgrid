@@ -76,11 +76,13 @@ describe("Agent queue job contracts", () => {
     expect(() => parseAgentJobCompletionResult("EXECUTE_TASK", { artifactHash })).toThrow();
     expect(() => parseAgentJobCompletionResult("EVALUATE_TASK", { reportHash: hash, approve: true })).toThrow();
     expect(() => parseAgentJobCompletionResult("FINALIZE_EVALUATION_PANEL", { phase: "requestTester", transactionHash: hash })).toThrow();
+    expect(parseAgentJobCompletionResult("FINALIZE_EVALUATION_PANEL", { phase: "recoverSelectionPool", transactionHash: hash })).toEqual({ phase: "recoverSelectionPool", transactionHash: hash });
+    expect(parseAgentJobCompletionResult("FINALIZE_TESTER", { phase: "recoverSelectionPool", transactionHash: hash })).toEqual({ phase: "recoverSelectionPool", transactionHash: hash });
   });
 
   it("binds every runtime kind to an exact OpenAPI payload and role mapping", () => {
     const openapi = JSON.parse(readFileSync(new URL("../../public/openapi.json", import.meta.url), "utf8"));
-    expect(openapi.info.version).toBe("0.8.13");
+    expect(openapi.info.version).toBe("0.8.14");
     const job = openapi.components.schemas.AgentJob;
     expect(job.additionalProperties).toBe(false);
     expect(job.properties.kind.enum).toEqual(agentJobKinds);

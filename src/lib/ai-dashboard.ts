@@ -2,6 +2,7 @@ import type { Agent, ProtocolConfig, ProtocolEconomicsSummary, RewardGrant, Task
 import { isPublicTask } from "./public-task-view";
 import { publicRevenuePolicy } from "./revenue-accounting";
 import { onChainActionContracts, onChainActionExclusions } from "./onchain-actions";
+import { governedSelectionGasRegistrySize, governedSelectionTransactionGasLimit } from "./selection-policy";
 
 export interface AiDashboardSource {
   config: ProtocolConfig;
@@ -88,7 +89,7 @@ export function buildAiDashboard(source: AiDashboardSource, now = new Date(), mo
   const rewards = new Map(source.rewards.map((reward) => [reward.taskId, reward]));
 
   return {
-    schemaVersion: "2.4",
+    schemaVersion: "2.5",
     generatedAt: now.toISOString(),
     mode,
     network: { name: "BSC Testnet", chainId: 97, confirmations: 5 },
@@ -129,18 +130,26 @@ export function buildAiDashboard(source: AiDashboardSource, now = new Date(), mo
       mainnetRequirement: "VRF_REQUIRED",
       proofBinding: "PACKED_SNAPSHOT_INCLUDED_IN_SELECTION_PROOF",
       scalability: {
-        status: "LOCAL_RELEASE_GATE_OPEN",
+        status: "LOCAL_GOVERNED_GAS_GATE_PASS",
         frozenWeightEntrypoint: "AgentRegistry.frozenSelectionWeightAt(address,uint8,uint64,uint64)",
         liveSafetyWeightEntrypoint: "AgentRegistry.selectionWeightAt(address,uint8,uint64,uint64)",
         currentSelectionComplexity: "TASK_PATH_BOUNDED_PAGINATED_FENWICK",
-        requiredReplacement: "EXHAUSTED_POOL_RECOVERY_AND_GOVERNED_MAXIMUM_REGISTRY_BSC_GAS_EVIDENCE",
+        requiredReplacement: "NONE",
         randomWindowAccepted: false,
+        governedGasRegistrySize: governedSelectionGasRegistrySize,
+        governedTransactionGasLimit: governedSelectionTransactionGasLimit,
+        governedGasRegression: "PASS",
         poolPrimitive: {
           boundedBuildPageMax: 64,
           boundedPrunesPerTransactionMax: 16,
-          entropyScheduledAfterCompleteBuild: true,
+          rootEntropyScheduledAfterCompleteBuild: true,
+          successorEntropyInheritedWithMandatoryCompleteBuild: true,
           frozenAuditWeightsPreserved: true,
           taskRegistryIntegration: "INTEGRATED",
+          exhaustedPoolRecovery: "OBJECTIVE_EXHAUSTION_THEN_REGISTRY_VERSION_ADVANCE",
+          successorBinding: "DETERMINISTIC_PREDECESSOR_ID_AND_INHERITED_ENTROPY",
+          observedEntropyResampling: "FORBIDDEN",
+          partialProofContinuationAfterBlockhashExpiry: true,
         },
       },
       liveness: {

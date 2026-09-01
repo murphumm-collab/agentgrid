@@ -28,16 +28,25 @@ describe("AI dashboard", () => {
   it("publishes deterministic action metadata without private task states", () => {
     const dashboard = buildAiDashboard(source(), new Date("2026-08-31T00:00:00.000Z"));
     const serialized = JSON.stringify(dashboard);
-    expect(dashboard.schemaVersion).toBe("2.4");
+    expect(dashboard.schemaVersion).toBe("2.5");
     expect(dashboard.selectionPolicy).toMatchObject({
       positiveChangesAfterRequest: "IGNORED_FOR_FROZEN_DRAW",
       mainnetRequirement: "VRF_REQUIRED",
       fairnessFloorTickets: 1_000,
       scalability: {
-        status: "LOCAL_RELEASE_GATE_OPEN",
+        status: "LOCAL_GOVERNED_GAS_GATE_PASS",
         currentSelectionComplexity: "TASK_PATH_BOUNDED_PAGINATED_FENWICK",
-        poolPrimitive: { boundedBuildPageMax: 64, taskRegistryIntegration: "INTEGRATED" },
+        poolPrimitive: {
+          boundedBuildPageMax: 64,
+          taskRegistryIntegration: "INTEGRATED",
+          exhaustedPoolRecovery: "OBJECTIVE_EXHAUSTION_THEN_REGISTRY_VERSION_ADVANCE",
+          observedEntropyResampling: "FORBIDDEN",
+          partialProofContinuationAfterBlockhashExpiry: true,
+        },
         randomWindowAccepted: false,
+        governedGasRegistrySize: 65_536,
+        governedTransactionGasLimit: 30_000_000,
+        governedGasRegression: "PASS",
       },
       liveness: {
         coordinator: "OPTIONAL_AUTOMATION_NO_EXCLUSIVE_AUTHORITY",
@@ -105,7 +114,11 @@ describe("AI dashboard", () => {
     expect(openapi.components.schemas.AiDashboard.properties.selectionPolicy.required).toContain("liveness");
     expect(openapi.components.schemas.AiDashboard.properties.selectionPolicy.required).toContain("scalability");
     expect(openapi.components.schemas.AiDashboard.properties.selectionPolicy.properties.scalability.properties).toMatchObject({
-      status: { const: "LOCAL_RELEASE_GATE_OPEN" }, randomWindowAccepted: { const: false },
+      status: { const: "LOCAL_GOVERNED_GAS_GATE_PASS" },
+      governedGasRegistrySize: { const: 65_536 },
+      governedTransactionGasLimit: { const: 30_000_000 },
+      governedGasRegression: { const: "PASS" },
+      randomWindowAccepted: { const: false },
     });
     expect(openapi.components.schemas.AiDashboard.properties.selectionPolicy.properties.liveness.properties).toMatchObject({
       coordinator: { const: "OPTIONAL_AUTOMATION_NO_EXCLUSIVE_AUTHORITY" },

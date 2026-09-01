@@ -130,7 +130,7 @@ const protocolEconomicsSummarySchema = z.object({
 }).strict();
 
 export const publicDashboardResponseSchema = z.object({
-  schemaVersion: z.literal("2.4"),
+  schemaVersion: z.literal("2.5"),
   generatedAt: dateTime,
   mode: z.enum(["demo", "production"]),
   network: z.object({ name: z.literal("BSC Testnet"), chainId: z.literal(97), confirmations: z.literal(5) }).strict(),
@@ -203,18 +203,26 @@ export const publicDashboardResponseSchema = z.object({
     mainnetRequirement: z.literal("VRF_REQUIRED"),
     proofBinding: z.literal("PACKED_SNAPSHOT_INCLUDED_IN_SELECTION_PROOF"),
     scalability: z.object({
-      status: z.literal("LOCAL_RELEASE_GATE_OPEN"),
+      status: z.literal("LOCAL_GOVERNED_GAS_GATE_PASS"),
       frozenWeightEntrypoint: z.literal("AgentRegistry.frozenSelectionWeightAt(address,uint8,uint64,uint64)"),
       liveSafetyWeightEntrypoint: z.literal("AgentRegistry.selectionWeightAt(address,uint8,uint64,uint64)"),
       currentSelectionComplexity: z.literal("TASK_PATH_BOUNDED_PAGINATED_FENWICK"),
-      requiredReplacement: z.literal("EXHAUSTED_POOL_RECOVERY_AND_GOVERNED_MAXIMUM_REGISTRY_BSC_GAS_EVIDENCE"),
+      requiredReplacement: z.literal("NONE"),
       randomWindowAccepted: z.literal(false),
+      governedGasRegistrySize: z.literal(65_536),
+      governedTransactionGasLimit: z.literal(30_000_000),
+      governedGasRegression: z.literal("PASS"),
       poolPrimitive: z.object({
         boundedBuildPageMax: z.literal(64),
         boundedPrunesPerTransactionMax: z.literal(16),
-        entropyScheduledAfterCompleteBuild: z.literal(true),
+        rootEntropyScheduledAfterCompleteBuild: z.literal(true),
+        successorEntropyInheritedWithMandatoryCompleteBuild: z.literal(true),
         frozenAuditWeightsPreserved: z.literal(true),
         taskRegistryIntegration: z.literal("INTEGRATED"),
+        exhaustedPoolRecovery: z.literal("OBJECTIVE_EXHAUSTION_THEN_REGISTRY_VERSION_ADVANCE"),
+        successorBinding: z.literal("DETERMINISTIC_PREDECESSOR_ID_AND_INHERITED_ENTROPY"),
+        observedEntropyResampling: z.literal("FORBIDDEN"),
+        partialProofContinuationAfterBlockhashExpiry: z.literal(true),
       }).strict(),
     }).strict(),
     liveness: z.object({

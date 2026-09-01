@@ -292,11 +292,14 @@ contract TaskRegistry is Ownable {
             task.state != State.Evaluating || selection.panelFinalized ||
             block.timestamp > selection.deadline
         ) revert InvalidEvaluation();
-        bytes32 poolId = _evaluationPoolId(taskId);
-        if (selection.selectionProof != poolId) revert InvalidEvaluation();
-        (address[3] memory selected, bool finalized, uint256 selectionBlock, bytes32 proof) =
+        bytes32 poolId = selection.selectionProof;
+        if (poolId == bytes32(0)) revert InvalidEvaluation();
+        (address[3] memory selected, bool finalized, uint256 selectionBlock, bytes32 proof, bytes32 successorPoolId) =
             agentRegistry.drawSelectionPanel(poolId, 16);
-        if (!finalized) return;
+        if (!finalized) {
+            if (successorPoolId != bytes32(0)) selection.selectionProof = successorPoolId;
+            return;
+        }
         for (uint8 slot; slot < EVALUATOR_COUNT; ++slot) {
             taskEvaluators[taskId][slot] = selected[slot];
             isTaskEvaluator[taskId][selected[slot]] = true;
@@ -562,11 +565,11 @@ contract TaskRegistry is Ownable {
 
     function _requestTester(uint256 taskId, Task storage task) private {
         if (task.state != State.Submitted) revert InvalidState();
-        bytes32 poolId = _testerPoolId(taskId, task.workRound, maintenanceRepairCheckpoint[taskId]);
+        bytes32 poolId = task.selectionProof;
         if (task.selectionProof != bytes32(0)) {
-            (uint256 selectionBlock, , uint8 selectedCount, bool complete, bytes32 drawProof) = agentRegistry.selectionPoolStatus(poolId);
+            (uint256 selectionBlock, , uint8 selectedCount, bool complete, bytes32 drawProof, , , ) = agentRegistry.selectionPoolStatus(poolId);
             if (
-                task.selectionProof != poolId || !complete || selectedCount != 0 ||
+                !complete || selectedCount != 0 ||
                 drawProof != bytes32(0) || block.number <= selectionBlock + 256
             ) revert InvalidState();
             agentRegistry.rescheduleSelectionPool(poolId);
@@ -574,6 +577,7 @@ contract TaskRegistry is Ownable {
         }
         uint256 count = agentRegistry.agentCount();
         if (count < 3) revert InvalidTesterSet();
+        poolId = _testerPoolId(taskId, task.workRound, maintenanceRepairCheckpoint[taskId]);
         task.testerCandidateCount = count;
         task.candidateSetHash = agentRegistry.registryHash();
         task.selectionProof = poolId;
@@ -584,12 +588,15 @@ contract TaskRegistry is Ownable {
     /// stranding a valid future-block draw.
     function finalizeTester(uint256 taskId) external {
         Task storage task = tasks[taskId];
-        bytes32 poolId = _testerPoolId(taskId, task.workRound, maintenanceRepairCheckpoint[taskId]);
-        if (task.selectionProof != poolId) revert InvalidState();
+        bytes32 poolId = task.selectionProof;
+        if (poolId == bytes32(0)) revert InvalidState();
         if (address(verificationPanel) == address(0)) revert InvalidState();
-        (address[3] memory testers, bool finalized, uint256 selectionBlock, bytes32 proof) =
+        (address[3] memory testers, bool finalized, uint256 selectionBlock, bytes32 proof, bytes32 successorPoolId) =
             agentRegistry.drawSelectionPanel(poolId, 16);
-        if (!finalized) return;
+        if (!finalized) {
+            if (successorPoolId != bytes32(0)) task.selectionProof = successorPoolId;
+            return;
+        }
         task.testerSelectionBlock = selectionBlock;
         taskTesters[taskId] = testers;
         task.tester = testers[0];
