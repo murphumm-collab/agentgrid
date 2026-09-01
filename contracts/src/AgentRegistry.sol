@@ -53,6 +53,24 @@ contract AgentRegistry {
         uint32 independentPositiveOutcomes;
     }
 
+    struct SelectionPool {
+        address requester;
+        uint256 taskId;
+        uint256 candidateCount;
+        uint256 cursor;
+        uint256 totalWeight;
+        uint256 selectionBlock;
+        uint64 snapshotVersion;
+        uint64 snapshotTime;
+        uint8 capability;
+        uint8 selectedCount;
+        uint64 drawNonce;
+        bool evaluatorPanel;
+        bool complete;
+        bytes32 candidateSetHash;
+        bytes32 drawProof;
+    }
+
     StakeCreditManager public immutable stakeManager;
     mapping(address => uint256) public agentPosition;
     mapping(uint256 => address) public positionAgent;
@@ -71,6 +89,18 @@ contract AgentRegistry {
     address[] private registeredAgents;
     bytes32 public registryHash;
     uint64 public registryVersion;
+    address public selectionRequester;
+    mapping(bytes32 => SelectionPool) public selectionPools;
+    mapping(bytes32 => address[]) private selectionPoolCandidates;
+    mapping(bytes32 => uint256[]) private selectionPoolWeights;
+    mapping(bytes32 => uint256[]) private selectionPoolRemainingWeights;
+    mapping(bytes32 => uint256[]) private selectionPoolFenwick;
+    mapping(bytes32 => address[3]) private selectionPoolWinners;
+
+    uint16 public constant MAX_SELECTION_BUILD_PAGE = 64;
+    uint8 public constant MAX_SELECTION_PRUNES = 16;
+    uint8 public constant SELECTION_POOL_SIZE = 3;
+    uint256 public constant SELECTION_ENTROPY_DELAY = 5;
 
     error Unauthorized();
     error PositionAlreadyBound();
@@ -78,6 +108,7 @@ contract AgentRegistry {
     error InvalidRole();
     error InvalidOutcome();
     error OutcomeAlreadyConsumed();
+    error InvalidSelectionPool();
 
     event AgentRegistered(address indexed agent, uint256 indexed positionId, uint256 stake);
     event AgentCapabilitiesUpdated(address indexed agent, uint8 capabilities);
@@ -95,9 +126,31 @@ contract AgentRegistry {
     );
     event AgentRoleRehabilitated(address indexed agent, uint8 indexed role, bytes32 indexed evidenceHash);
     event RegistrySnapshotAdvanced(uint64 indexed version, bytes32 indexed registryHash);
+    event SelectionRequesterConfigured(address indexed requester);
+    event SelectionPoolStarted(
+        bytes32 indexed poolId, uint256 indexed taskId, address indexed requester,
+        uint256 candidateCount, uint64 snapshotVersion, uint64 snapshotTime,
+        uint8 capability, bool evaluatorPanel, bytes32 candidateSetHash
+    );
+    event SelectionPoolProgress(bytes32 indexed poolId, uint256 cursor, uint256 candidateCount, uint256 totalWeight);
+    event SelectionPoolSealed(bytes32 indexed poolId, uint256 indexed taskId, uint256 selectionBlock, uint256 eligibleCandidates, uint256 totalWeight);
+    event SelectionPoolCandidatePruned(bytes32 indexed poolId, address indexed candidate, uint64 drawNonce);
+    event SelectionPoolCandidateSelected(bytes32 indexed poolId, uint256 indexed taskId, address indexed candidate, uint8 slot, bytes32 drawProof);
 
     constructor(StakeCreditManager stakeManager_) {
         stakeManager = stakeManager_;
+    }
+
+    /// @notice One-time production wiring to TaskRegistry. Construction pages
+    /// remain permissionless, while pool creation and draws can only be driven
+    /// by the protocol state machine.
+    function setSelectionRequester(address requester) external {
+        if (
+            msg.sender != stakeManager.owner() || requester == address(0) || requester.code.length == 0 ||
+            selectionRequester != address(0)
+        ) revert Unauthorized();
+        selectionRequester = requester;
+        emit SelectionRequesterConfigured(requester);
     }
 
     /// @notice Bootstrap authority must be replaced by a governed timelock in a
@@ -353,6 +406,194 @@ contract AgentRegistry {
     ) public view returns (uint256) {
         if (!isEligibleFor(agent, capability)) return 0;
         return frozenSelectionWeightAt(agent, capability, snapshotVersion, snapshotTime);
+    }
+
+    /// @notice Freezes the complete append-only candidate prefix before any
+    /// selection entropy exists. A unique pool ID must bind the caller's task,
+    /// work round/checkpoint and panel kind.
+    function startSelectionPool(
+        bytes32 poolId, uint256 taskId, uint8 capability, bool evaluatorPanel
+    ) external {
+        if (
+            msg.sender != selectionRequester || poolId == bytes32(0) || taskId == 0 ||
+            capability == 0 || selectionPools[poolId].requester != address(0)
+        ) revert InvalidSelectionPool();
+        uint256 count = registeredAgents.length;
+        if (count < SELECTION_POOL_SIZE) revert InvalidSelectionPool();
+        SelectionPool storage pool = selectionPools[poolId];
+        pool.requester = msg.sender;
+        pool.taskId = taskId;
+        pool.candidateCount = count;
+        pool.snapshotVersion = registryVersion;
+        pool.snapshotTime = uint64(block.timestamp);
+        pool.capability = capability;
+        pool.evaluatorPanel = evaluatorPanel;
+        pool.candidateSetHash = registryHash;
+        // Fenwick trees are one-indexed. Index zero is a permanent sentinel.
+        selectionPoolFenwick[poolId].push(0);
+        emit SelectionPoolStarted(
+            poolId, taskId, msg.sender, count, pool.snapshotVersion,
+            pool.snapshotTime, capability, evaluatorPanel, pool.candidateSetHash
+        );
+    }
+
+    /// @notice Adds the next bounded, sequential candidate page. No caller can
+    /// skip a prefix, stop the pool early, or see the future draw entropy while
+    /// choosing pages. Every frozen eligible candidate keeps its exact weight.
+    function buildSelectionPool(bytes32 poolId, uint16 maxCandidates) external {
+        SelectionPool storage pool = selectionPools[poolId];
+        if (
+            pool.requester == address(0) || pool.complete || maxCandidates == 0 ||
+            maxCandidates > MAX_SELECTION_BUILD_PAGE || pool.cursor >= pool.candidateCount
+        ) revert InvalidSelectionPool();
+        uint256 end = pool.cursor + maxCandidates;
+        if (end > pool.candidateCount) end = pool.candidateCount;
+        for (uint256 i = pool.cursor; i < end; ++i) {
+            address candidate = registeredAgents[i];
+            uint256 weight = frozenSelectionWeightAt(
+                candidate, pool.capability, pool.snapshotVersion, pool.snapshotTime
+            );
+            if (weight != 0) _appendSelectionWeight(poolId, candidate, weight);
+        }
+        pool.cursor = end;
+        emit SelectionPoolProgress(poolId, end, pool.candidateCount, pool.totalWeight);
+        if (end == pool.candidateCount) {
+            if (selectionPoolCandidates[poolId].length < SELECTION_POOL_SIZE) revert InvalidSelectionPool();
+            pool.complete = true;
+            pool.selectionBlock = block.number + SELECTION_ENTROPY_DELAY;
+            emit SelectionPoolSealed(
+                poolId, pool.taskId, pool.selectionBlock,
+                selectionPoolCandidates[poolId].length, pool.totalWeight
+            );
+        }
+    }
+
+    /// @notice Reschedules entropy only after the old blockhash is objectively
+    /// unavailable and before any candidate was drawn. The completed candidate
+    /// pool is reused unchanged.
+    function rescheduleSelectionPool(bytes32 poolId) external {
+        SelectionPool storage pool = selectionPools[poolId];
+        if (
+            !pool.complete || pool.selectedCount != 0 || pool.selectionBlock == 0 ||
+            block.number <= pool.selectionBlock + 256
+        ) revert InvalidSelectionPool();
+        pool.selectionBlock = block.number + SELECTION_ENTROPY_DELAY;
+        pool.drawNonce = 0;
+        pool.drawProof = bytes32(0);
+        emit SelectionPoolSealed(
+            poolId, pool.taskId, pool.selectionBlock,
+            selectionPoolCandidates[poolId].length, pool.totalWeight
+        );
+    }
+
+    /// @notice Draws one panel member in O(log n), pruning at most the caller-
+    /// bounded number of currently unsafe or task-conflicted candidates. Pruned
+    /// progress persists, allowing a permissionless TaskRegistry retry to make
+    /// bounded progress without changing the frozen pool or entropy.
+    function drawSelectionPool(bytes32 poolId, uint8 maxPrunes) external returns (address winner) {
+        SelectionPool storage pool = selectionPools[poolId];
+        if (
+            msg.sender != pool.requester || !pool.complete || pool.selectedCount >= SELECTION_POOL_SIZE ||
+            maxPrunes == 0 || maxPrunes > MAX_SELECTION_PRUNES || block.number <= pool.selectionBlock ||
+            block.number > pool.selectionBlock + 256
+        ) revert InvalidSelectionPool();
+        if (pool.drawProof == bytes32(0)) {
+            pool.drawProof = keccak256(abi.encode(
+                blockhash(pool.selectionBlock), poolId, pool.taskId, pool.candidateSetHash,
+                pool.candidateCount, pool.snapshotVersion, pool.snapshotTime,
+                pool.capability, pool.evaluatorPanel
+            ));
+        }
+        uint8 pruned;
+        while (pool.totalWeight != 0) {
+            uint256 ticket = uint256(keccak256(abi.encode(
+                pool.drawProof, pool.selectedCount, pool.drawNonce, "PAGINATED_WEIGHTED_SELECTION"
+            ))) % pool.totalWeight;
+            uint256 index = _selectionIndexForTicket(selectionPoolFenwick[poolId], ticket);
+            address candidate = selectionPoolCandidates[poolId][index];
+            uint256 weight = selectionPoolRemainingWeights[poolId][index];
+            bool conflict = IAgentSelectionConflicts(msg.sender).isAgentSelectionConflict(
+                pool.taskId, candidate, pool.evaluatorPanel
+            );
+            if (
+                !conflict && selectionWeightAt(
+                    candidate, pool.capability, pool.snapshotVersion, pool.snapshotTime
+                ) != 0
+            ) {
+                _removeSelectionWeight(poolId, index, weight);
+                uint8 slot = pool.selectedCount;
+                selectionPoolWinners[poolId][slot] = candidate;
+                pool.selectedCount = slot + 1;
+                emit SelectionPoolCandidateSelected(poolId, pool.taskId, candidate, slot, pool.drawProof);
+                return candidate;
+            }
+            _removeSelectionWeight(poolId, index, weight);
+            pool.drawNonce += 1;
+            emit SelectionPoolCandidatePruned(poolId, candidate, pool.drawNonce);
+            pruned += 1;
+            if (pruned == maxPrunes) return address(0);
+        }
+    }
+
+    function selectionPoolCandidate(bytes32 poolId, uint256 index) external view returns (address candidate, uint256 frozenWeight) {
+        candidate = selectionPoolCandidates[poolId][index];
+        frozenWeight = selectionPoolWeights[poolId][index];
+    }
+
+    function selectionPoolWinner(bytes32 poolId, uint8 slot) external view returns (address) {
+        if (slot >= SELECTION_POOL_SIZE) revert InvalidSelectionPool();
+        return selectionPoolWinners[poolId][slot];
+    }
+
+    function _appendSelectionWeight(bytes32 poolId, address candidate, uint256 weight) private {
+        address[] storage candidates = selectionPoolCandidates[poolId];
+        uint256[] storage weights = selectionPoolWeights[poolId];
+        uint256[] storage remainingWeights = selectionPoolRemainingWeights[poolId];
+        uint256[] storage tree = selectionPoolFenwick[poolId];
+        candidates.push(candidate);
+        weights.push(weight);
+        remainingWeights.push(weight);
+        uint256 index = candidates.length;
+        uint256 lowbit = index & (~index + 1);
+        uint256 node = weight + _selectionPrefix(tree, index - 1) - _selectionPrefix(tree, index - lowbit);
+        tree.push(node);
+        selectionPools[poolId].totalWeight += weight;
+    }
+
+    function _removeSelectionWeight(bytes32 poolId, uint256 zeroBasedIndex, uint256 weight) private {
+        if (weight == 0) revert InvalidSelectionPool();
+        selectionPoolRemainingWeights[poolId][zeroBasedIndex] = 0;
+        uint256[] storage tree = selectionPoolFenwick[poolId];
+        uint256 index = zeroBasedIndex + 1;
+        while (index < tree.length) {
+            tree[index] -= weight;
+            index += index & (~index + 1);
+        }
+        selectionPools[poolId].totalWeight -= weight;
+    }
+
+    function _selectionPrefix(uint256[] storage tree, uint256 index) private view returns (uint256 sum) {
+        while (index != 0) {
+            sum += tree[index];
+            index -= index & (~index + 1);
+        }
+    }
+
+    function _selectionIndexForTicket(uint256[] storage tree, uint256 ticket) private view returns (uint256) {
+        uint256 count = tree.length - 1;
+        uint256 bit = 1;
+        while ((bit << 1) <= count) bit <<= 1;
+        uint256 index;
+        while (bit != 0) {
+            uint256 next = index + bit;
+            if (next <= count && tree[next] <= ticket) {
+                index = next;
+                ticket -= tree[next];
+            }
+            bit >>= 1;
+        }
+        if (index >= count) revert InvalidSelectionPool();
+        return index;
     }
 
     /// @notice Deterministic quality-weighted sampling with a fairness floor.

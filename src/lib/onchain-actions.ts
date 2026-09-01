@@ -38,6 +38,8 @@ export const onChainActionContracts = [
   action("register-agent-capabilities", "IDENTITY", "AGENT_WALLET", "agentRegistry", "registerWithCapabilities(uint256,uint8)", "caller owns an eligible non-withdrawing stake position and declares a valid capability mask", "registers or updates the wallet-bound Agent identity and selection capabilities"),
   action("register-agent-legacy", "IDENTITY", "AGENT_WALLET", "agentRegistry", "register(uint256)", "compatibility registration with the base execute/test capability set", "legacy alias; new integrations should declare exact capabilities", "COMPATIBILITY"),
   action("set-agent-active", "IDENTITY", "AGENT_WALLET", "agentRegistry", "setActive(bool)", "caller is the registered Agent wallet; reactivation still requires eligible stake", "changes on-chain selection eligibility and advances the registry snapshot"),
+  action("build-selection-pool-page", "IDENTITY", "ANYONE", "agentRegistry", "buildSelectionPool(bytes32,uint16)", "the protocol-created pool is incomplete and the requested sequential page contains at most 64 candidates", "permissionlessly appends the next frozen all-candidate page; no entropy exists until the full prefix is complete"),
+  action("reschedule-expired-selection-entropy", "IDENTITY", "ANYONE", "agentRegistry", "rescheduleSelectionPool(bytes32)", "the completed pool has no selected member and its prior blockhash is objectively unavailable", "permissionlessly schedules new future entropy without changing or rebuilding the frozen pool"),
 
   action("commit-task-source", "PUBLISHING", "PUBLISHER", "protocolEconomics", "commitNextTaskSource(bytes32)", "source ID is configured or the publisher accepts DAO fallback", "commits source attribution consumed by the publisher's next task only"),
   action("create-task", "PUBLISHING", "PUBLISHER", "taskRegistry", "createTaskWithModeAndTesterCapabilities(uint256,bytes32,uint256,uint8,uint8,uint8)", "caller owns a live Task Credit and the spec/reward/executor/mode/capability commitment is frozen", "creates a private evaluation-stage task, freezes source attribution and consumes the evaluation lifecycle charge"),
@@ -109,6 +111,9 @@ export const onChainActionExclusions = [
   internal("agentRegistry", "recordTaskOutcome(address,uint8,uint256,address,uint256,bytes32,bytes32,bool,bool,bytes32)"),
   internal("agentRegistry", "rehabilitateRole(address,uint8,bytes32)"),
   governance("agentRegistry", "setOutcomeReporter(address,uint8)"),
+  governance("agentRegistry", "setSelectionRequester(address)"),
+  internal("agentRegistry", "startSelectionPool(bytes32,uint256,uint8,bool)"),
+  internal("agentRegistry", "drawSelectionPool(bytes32,uint8)"),
 
   internal("taskRegistry", "finalizeVerificationPanel(uint256,uint32,uint8,bool,address,bytes32,bytes32,uint16[],address[3],uint16[3])"),
   internal("taskRegistry", "resolveRejection(uint256,bool,bytes32)"),

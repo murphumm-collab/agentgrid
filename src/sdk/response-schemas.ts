@@ -130,7 +130,7 @@ const protocolEconomicsSummarySchema = z.object({
 }).strict();
 
 export const publicDashboardResponseSchema = z.object({
-  schemaVersion: z.literal("2.2"),
+  schemaVersion: z.literal("2.3"),
   generatedAt: dateTime,
   mode: z.enum(["demo", "production"]),
   network: z.object({ name: z.literal("BSC Testnet"), chainId: z.literal(97), confirmations: z.literal(5) }).strict(),
@@ -206,9 +206,16 @@ export const publicDashboardResponseSchema = z.object({
       status: z.literal("LOCAL_RELEASE_GATE_OPEN"),
       frozenWeightEntrypoint: z.literal("AgentRegistry.frozenSelectionWeightAt(address,uint8,uint64,uint64)"),
       liveSafetyWeightEntrypoint: z.literal("AgentRegistry.selectionWeightAt(address,uint8,uint64,uint64)"),
-      currentSelectionComplexity: z.literal("LINEAR_TWO_PASSES_PER_SELECTED_SLOT"),
+      currentSelectionComplexity: z.literal("TASK_PATH_LINEAR_POOL_PRIMITIVE_NOT_WIRED"),
       requiredReplacement: z.literal("PERMISSIONLESS_BOUNDED_ALL_CANDIDATE_WEIGHTED_CONSTRUCTION"),
       randomWindowAccepted: z.literal(false),
+      poolPrimitive: z.object({
+        boundedBuildPageMax: z.literal(64),
+        boundedPrunesPerDrawMax: z.literal(16),
+        entropyScheduledAfterCompleteBuild: z.literal(true),
+        frozenAuditWeightsPreserved: z.literal(true),
+        taskRegistryIntegration: z.literal("OPEN"),
+      }).strict(),
     }).strict(),
     liveness: z.object({
       coordinator: z.literal("OPTIONAL_AUTOMATION_NO_EXCLUSIVE_AUTHORITY"),
@@ -222,6 +229,8 @@ export const publicDashboardResponseSchema = z.object({
         z.literal("finalizeTaskEvaluation(uint256)"),
         z.literal("expireTaskEvaluation(uint256)"),
         z.literal("settleEvaluationOutcomes(uint256)"),
+        z.literal("buildSelectionPool(bytes32,uint16)"),
+        z.literal("rescheduleSelectionPool(bytes32)"),
         z.literal("finalize(uint256)"),
         z.literal("expire(uint256)"),
         z.literal("expireChallenge(uint256)"),
@@ -268,13 +277,13 @@ export const publicDashboardResponseSchema = z.object({
     availability: z.enum(["PRIMARY", "COMPATIBILITY"]),
     authorization: boundedText(1, 1_000),
     effect: boundedText(1, 2_000),
-  }).strict()).length(44),
+  }).strict()).length(46),
   onChainActionExclusions: z.array(z.object({
     contract: z.enum(["token", "stakeManager", "agentRegistry", "taskRegistry", "rewardVault", "verificationPanel", "verificationArbitrationCourt", "disputeResolver", "protocolEconomics"]),
     signature: boundedText(3, 300),
     classification: z.enum(["GOVERNANCE_ONLY", "PROTOCOL_INTERNAL", "TOKEN_TRANSFER_OUTSIDE_AGENTGRID_WORKFLOW"]),
     reason: boundedText(1, 1_000),
-  }).strict()).length(53),
+  }).strict()).length(56),
   trustBoundary: z.object({
     authority: boundedText(1, 1_000),
     permissionRule: boundedText(1, 1_000),

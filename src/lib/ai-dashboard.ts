@@ -88,7 +88,7 @@ export function buildAiDashboard(source: AiDashboardSource, now = new Date(), mo
   const rewards = new Map(source.rewards.map((reward) => [reward.taskId, reward]));
 
   return {
-    schemaVersion: "2.2",
+    schemaVersion: "2.3",
     generatedAt: now.toISOString(),
     mode,
     network: { name: "BSC Testnet", chainId: 97, confirmations: 5 },
@@ -132,9 +132,16 @@ export function buildAiDashboard(source: AiDashboardSource, now = new Date(), mo
         status: "LOCAL_RELEASE_GATE_OPEN",
         frozenWeightEntrypoint: "AgentRegistry.frozenSelectionWeightAt(address,uint8,uint64,uint64)",
         liveSafetyWeightEntrypoint: "AgentRegistry.selectionWeightAt(address,uint8,uint64,uint64)",
-        currentSelectionComplexity: "LINEAR_TWO_PASSES_PER_SELECTED_SLOT",
+        currentSelectionComplexity: "TASK_PATH_LINEAR_POOL_PRIMITIVE_NOT_WIRED",
         requiredReplacement: "PERMISSIONLESS_BOUNDED_ALL_CANDIDATE_WEIGHTED_CONSTRUCTION",
         randomWindowAccepted: false,
+        poolPrimitive: {
+          boundedBuildPageMax: 64,
+          boundedPrunesPerDrawMax: 16,
+          entropyScheduledAfterCompleteBuild: true,
+          frozenAuditWeightsPreserved: true,
+          taskRegistryIntegration: "OPEN",
+        },
       },
       liveness: {
         coordinator: "OPTIONAL_AUTOMATION_NO_EXCLUSIVE_AUTHORITY",
@@ -148,6 +155,8 @@ export function buildAiDashboard(source: AiDashboardSource, now = new Date(), mo
           "finalizeTaskEvaluation(uint256)",
           "expireTaskEvaluation(uint256)",
           "settleEvaluationOutcomes(uint256)",
+          "buildSelectionPool(bytes32,uint16)",
+          "rescheduleSelectionPool(bytes32)",
           "finalize(uint256)",
           "expire(uint256)",
           "expireChallenge(uint256)",

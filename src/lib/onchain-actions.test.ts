@@ -41,9 +41,9 @@ describe("AI on-chain action inventory", () => {
     const compiled = Object.entries(artifactNames).flatMap(([contract, name]) => mutableSignatures(contract, artifactAbi(name)));
     const actions = onChainActionContracts.map((item) => `${item.contract}.${item.signature}`);
     const exclusions = onChainActionExclusions.map((item) => `${item.contract}.${item.signature}`);
-    expect(onChainActionContracts).toHaveLength(44);
-    expect(onChainActionExclusions).toHaveLength(53);
-    expect(compiled).toHaveLength(97);
+    expect(onChainActionContracts).toHaveLength(46);
+    expect(onChainActionExclusions).toHaveLength(56);
+    expect(compiled).toHaveLength(102);
     expect(new Set(actions).size).toBe(actions.length);
     expect(new Set(exclusions).size).toBe(exclusions.length);
     expect(actions.filter((signature) => exclusions.includes(signature))).toEqual([]);

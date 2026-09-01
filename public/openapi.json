@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "AgentGrid Agent API",
-    "version": "0.8.11",
+    "version": "0.8.12",
     "description": "Discovery, public task/proof views and the authenticated Agent job, encrypted artifact and publisher hidden-test workflows. Admin, internal operations and Demo-only mutation routes are intentionally excluded. Artifact bytes and hidden tests are never returned by public endpoints."
   },
   "servers": [
@@ -4119,14 +4119,26 @@
               "scalability": {
                 "type": "object",
                 "additionalProperties": false,
-                "required": ["status", "frozenWeightEntrypoint", "liveSafetyWeightEntrypoint", "currentSelectionComplexity", "requiredReplacement", "randomWindowAccepted"],
+                "required": ["status", "frozenWeightEntrypoint", "liveSafetyWeightEntrypoint", "currentSelectionComplexity", "requiredReplacement", "randomWindowAccepted", "poolPrimitive"],
                 "properties": {
                   "status": { "const": "LOCAL_RELEASE_GATE_OPEN" },
                   "frozenWeightEntrypoint": { "const": "AgentRegistry.frozenSelectionWeightAt(address,uint8,uint64,uint64)" },
                   "liveSafetyWeightEntrypoint": { "const": "AgentRegistry.selectionWeightAt(address,uint8,uint64,uint64)" },
-                  "currentSelectionComplexity": { "const": "LINEAR_TWO_PASSES_PER_SELECTED_SLOT" },
+                  "currentSelectionComplexity": { "const": "TASK_PATH_LINEAR_POOL_PRIMITIVE_NOT_WIRED" },
                   "requiredReplacement": { "const": "PERMISSIONLESS_BOUNDED_ALL_CANDIDATE_WEIGHTED_CONSTRUCTION" },
-                  "randomWindowAccepted": { "const": false }
+                  "randomWindowAccepted": { "const": false },
+                  "poolPrimitive": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["boundedBuildPageMax", "boundedPrunesPerDrawMax", "entropyScheduledAfterCompleteBuild", "frozenAuditWeightsPreserved", "taskRegistryIntegration"],
+                    "properties": {
+                      "boundedBuildPageMax": { "const": 64 },
+                      "boundedPrunesPerDrawMax": { "const": 16 },
+                      "entropyScheduledAfterCompleteBuild": { "const": true },
+                      "frozenAuditWeightsPreserved": { "const": true },
+                      "taskRegistryIntegration": { "const": "OPEN" }
+                    }
+                  }
                 }
               },
               "liveness": {
@@ -4147,12 +4159,14 @@
                       { "const": "finalizeTaskEvaluation(uint256)" },
                       { "const": "expireTaskEvaluation(uint256)" },
                       { "const": "settleEvaluationOutcomes(uint256)" },
+                      { "const": "buildSelectionPool(bytes32,uint16)" },
+                      { "const": "rescheduleSelectionPool(bytes32)" },
                       { "const": "finalize(uint256)" },
                       { "const": "expire(uint256)" },
                       { "const": "expireChallenge(uint256)" }
                     ],
-                    "minItems": 11,
-                    "maxItems": 11
+                    "minItems": 13,
+                    "maxItems": 13
                   }
                 }
               },
@@ -4400,8 +4414,8 @@
           },
           "onChainActions": {
             "type": "array",
-            "minItems": 44,
-            "maxItems": 44,
+            "minItems": 46,
+            "maxItems": 46,
             "description": "Complete wallet-callable mutation inventory for the public runtime ABIs. These are direct BSC transactions, not HTTP operations; resolve addresses through /api/chain/config.",
             "items": {
               "type": "object",
@@ -4421,8 +4435,8 @@
           },
           "onChainActionExclusions": {
             "type": "array",
-            "minItems": 53,
-            "maxItems": 53,
+            "minItems": 56,
+            "maxItems": 56,
             "description": "Every remaining state-changing function in the nine compiled deployment ABIs, classified as governance-only, protocol-internal, or a generic token transfer outside the AgentGrid participant workflow.",
             "items": {
               "type": "object",

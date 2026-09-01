@@ -28,14 +28,15 @@ describe("AI dashboard", () => {
   it("publishes deterministic action metadata without private task states", () => {
     const dashboard = buildAiDashboard(source(), new Date("2026-08-31T00:00:00.000Z"));
     const serialized = JSON.stringify(dashboard);
-    expect(dashboard.schemaVersion).toBe("2.2");
+    expect(dashboard.schemaVersion).toBe("2.3");
     expect(dashboard.selectionPolicy).toMatchObject({
       positiveChangesAfterRequest: "IGNORED_FOR_FROZEN_DRAW",
       mainnetRequirement: "VRF_REQUIRED",
       fairnessFloorTickets: 1_000,
       scalability: {
         status: "LOCAL_RELEASE_GATE_OPEN",
-        currentSelectionComplexity: "LINEAR_TWO_PASSES_PER_SELECTED_SLOT",
+        currentSelectionComplexity: "TASK_PATH_LINEAR_POOL_PRIMITIVE_NOT_WIRED",
+        poolPrimitive: { boundedBuildPageMax: 64, taskRegistryIntegration: "OPEN" },
         randomWindowAccepted: false,
       },
       liveness: {
@@ -68,11 +69,11 @@ describe("AI dashboard", () => {
     expect(dashboardPage).toContain("dashboard.promotionPolicy");
     expect(dashboardPage).toContain("task.promotion");
     expect(dashboardPage).toContain("sponsored-badge");
-    expect(dashboard.onChainActions).toHaveLength(44);
+    expect(dashboard.onChainActions).toHaveLength(46);
     for (const id of ["evict-inactive-executor", "request-validator-draw", "finalize-validator-draw", "request-maintenance-panel"]) {
       expect(dashboard.onChainActions.find((action) => action.id === id)?.role).toBe("ANYONE");
     }
-    expect(dashboard.onChainActionExclusions).toHaveLength(53);
+    expect(dashboard.onChainActionExclusions).toHaveLength(56);
     expect(dashboard.onChainActions.find((action) => action.id === "open-verification-challenge")).toMatchObject({
       contract: "verificationArbitrationCourt", signature: "openChallenge(uint256,address,bytes32)", role: "ELIGIBLE_CHALLENGER",
     });
@@ -109,14 +110,14 @@ describe("AI dashboard", () => {
     expect(openapi.components.schemas.AiDashboard.properties.selectionPolicy.properties.liveness.properties).toMatchObject({
       coordinator: { const: "OPTIONAL_AUTOMATION_NO_EXCLUSIVE_AUTHORITY" },
       callerSelectionAuthority: { const: "NONE" },
-      permissionlessActions: { minItems: 11, maxItems: 11 },
+      permissionlessActions: { minItems: 13, maxItems: 13 },
     });
     expect(openapi.components.schemas.AiDashboard.properties.revenuePolicy.properties.realizedRevenueStatus.const).toBe("UNAVAILABLE");
     expect(new Set(Object.values(openapi.components.schemas.AiDashboard.properties.revenuePolicy.properties.protocolInfluence.properties).map((item) => item.const))).toEqual(new Set(["NONE"]));
     const documentedMethods = openapi.components.schemas.AiDashboard.properties.actionContracts.items.properties.method.enum;
     expect(documentedMethods).toEqual(expect.arrayContaining([...new Set(dashboard.actionContracts.map((action) => action.method))]));
-    expect(openapi.components.schemas.AiDashboard.properties.onChainActions).toMatchObject({ minItems: 44, maxItems: 44 });
-    expect(openapi.components.schemas.AiDashboard.properties.onChainActionExclusions).toMatchObject({ minItems: 53, maxItems: 53 });
+    expect(openapi.components.schemas.AiDashboard.properties.onChainActions).toMatchObject({ minItems: 46, maxItems: 46 });
+    expect(openapi.components.schemas.AiDashboard.properties.onChainActionExclusions).toMatchObject({ minItems: 56, maxItems: 56 });
     expect(openapi.components.schemas.AiDashboard.properties.onChainActionExclusions.items.properties.classification.enum).toEqual([
       "GOVERNANCE_ONLY", "PROTOCOL_INTERNAL", "TOKEN_TRANSFER_OUTSIDE_AGENTGRID_WORKFLOW",
     ]);
