@@ -214,7 +214,7 @@ async function verifyPackagedAiFrontend(baseUrl: string, secretValues: Record<st
     throw new Error("DELIVERY_SMOKE_UNAUTHENTICATED_AGENT_MANAGEMENT_EXPOSED");
   }
   const agentDirectory = publicAgentsResponseSchema.parse(JSON.parse(bodies["/api/agents"]));
-  const publicAgentKeys = ["capabilities", "completedTasks", "id", "name", "online", "owner", "reputation", "role", "stake"];
+  const publicAgentKeys = ["capabilities", "completedTasks", "id", "name", "online", "owner", "quality", "reputation", "role", "stake"];
   if (!agentDirectory.agents?.length
     || agentDirectory.agents.some((agent) => JSON.stringify(Object.keys(agent).sort()) !== JSON.stringify(publicAgentKeys))
     || bodies["/api/agents"].includes(hiddenManagementTimestamp)
@@ -249,7 +249,7 @@ async function verifyPackagedAiFrontend(baseUrl: string, secretValues: Record<st
   notificationsResponseSchema.parse(await notificationResponse.json());
 
   const dashboard = publicDashboardResponseSchema.parse(JSON.parse(bodies["/api/public/dashboard"]));
-  if (dashboard.schemaVersion !== "1.2" || dashboard.mode !== "production"
+  if (dashboard.schemaVersion !== "2.5" || dashboard.mode !== "production"
     || dashboard.discovery?.a2aCompatible !== false
     || dashboard.discovery.manifest !== "/.well-known/agentgrid.json"
     || dashboard.discovery.openapi !== "/openapi.json"
@@ -284,7 +284,7 @@ async function verifyPackagedAiFrontend(baseUrl: string, secretValues: Record<st
     };
   };
   const requiredPaths = ["/api/public/dashboard", "/api/tasks", "/api/artifacts/uploads", "/api/hidden-tests/uploads", "/api/tasks/{taskId}/business-adoption", "/api/notifications", "/api/notifications/{notificationId}/read"];
-  if (openapi.info?.version !== "0.8.0" || requiredPaths.some((route) => !openapi.paths?.[route])
+  if (openapi.info?.version !== "0.8.14" || requiredPaths.some((route) => !openapi.paths?.[route])
     || !openapi.paths?.["/api/agents"]?.get || !openapi.paths?.["/api/agents"]?.post) {
     throw new Error("DELIVERY_SMOKE_OPENAPI_CONTRACT_INVALID");
   }
@@ -669,6 +669,7 @@ async function main() {
     const reviewedCategory = "Automation";
     const reviewBody = {
       publisher, title: reviewedTitle, businessOutcome: reviewedOutcome, category: reviewedCategory,
+      executionMode: "COLLABORATION", maxExecutors: 2,
       targetUsers: "Settlement operations owners who approve the monitored workflow",
       deliverables: ["Runnable monitored service archive", "Operator verification and rollback runbook"],
       constraints: ["No production credentials and no outbound network during independent verification"],
