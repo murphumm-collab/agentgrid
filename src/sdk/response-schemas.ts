@@ -103,6 +103,11 @@ const dashboardWorkItemSchema = z.object({
     stage: z.enum(["EVALUATION", "PUBLICATION", "ACCEPTANCE", "MAINTENANCE"]),
     amountAgt: z.number().nonnegative(),
   }).strict()).max(4),
+  promotion: z.object({
+    label: z.literal("SPONSORED"), placement: z.enum(["HOMEPAGE", "CATEGORY"]), category: boundedText(1, 64).nullable(),
+    sponsor: boundedText(1, 80), startsAt: dateTime, endsAt: dateTime, settlementAsset: z.enum(["USDT", "USDC", "BNB"]),
+    paymentReceiptHash: sha256, attestationHash: bytes32, attester: address, protocolInfluence: z.literal("NONE"),
+  }).strict().nullable(),
   humanUrl: boundedText(1, 500),
 }).strict();
 
@@ -125,7 +130,7 @@ const protocolEconomicsSummarySchema = z.object({
 }).strict();
 
 export const publicDashboardResponseSchema = z.object({
-  schemaVersion: z.literal("1.7"),
+  schemaVersion: z.literal("1.8"),
   generatedAt: dateTime,
   mode: z.enum(["demo", "production"]),
   network: z.object({ name: z.literal("BSC Testnet"), chainId: z.literal(97), confirmations: z.literal(5) }).strict(),
@@ -174,6 +179,17 @@ export const publicDashboardResponseSchema = z.object({
       arbitratorSelection: z.literal("NONE"), qualityRanking: z.literal("NONE"),
       completionRules: z.literal("NONE"), challengeWindow: z.literal("NONE"),
     }).strict(),
+  }).strict(),
+  promotionPolicy: z.object({
+    signingVersion: z.literal("AgentGrid Task Promotion V1"),
+    source: z.literal("PLATFORM_SIGNED_PAYMENT_RECEIPT"),
+    supportedPlacements: z.tuple([z.literal("HOMEPAGE"), z.literal("CATEGORY")]),
+    explicitLabel: z.literal("SPONSORED"),
+    maximumDurationDays: z.literal(31),
+    paymentReceiptReplayProtected: z.literal(true),
+    invalidExpiredOrUnconfigured: z.literal("OMITTED_FAIL_CLOSED"),
+    rankingEffect: z.literal("DISPLAY_ORDER_ONLY"),
+    protocolInfluence: z.literal("NONE"),
   }).strict(),
   selectionPolicy: z.object({
     snapshot: z.literal("REQUEST_TIME_REGISTRY_VERSION_AND_TIMESTAMP"),
@@ -280,6 +296,20 @@ const publicTaskEconomicsSchema = z.object({
   }).strict()).max(10),
 }).strict();
 
+const publicTaskPromotionSchema = z.object({
+  label: z.literal("SPONSORED"),
+  placement: z.enum(["HOMEPAGE", "CATEGORY"]),
+  category: boundedText(1, 64).nullable(),
+  sponsor: boundedText(1, 80),
+  startsAt: dateTime,
+  endsAt: dateTime,
+  settlementAsset: z.enum(["USDT", "USDC", "BNB"]),
+  paymentReceiptHash: sha256,
+  attestationHash: bytes32,
+  attester: address,
+  protocolInfluence: z.literal("NONE"),
+}).strict();
+
 export const publicTaskSchema = z.object({
   id: identifier,
   title: boundedText(1, 160),
@@ -322,6 +352,7 @@ export const publicTaskSchema = z.object({
   }).strict().nullable(),
   reward: publicRewardSchema.nullable(),
   economics: publicTaskEconomicsSchema.nullable(),
+  promotion: publicTaskPromotionSchema.nullable(),
   maintenance: z.object({ healthy: z.array(z.boolean()).max(3) }).strict(),
   maintenanceRepairCheckpoint: z.number().int().min(0).max(2).nullable().optional(),
   businessAdoption: z.object({

@@ -39,6 +39,7 @@ const schema = z.object({
   VERIFICATION_PANEL_ADDRESS: z.string().regex(/^0x[0-9a-fA-F]{40}$/).optional(),
   VERIFICATION_ARBITRATION_COURT_ADDRESS: z.string().regex(/^0x[0-9a-fA-F]{40}$/).optional(),
   PROTOCOL_ECONOMICS_ADDRESS: z.string().regex(/^0x[0-9a-fA-F]{40}$/).optional(),
+  PROMOTION_ATTESTATION_SIGNER: z.string().regex(/^0x[0-9a-fA-F]{40}$/).optional(),
   NEXT_PUBLIC_TOKEN_ADDRESS: z.string().regex(/^0x[0-9a-fA-F]{40}$/).optional(),
   NEXT_PUBLIC_STAKE_MANAGER_ADDRESS: z.string().regex(/^0x[0-9a-fA-F]{40}$/).optional(),
   NEXT_PUBLIC_AGENT_REGISTRY_ADDRESS: z.string().regex(/^0x[0-9a-fA-F]{40}$/).optional(),

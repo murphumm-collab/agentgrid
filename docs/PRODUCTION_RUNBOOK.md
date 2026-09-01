@@ -60,10 +60,19 @@ the server runtime (`TOKEN_ADDRESS`, `STAKE_MANAGER_ADDRESS`,
 public `/api/chain/config` route validates and exposes only the BSC Testnet chain
 ID, confirmation count, public contract addresses and optional public
 `WALLETCONNECT_PROJECT_ID`; wallet code does not rely on values baked into the
-Next.js image. Set
-`CHAIN_START_BLOCK` to the `startBlock` emitted by the deployment script. Run
-the confirmed-event worker continuously (a process supervisor should restart
-it on failure):
+Next.js image.
+
+Optional paid placement is fail-closed. Configure only the public
+`PROMOTION_ATTESTATION_SIGNER` address; its private key must remain in an
+external controlled signing workflow. Import a signed JSON envelope with
+`pnpm promotion:import -- /absolute/path/to/signed-promotion.json`. The import
+verifies the V1 domain, BSC TaskRegistry, unique settlement receipt and bounded
+window before storage. Without this address, production shows no sponsored
+placements.
+
+Set `CHAIN_START_BLOCK` to the `startBlock` emitted by the deployment script.
+Run the confirmed-event worker continuously (a process supervisor should
+restart it on failure):
 
 ```bash
 pnpm chain:index:worker

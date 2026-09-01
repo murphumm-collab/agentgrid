@@ -18,7 +18,7 @@ import { readDatabase, updateDatabase } from "./store";
 import { bscRpcTransport } from "./bsc-rpc";
 import type { Agent, AgentRole, AgentScope, ProtocolEconomicsSummary, SoftwareEvidence, Task } from "./types";
 import { chainContractAddresses, isProductionMode, runtimeConfig } from "./env";
-import { latestBusinessAdoptions, latestSignedTaskEvaluations, latestSignedTestEvidence, readChainProjectionRows } from "./store-postgres";
+import { activeTaskPromotionAttestations, latestBusinessAdoptions, latestSignedTaskEvaluations, latestSignedTestEvidence, readChainProjectionRows, storeVerifiedTaskPromotion } from "./store-postgres";
 import { projectAgentQualities, projectAgentStatuses, projectChainBusiness } from "./chain-projection";
 import { agentRegistryAbi, stakeManagerAbi } from "./contracts";
 import { AGENT_ROLES, AGENT_ROLE_CAPABILITY_MASK, AGENT_ROLE_DEFAULT_SCOPES, AGENT_SCOPES, roleAllowsScope } from "./agent-roles";
@@ -29,6 +29,7 @@ import { storedEvidenceHash, verifyStoredTestEvidence } from "./signed-evidence"
 import { parseAgentAuthentication } from "./agent-authentication";
 import { aggregateExecutorWeights, panelAggregateEvidenceHash } from "./verification-panel";
 import type { CriterionVerificationResult } from "./criterion-verification";
+import { verifyTaskPromotion, type SignedTaskPromotion } from "./task-promotion";
 
 const scrypt = promisify(scryptCallback);
 const bscTestnet = defineChain({
@@ -82,6 +83,20 @@ export const softwareEvidenceSchema = z.object({
   artifactHash: z.string().startsWith("sha256:"),
   logUrl: z.string().url().optional(),
 }).strict();
+
+export async function importSignedTaskPromotion(input: SignedTaskPromotion) {
+  if (!isProductionMode()) throw new Error("PROMOTION_IMPORT_PRODUCTION_ONLY");
+  const config = runtimeConfig();
+  if (!config.PROMOTION_ATTESTATION_SIGNER) throw new Error("PROMOTION_ATTESTATION_SIGNER_REQUIRED");
+  const taskRegistry = chainContractAddresses().taskRegistry;
+  const promotion = await verifyTaskPromotion(input, {
+    signer: config.PROMOTION_ATTESTATION_SIGNER as `0x${string}`,
+    chainId: 97,
+    taskRegistry,
+    allowNotStarted: true,
+  });
+  return storeVerifiedTaskPromotion({ ...input, attestationHash: promotion.attestationHash });
+}
 
 export async function protocolSnapshot() {
   const database = await readDatabase();
@@ -184,6 +199,19 @@ export async function protocolSnapshot() {
         reportHash: adoption.reportHash,
         attestedAt: adoption.createdAt,
       };
+    }
+    const promotionSigner = runtimeConfig().PROMOTION_ATTESTATION_SIGNER as `0x${string}` | undefined;
+    if (promotionSigner) {
+      for (const stored of await activeTaskPromotionAttestations()) {
+        const task = database.tasks.find((item) => item.id === stored.attestation.taskId);
+        if (!task) continue;
+        try {
+          const promotion = await verifyTaskPromotion(stored, { signer: promotionSigner, chainId: 97, taskRegistry: signingTaskRegistry, taskId: task.id });
+          if (promotion.attestationHash.toLowerCase() !== stored.attestationHash.toLowerCase()) continue;
+          if (promotion.placement === "CATEGORY" && promotion.category !== task.category) continue;
+          task.promotion = promotion;
+        } catch { /* invalid, expired or tampered promotion rows fail closed */ }
+      }
     }
   }
   const lockedStake = database.positions.reduce((sum, position) => sum + position.amount, 0);

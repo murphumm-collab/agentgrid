@@ -1,5 +1,6 @@
 import type { CriterionVerificationResult } from "./criterion-verification";
 import type { TaskDefinition } from "./task-definition";
+import type { PublicTaskPromotion } from "./task-promotion";
 
 export type TaskState =
   | "EVALUATING"
@@ -188,6 +189,7 @@ export interface Task {
   };
   businessAdoption?: BusinessAdoption;
   economics?: TaskEconomics;
+  promotion?: PublicTaskPromotion;
 }
 
 export type LifecycleEconomicsStage = "EVALUATION" | "PUBLICATION" | "ACCEPTANCE" | "MAINTENANCE";

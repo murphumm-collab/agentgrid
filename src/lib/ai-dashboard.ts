@@ -87,7 +87,7 @@ export function buildAiDashboard(source: AiDashboardSource, now = new Date(), mo
   const rewards = new Map(source.rewards.map((reward) => [reward.taskId, reward]));
 
   return {
-    schemaVersion: "1.7",
+    schemaVersion: "1.8",
     generatedAt: now.toISOString(),
     mode,
     network: { name: "BSC Testnet", chainId: 97, confirmations: 5 },
@@ -108,6 +108,17 @@ export function buildAiDashboard(source: AiDashboardSource, now = new Date(), mo
     },
     economics: source.economics,
     revenuePolicy: publicRevenuePolicy,
+    promotionPolicy: {
+      signingVersion: "AgentGrid Task Promotion V1",
+      source: "PLATFORM_SIGNED_PAYMENT_RECEIPT",
+      supportedPlacements: ["HOMEPAGE", "CATEGORY"],
+      explicitLabel: "SPONSORED",
+      maximumDurationDays: 31,
+      paymentReceiptReplayProtected: true,
+      invalidExpiredOrUnconfigured: "OMITTED_FAIL_CLOSED",
+      rankingEffect: "DISPLAY_ORDER_ONLY",
+      protocolInfluence: "NONE",
+    },
     selectionPolicy: {
       snapshot: "REQUEST_TIME_REGISTRY_VERSION_AND_TIMESTAMP",
       positiveChangesAfterRequest: "IGNORED_FOR_FROZEN_DRAW",
@@ -157,6 +168,7 @@ export function buildAiDashboard(source: AiDashboardSource, now = new Date(), mo
         fallbackToDao: task.economics.fallbackToDao,
       } : null,
       lifecycleCharges: task.economics?.lifecycleCharges.map((charge) => ({ stage: charge.stage, amountAgt: charge.amount })) ?? [],
+      promotion: task.promotion ?? null,
       humanUrl: `/tasks/${encodeURIComponent(task.id)}`,
     })),
     actionContracts: aiDashboardActionContracts,

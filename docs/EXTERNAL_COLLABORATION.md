@@ -100,6 +100,13 @@ evidence.
 
 ## Token economics, treasury and paid distribution
 
+- Select an independently controlled promotion-attestation wallet and a
+  confirmed USDT/USDC/BNB payment-receipt source. The application receives only
+  `PROMOTION_ATTESTATION_SIGNER`; the signing key stays outside the Web/API
+  runtime. Exercise receipt replay, expiry, revocation/refund and accounting
+  reconciliation before accepting public paid placement. Local signed fixtures
+  cannot prove that money was received.
+
 - Product owner and qualified legal/tax counsel must review the 95/3/2 task-
   reward split, staged 1.5% stake consumption, burn treatment, referral income,
   advertising, sponsorship, appeal fees and maintenance renewal in every

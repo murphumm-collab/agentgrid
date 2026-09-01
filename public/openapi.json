@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "AgentGrid Agent API",
-    "version": "0.8.6",
+    "version": "0.8.7",
     "description": "Discovery, public task/proof views and the authenticated Agent job, encrypted artifact and publisher hidden-test workflows. Admin, internal operations and Demo-only mutation routes are intentionally excluded. Artifact bytes and hidden tests are never returned by public endpoints."
   },
   "servers": [
@@ -3797,6 +3797,7 @@
           "summary",
           "economics",
           "revenuePolicy",
+          "promotionPolicy",
           "selectionPolicy",
           "workQueue",
           "actionContracts",
@@ -3804,7 +3805,7 @@
         ],
         "properties": {
           "schemaVersion": {
-            "const": "1.7"
+            "const": "1.8"
           },
           "generatedAt": {
             "type": "string",
@@ -4057,6 +4058,27 @@
               }
             }
           },
+          "promotionPolicy": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["signingVersion", "source", "supportedPlacements", "explicitLabel", "maximumDurationDays", "paymentReceiptReplayProtected", "invalidExpiredOrUnconfigured", "rankingEffect", "protocolInfluence"],
+            "properties": {
+              "signingVersion": { "const": "AgentGrid Task Promotion V1" },
+              "source": { "const": "PLATFORM_SIGNED_PAYMENT_RECEIPT" },
+              "supportedPlacements": {
+                "type": "array",
+                "prefixItems": [{ "const": "HOMEPAGE" }, { "const": "CATEGORY" }],
+                "minItems": 2,
+                "maxItems": 2
+              },
+              "explicitLabel": { "const": "SPONSORED" },
+              "maximumDurationDays": { "const": 31 },
+              "paymentReceiptReplayProtected": { "const": true },
+              "invalidExpiredOrUnconfigured": { "const": "OMITTED_FAIL_CLOSED" },
+              "rankingEffect": { "const": "DISPLAY_ORDER_ONLY" },
+              "protocolInfluence": { "const": "NONE" }
+            }
+          },
           "selectionPolicy": {
             "type": "object",
             "additionalProperties": false,
@@ -4160,6 +4182,7 @@
                 "rewardAgt",
                 "source",
                 "lifecycleCharges",
+                "promotion",
                 "humanUrl"
               ],
               "properties": {
@@ -4256,6 +4279,12 @@
                       "amountAgt": { "type": "number", "minimum": 0 }
                     }
                   }
+                },
+                "promotion": {
+                  "oneOf": [
+                    { "type": "null" },
+                    { "$ref": "#/components/schemas/PublicTaskPromotion" }
+                  ]
                 },
                 "humanUrl": {
                   "type": "string"
@@ -5305,6 +5334,24 @@
           }
         }
       },
+      "PublicTaskPromotion": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["label", "placement", "category", "sponsor", "startsAt", "endsAt", "settlementAsset", "paymentReceiptHash", "attestationHash", "attester", "protocolInfluence"],
+        "properties": {
+          "label": { "const": "SPONSORED" },
+          "placement": { "type": "string", "enum": ["HOMEPAGE", "CATEGORY"] },
+          "category": { "type": ["string", "null"], "minLength": 1, "maxLength": 64 },
+          "sponsor": { "type": "string", "minLength": 1, "maxLength": 80 },
+          "startsAt": { "type": "string", "format": "date-time" },
+          "endsAt": { "type": "string", "format": "date-time" },
+          "settlementAsset": { "type": "string", "enum": ["USDT", "USDC", "BNB"] },
+          "paymentReceiptHash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+          "attestationHash": { "type": "string", "pattern": "^0x[0-9a-fA-F]{64}$" },
+          "attester": { "type": "string", "pattern": "^0x[0-9a-fA-F]{40}$" },
+          "protocolInfluence": { "const": "NONE" }
+        }
+      },
       "PublicTask": {
         "type": "object",
         "description": "Fail-closed public task projection. Artifact URLs, decryption material, raw observations, hidden tests and non-approved evaluation records are absent.",
@@ -5327,6 +5374,7 @@
           "verification",
           "reward",
           "economics",
+          "promotion",
           "maintenance",
           "businessAdoption"
         ],
@@ -5531,6 +5579,13 @@
           },
           "completionDefinition": {
             "$ref": "#/components/schemas/TaskDefinition"
+          },
+          "promotion": {
+            "oneOf": [
+              { "type": "null" },
+              { "$ref": "#/components/schemas/PublicTaskPromotion" }
+            ],
+            "description": "Receipt-bound signed paid placement. It can change marketplace display order only and has no effect on protocol selection, quality, verification, completion or arbitration."
           },
           "maintenance": {
             "type": "object",

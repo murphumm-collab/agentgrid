@@ -25,6 +25,7 @@ describe("public completed task views", () => {
     expect(view.verification?.reportHashes).toEqual(["0xreport1", "0xreport2", "0xreport3"]);
     expect(view.verification?.reportHash).toBe("0xaggregate");
     expect(view.verification?.aggregateEvidenceHash).toBe("0xaggregate");
+    expect(view.promotion).toBeNull();
   });
 
   it("computes honest denominators and category totals", () => {

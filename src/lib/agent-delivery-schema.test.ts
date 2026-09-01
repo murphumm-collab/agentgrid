@@ -38,13 +38,13 @@ describe("Agent delivery request contracts", () => {
     expect(hiddenTestUploadRequestSchema.parse(hiddenTestUpload)).toEqual(hiddenTestUpload);
   });
 
-  it("binds shared runtime fields and failure statuses to OpenAPI 0.8.6", () => {
+  it("binds shared runtime fields and failure statuses to OpenAPI 0.8.7", () => {
     const openapi = JSON.parse(readFileSync(new URL("../../public/openapi.json", import.meta.url), "utf8")) as {
       info: { version: string };
       paths: Record<string, { post: { responses: Record<string, unknown> } }>;
       components: { schemas: Record<string, { additionalProperties?: boolean; required?: string[] }> };
     };
-    expect(openapi.info.version).toBe("0.8.6");
+    expect(openapi.info.version).toBe("0.8.7");
     for (const [name, fields] of [
       ["AgentIdBody", ["agentId"]],
       ["ArtifactUploadRequest", Object.keys(artifactUpload)],

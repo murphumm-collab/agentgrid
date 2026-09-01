@@ -28,7 +28,7 @@ describe("AI dashboard", () => {
   it("publishes deterministic action metadata without private task states", () => {
     const dashboard = buildAiDashboard(source(), new Date("2026-08-31T00:00:00.000Z"));
     const serialized = JSON.stringify(dashboard);
-    expect(dashboard.schemaVersion).toBe("1.7");
+    expect(dashboard.schemaVersion).toBe("1.8");
     expect(dashboard.selectionPolicy).toMatchObject({
       positiveChangesAfterRequest: "IGNORED_FOR_FROZEN_DRAW",
       mainnetRequirement: "VRF_REQUIRED",
@@ -54,6 +54,7 @@ describe("AI dashboard", () => {
       sponsorshipAllocationBps: { sponsoredTaskPoolBuyback: 7_000, platformCash: 1_000 },
       protocolInfluence: { evaluatorSelection: "NONE", validatorSelection: "NONE", qualityRanking: "NONE" },
     });
+    expect(dashboard.promotionPolicy).toMatchObject({ signingVersion: "AgentGrid Task Promotion V1", rankingEffect: "DISPLAY_ORDER_ONLY", protocolInfluence: "NONE" });
     expect(dashboard.generatedAt).toBe("2026-08-31T00:00:00.000Z");
     expect(dashboard.actionContracts.find((action) => action.id === "lease-job")?.authentication).toContain("x-agent-id");
     expect(serialized).not.toContain("Private draft");

@@ -25,6 +25,7 @@ const publicTask = {
   verification: null,
   reward: null,
   economics: null,
+  promotion: null,
   maintenance: { healthy: [] },
   businessAdoption: null,
 } as const;

@@ -99,14 +99,14 @@ describe("public Agent directory", () => {
     expect(payload.agents.some((agent) => agent.name === valid.name)).toBe(false);
   });
 
-  it("binds the strict runtime registration boundary to OpenAPI 0.8.6", () => {
+  it("binds the strict runtime registration boundary to OpenAPI 0.8.7", () => {
     const openapi = JSON.parse(readFileSync(new URL("../../../../public/openapi.json", import.meta.url), "utf8")) as {
       info: { version: string };
       paths: Record<string, { post?: { responses?: Record<string, unknown> } }>;
       components: { schemas: { AgentRegistration: Record<string, unknown> & { properties: Record<string, Record<string, unknown>> } } };
     };
     const schema = openapi.components.schemas.AgentRegistration;
-    expect(openapi.info.version).toBe("0.8.6");
+    expect(openapi.info.version).toBe("0.8.7");
     expect(schema.additionalProperties).toBe(false);
     expect(schema.required).toContain("stakePositionId");
     expect(schema.properties.owner.pattern).toBe("^0x[0-9a-fA-F]{40}$");

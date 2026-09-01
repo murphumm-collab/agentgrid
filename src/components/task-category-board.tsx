@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowUpRight, Clock3, LayoutGrid, Users } from "lucide-react";
+import { ArrowUpRight, BadgeDollarSign, Clock3, LayoutGrid, Users } from "lucide-react";
 import { StatusBadge } from "@/components/status-badge";
 import { TaskCategoryBadge, primaryTaskCategories, taskCategories, taskCategoryGroup, taskCategoryGroupLabel, taskCategoryGroups, taskCategoryLabel, type TaskCategoryGroup } from "@/components/task-category";
 import { formatDate } from "@/lib/format";
@@ -10,6 +10,7 @@ import type { Locale } from "@/lib/i18n";
 import { t } from "@/lib/i18n";
 import type { Task } from "@/lib/types";
 import { isPublicTask } from "@/lib/public-task-view";
+import { rankMarketplaceTasks } from "@/lib/marketplace-ranking";
 
 const ALL = "__all__";
 type GroupFilter = TaskCategoryGroup | typeof ALL;
@@ -25,10 +26,11 @@ export function TaskCategoryBoard({ tasks, locale }: { tasks: Task[]; locale: Lo
   }, [marketTasks]);
   const counts = useMemo(() => new Map(categories.map((category) => [category, marketTasks.filter((task) => task.category === category).length])), [categories, marketTasks]);
   const groupCategories = selectedGroup === ALL ? categories : categories.filter((category) => taskCategoryGroup(category) === selectedGroup);
-  const visibleTasks = marketTasks.filter((task) => {
+  const filteredTasks = marketTasks.filter((task) => {
     if (selectedCategory !== ALL) return task.category === selectedCategory;
     return selectedGroup === ALL || taskCategoryGroup(task.category) === selectedGroup;
   });
+  const visibleTasks = rankMarketplaceTasks(filteredTasks, selectedCategory === ALL ? "HOMEPAGE" : { category: selectedCategory });
 
   function selectGroup(group: GroupFilter) {
     setSelectedGroup(group);
@@ -73,7 +75,7 @@ export function TaskCategoryBoard({ tasks, locale }: { tasks: Task[]; locale: Lo
         </div>
         {visibleTasks.length ? (
           <div className="task-list">
-            {visibleTasks.map((task) => <Link className="task-row" href={`/tasks/${task.id}`} key={task.id}><div><div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 8 }}><StatusBadge state={task.state} locale={locale} /><TaskCategoryBadge category={task.category} locale={locale} /></div><h3 className="task-title" style={{ fontSize: 17 }}>{task.title}</h3><p className="lead" style={{ fontSize: 12 }}>{task.description}</p><div className="task-meta"><span><Clock3 size={11} /> {task.declaredDurationHours} {t(locale, "hours")}</span><span><Users size={11} /> {task.executorIds.length}/{task.maxExecutors} {t(locale, "executors")}</span><span>{t(locale, "deadline")} {formatDate(task.deadlineAt, locale)}</span></div></div><div className="task-side"><ArrowUpRight size={18} color="var(--accent)" /></div></Link>)}
+            {visibleTasks.map((task) => <Link className="task-row" href={`/tasks/${task.id}`} key={task.id}><div><div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 8, flexWrap: "wrap" }}><StatusBadge state={task.state} locale={locale} /><TaskCategoryBadge category={task.category} locale={locale} />{task.promotion ? <span className="badge sponsored-badge" title={locale === "zh" ? "付费展示，不影响协议选人、质量排名、验证或仲裁" : "Paid placement; no effect on protocol selection, quality, verification or arbitration"}><BadgeDollarSign size={12} />{locale === "zh" ? "赞助" : "Sponsored"}</span> : null}</div><h3 className="task-title" style={{ fontSize: 17 }}>{task.title}</h3><p className="lead" style={{ fontSize: 12 }}>{task.description}</p><div className="task-meta"><span><Clock3 size={11} /> {task.declaredDurationHours} {t(locale, "hours")}</span><span><Users size={11} /> {task.executorIds.length}/{task.maxExecutors} {t(locale, "executors")}</span><span>{t(locale, "deadline")} {formatDate(task.deadlineAt, locale)}</span></div></div><div className="task-side">{task.promotion ? <small>{locale === "zh" ? `展示至 ${formatDate(task.promotion.endsAt, locale)}` : `Placement ends ${formatDate(task.promotion.endsAt, locale)}`}</small> : null}<ArrowUpRight size={18} color="var(--accent)" /></div></Link>)}
           </div>
         ) : <div className="category-empty"><LayoutGrid size={24} /><strong>{locale === "zh" ? "这个分类暂时没有任务" : "No tasks in this category yet"}</strong><span>{locale === "zh" ? "可以切换分类，或发布第一个任务。" : "Choose another category or publish the first task."}</span></div>}
       </section>

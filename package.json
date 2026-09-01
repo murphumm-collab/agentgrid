@@ -60,7 +60,8 @@
     "production:config": "docker compose -f docker-compose.production.yml config --quiet",
     "production:secrets:smoke": "tsx scripts/production-secrets-smoke.ts",
     "workers:build": "tsx scripts/build-workers.ts",
-    "release:local:snapshot": "tsx scripts/create-local-release.ts"
+    "release:local:snapshot": "tsx scripts/create-local-release.ts",
+    "promotion:import": "tsx scripts/import-task-promotion.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1121.0",

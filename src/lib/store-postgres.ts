@@ -8,6 +8,7 @@ import { requiredTesterCapabilityMask } from "./agent-roles";
 import { keccak256, stringToHex } from "viem";
 import { storedEvidenceHash } from "./signed-evidence";
 import { testEvidenceReportSchema } from "./test-evidence-schema";
+import type { SignedTaskPromotion } from "./task-promotion";
 
 let pool: Pool | undefined;
 let migrated = false;
@@ -222,6 +223,19 @@ export async function migratePostgres(initialState?: ProtocolDatabase) {
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         UNIQUE(task_id,artifact_hash)
       );
+      CREATE TABLE IF NOT EXISTS task_promotion_attestations (
+        attestation_hash TEXT PRIMARY KEY CHECK(attestation_hash ~ '^0x[0-9a-f]{64}$'),
+        payment_receipt_hash TEXT NOT NULL UNIQUE CHECK(payment_receipt_hash ~ '^sha256:[0-9a-f]{64}$'),
+        task_id TEXT NOT NULL CHECK(task_id ~ '^[1-9][0-9]*$'),
+        placement TEXT NOT NULL CHECK(placement IN ('HOMEPAGE','CATEGORY')),
+        starts_at TIMESTAMPTZ NOT NULL,
+        ends_at TIMESTAMPTZ NOT NULL CHECK(ends_at > starts_at),
+        attestation JSONB NOT NULL,
+        signature TEXT NOT NULL CHECK(signature ~ '^0x[0-9a-fA-F]{130}$'),
+        revoked_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(task_id,placement,starts_at,ends_at)
+      );
       ALTER TABLE auth_nonces ADD COLUMN IF NOT EXISTS message_hash TEXT;
       ALTER TABLE task_commitments DROP CONSTRAINT IF EXISTS task_commitments_spec_hash_key;
       ALTER TABLE task_commitments ADD COLUMN IF NOT EXISTS evaluation_transaction_hash TEXT;
@@ -282,6 +296,7 @@ export async function migratePostgres(initialState?: ProtocolDatabase) {
       CREATE INDEX IF NOT EXISTS job_outbox_pending_idx ON job_outbox(created_at) WHERE dispatched_at IS NULL;
       CREATE INDEX IF NOT EXISTS signed_test_evidence_task_idx ON signed_test_evidence(task_id, created_at DESC);
       CREATE INDEX IF NOT EXISTS signed_task_evaluations_task_idx ON signed_task_evaluations(task_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS task_promotions_active_idx ON task_promotion_attestations(starts_at,ends_at) WHERE revoked_at IS NULL;
       `);
       await client.query("COMMIT");
       migrated = true;
@@ -298,6 +313,51 @@ export async function migratePostgres(initialState?: ProtocolDatabase) {
       [JSON.stringify(initialState)],
     );
   }
+}
+
+export interface StoredTaskPromotion extends SignedTaskPromotion {
+  attestationHash: `0x${string}`;
+}
+
+export async function storeVerifiedTaskPromotion(input: StoredTaskPromotion) {
+  await migratePostgres();
+  const client = await databasePool().connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`${input.attestation.taskId}:${input.attestation.placement}`]);
+    const overlap = await client.query(
+      `SELECT attestation_hash FROM task_promotion_attestations
+       WHERE task_id=$1 AND placement=$2 AND revoked_at IS NULL
+         AND tstzrange(starts_at,ends_at,'[)') && tstzrange($3::timestamptz,$4::timestamptz,'[)')`,
+      [input.attestation.taskId, input.attestation.placement, input.attestation.startsAt, input.attestation.endsAt],
+    );
+    if (overlap.rowCount) throw new Error("PROMOTION_WINDOW_OVERLAP");
+    await client.query(
+      `INSERT INTO task_promotion_attestations(attestation_hash,payment_receipt_hash,task_id,placement,starts_at,ends_at,attestation,signature)
+       VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8)`,
+      [input.attestationHash.toLowerCase(), input.attestation.paymentReceiptHash, input.attestation.taskId, input.attestation.placement,
+        input.attestation.startsAt, input.attestation.endsAt, JSON.stringify(input.attestation), input.signature],
+    );
+    await client.query("COMMIT");
+    return { stored: true as const, attestationHash: input.attestationHash };
+  } catch (error) {
+    await rollback(client);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export async function activeTaskPromotionAttestations(now = new Date()) {
+  await migratePostgres();
+  const result = await databasePool().query<{ attestationHash: `0x${string}`; attestation: SignedTaskPromotion["attestation"]; signature: SignedTaskPromotion["signature"] }>(
+    `SELECT attestation_hash AS "attestationHash",attestation,signature
+     FROM task_promotion_attestations
+     WHERE revoked_at IS NULL AND starts_at<=$1 AND ends_at>$1
+     ORDER BY starts_at ASC,attestation_hash ASC`,
+    [now],
+  );
+  return result.rows;
 }
 
 export interface TaskCommitmentInput {

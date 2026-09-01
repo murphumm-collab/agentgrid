@@ -65,6 +65,7 @@ export function publicTaskView(task: Task, reward?: RewardGrant | null) {
       lifecycleCharges: task.economics.lifecycleCharges,
       vestings: task.economics.vestings,
     } : null,
+    promotion: task.promotion ?? null,
     maintenance: { healthy: task.maintenanceHealthy },
     maintenanceRepairCheckpoint: task.maintenanceRepairCheckpoint,
     businessAdoption: task.businessAdoption ? {
