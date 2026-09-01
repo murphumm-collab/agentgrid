@@ -308,6 +308,7 @@ describe("AgentGrid Solidity protocol", () => {
     const caseId = await read(court, "VerificationArbitrationCourt", "activeCaseId", [1n]) as `0x${string}`;
     expect((await read(court, "VerificationArbitrationCourt", "cases", [caseId]) as readonly unknown[]).at(-1)).toBe(false);
     const targetReport = await read(addresses.verificationPanel, "VerificationPanel", "getReport", [1n, selected[0]]) as { evidenceHash: `0x${string}` };
+    const reserveBeforeResolution = await read(addresses.token, "TestToken", "balanceOf", [reserveAccount.address]) as bigint;
     const resolutionReceipt = await write(arbitrators[2], court, "VerificationArbitrationCourt", "vote", [1n, true, acceptedResolution]);
     const qualityLog = resolutionReceipt.logs.find((log) => log.address.toLowerCase() === addresses.agentRegistry.toLowerCase());
     if (!qualityLog) throw new Error("AGENT_QUALITY_LOG_MISSING");
@@ -325,6 +326,7 @@ describe("AgentGrid Solidity protocol", () => {
     const targetPosition = await read(addresses.agentRegistry, "AgentRegistry", "agentPosition", [selected[0]]) as bigint;
     expect(await read(addresses.stakeManager, "StakeCreditManager", "stakeOf", [targetPosition])).toBe(parseEther("900"));
     expect(await read(court, "VerificationArbitrationCourt", "stake", [challenger.account!.address])).toBe(parseEther("560"));
+    expect((await read(addresses.token, "TestToken", "balanceOf", [reserveAccount.address]) as bigint) - reserveBeforeResolution).toBe(parseEther("40"));
     expect(await read(addresses.agentRegistry, "AgentRegistry", "qualityOf", [selected[0], 2])).toMatchObject({ scoreBps: 3_500, severeFaults: 1 });
     const corrected = await read(addresses.taskRegistry, "TaskRegistry", "tasks", [1n]) as readonly unknown[];
     expect(corrected[17]).toBe(2);

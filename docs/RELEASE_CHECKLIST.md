@@ -519,8 +519,14 @@ real-user pilot.
 - [ ] Chain regression proves 4000/3333/2667 commit-order aggregation, 24-hour challenge gating, matching-resolution-hash 2/3 staked arbitration, correct-challenge 100/60/40 slash/reward/reserve accounting, repeated false-challenge 5%/15%/30% slashing, three-day no-quorum recovery, and an upheld case entering a fresh correction/panel epoch.
   The focused upheld-challenge path now proves an unbonded target cannot evade
   the 100-token slash: any court-stake shortfall is taken from its registered
-  Agent stake. This row remains open until the complete frozen-source regression
-  also covers all three repeated-false-challenge tiers and no-quorum recovery.
+  Agent stake, and the TaskRegistry advances to a fresh correction work round.
+  Dedicated real-court regression proves all three repeated-false-challenge
+  tiers against frozen stake snapshots and three-day no-quorum participant
+  unlock/panel recovery. The complete current-source contract suite passes all
+  22/22 cases in one run; a subsequent focused case directly asserts the
+  100/60/40 target loss, challenger credit and reserve balance delta. This row
+  remains open until the fixed release QA and candidate evidence bind the final
+  frozen source.
 - [ ] Three independently controlled validator wallets and three independently controlled arbitration wallets fund the configured minimum stake and sign the exact Pilot report; local wallets do not satisfy this row.
 
 - [ ] At least three unrelated pilot publishers complete useful tasks and confirm

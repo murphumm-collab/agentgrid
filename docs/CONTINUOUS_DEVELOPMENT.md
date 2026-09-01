@@ -78,9 +78,15 @@ permissionless, one-shot evaluator settlement, freezes fixed-pool executor
 quality multipliers and caps positive gains per role/30-day epoch. Maintenance
 now has only the three-member shard commit/reveal queue path; the unused
 single-validator `MAINTENANCE_VALIDATION` contract was removed. Common-control
-self-dealing resistance, current-source full regression, deployment
-verification and final QA remain open. Therefore previous QA reports are
-historical evidence only.
+self-dealing resistance, deployment verification and final QA remain open. The
+current Solidity source passed the complete contract regression on 2026-09-01:
+4 files and 22/22 tests, including the 12-scenario protocol chain, four
+economics cases, four role-quality cases and two arbitration penalty/recovery
+cases. The suite proves 5%/15%/30% repeated-false-challenge slashing and
+three-day no-quorum unlock and panel recovery. A subsequent focused upheld-case
+run also directly proves the 100/60/40 target-slash/challenger-reward/reserve
+delta. This is current-source contract evidence, not the fixed release QA.
+Therefore previous QA reports are historical evidence only.
 
 Governed source froze after adding visible failure, busy state and duplicate-
 safe boundaries to language, clipboard and Demo mutations. Discovery
@@ -115,8 +121,9 @@ The external QA report is mode 0600; the candidate root is mode 0555 and its
 manifest is mode 0444. All 22 exit codes, 316 governed-source entries, payload
 digest/count/bytes, server and manifest hashes, 2,478 files, 775 directories,
 102 safe relative links and read-only permissions were independently checked.
-This closes the current local QA/candidate gate only. The candidate remains
-unactivated; public launch remains in the external collaboration queue.
+This closed the local QA/candidate gate for that superseded source only. It does
+not close any current-source gate. The candidate remains unactivated; public
+launch remains in the external collaboration queue.
 
 ## Superseded notification-feedback baseline
 
