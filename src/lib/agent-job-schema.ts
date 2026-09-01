@@ -70,12 +70,6 @@ export const evaluationPanelJobPayloadSchema = chainPayload({
   selectionBlock: uint256DecimalSchema,
   deadline: positiveUnixSecondsSchema,
 });
-export const maintenanceValidationJobPayloadSchema = z.object({
-  taskId: onchainTaskIdPathParameterSchema,
-  checkpoint: z.number().int().min(1).max(3),
-  tester: addressSchema,
-  dueAt: positiveUnixSecondsSchema,
-}).strict();
 export const maintenancePanelJobPayloadSchema = z.object({
   taskId: onchainTaskIdPathParameterSchema,
   checkpoint: z.number().int().min(1).max(3),
@@ -108,7 +102,6 @@ export const agentJobSchemas = {
   ASSEMBLE_TASK: job("ASSEMBLE_TASK", "EXECUTOR", executorTargetJobPayloadSchema),
   TEST_TASK: job("TEST_TASK", "TESTER", testerTargetJobPayloadSchema),
   REVEAL_TEST_SHARD: job("REVEAL_TEST_SHARD", "TESTER", revealTestShardJobPayloadSchema),
-  MAINTENANCE_VALIDATION: job("MAINTENANCE_VALIDATION", "TESTER", maintenanceValidationJobPayloadSchema),
   EVALUATE_TASK: job("EVALUATE_TASK", "EVALUATOR", evaluatorTargetJobPayloadSchema),
   FINALIZE_EVALUATION_PANEL: job("FINALIZE_EVALUATION_PANEL", "COORDINATOR", evaluationPanelJobPayloadSchema),
   FINALIZE_TASK_EVALUATION: job("FINALIZE_TASK_EVALUATION", "COORDINATOR", chainAgentJobPayloadSchema),
@@ -184,7 +177,6 @@ export const agentJobCompletionSchemas = {
   ASSEMBLE_TASK: assemblyJobCompletionResultSchema,
   TEST_TASK: testerCommitCompletionResultSchema,
   REVEAL_TEST_SHARD: testerRevealCompletionResultSchema,
-  MAINTENANCE_VALIDATION: testerJobCompletionResultSchema,
   EVALUATE_TASK: evaluatorJobCompletionResultSchema,
   FINALIZE_EVALUATION_PANEL: z.union([
     coordinatorTransactionResult(["finalizeEvaluationPanel"]),

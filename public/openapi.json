@@ -6498,17 +6498,6 @@
         ],
         "unevaluatedProperties": false
       },
-      "MaintenanceValidationAgentJobPayload": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["taskId", "checkpoint", "tester", "dueAt"],
-        "properties": {
-          "taskId": { "type": "string", "minLength": 1, "maxLength": 78, "pattern": "^[1-9][0-9]*$" },
-          "checkpoint": { "type": "integer", "minimum": 1, "maximum": 3 },
-          "tester": { "type": "string", "pattern": "^0x[0-9a-fA-F]{40}$" },
-          "dueAt": { "type": "string", "minLength": 1, "maxLength": 78, "pattern": "^[1-9][0-9]*$" }
-        }
-      },
       "MaintenancePanelAgentJobPayload": {
         "type": "object",
         "additionalProperties": false,
@@ -6771,7 +6760,6 @@
           "ASSEMBLE_TASK": "#/components/schemas/AssemblyJobCompletionResult",
           "TEST_TASK": "#/components/schemas/TesterCommitJobCompletionResult",
           "REVEAL_TEST_SHARD": "#/components/schemas/TesterRevealJobCompletionResult",
-          "MAINTENANCE_VALIDATION": "#/components/schemas/TesterJobCompletionResult",
           "EVALUATE_TASK": "#/components/schemas/EvaluatorJobCompletionResult",
           "FINALIZE_EVALUATION_PANEL": "#/components/schemas/FinalizeEvaluationPanelJobResult",
           "FINALIZE_TASK_EVALUATION": "#/components/schemas/FinalizeTaskEvaluationJobResult",
@@ -6818,7 +6806,6 @@
               "ASSEMBLE_TASK",
               "TEST_TASK",
               "REVEAL_TEST_SHARD",
-              "MAINTENANCE_VALIDATION",
               "EVALUATE_TASK",
               "FINALIZE_EVALUATION_PANEL",
               "FINALIZE_TASK_EVALUATION",
@@ -6839,7 +6826,6 @@
               { "$ref": "#/components/schemas/RevealTestShardAgentJobPayload" },
               { "$ref": "#/components/schemas/EvaluationPanelAgentJobPayload" },
               { "$ref": "#/components/schemas/BasicChainAgentJobPayload" },
-              { "$ref": "#/components/schemas/MaintenanceValidationAgentJobPayload" },
               { "$ref": "#/components/schemas/MaintenancePanelAgentJobPayload" }
               ,{ "$ref": "#/components/schemas/VerificationPanelLifecycleAgentJobPayload" }
               ,{ "$ref": "#/components/schemas/VerificationArbitrationExpiryAgentJobPayload" }
@@ -6857,7 +6843,6 @@
           "ASSEMBLE_TASK": "EXECUTOR",
           "TEST_TASK": "TESTER",
           "REVEAL_TEST_SHARD": "TESTER",
-          "MAINTENANCE_VALIDATION": "TESTER",
           "EVALUATE_TASK": "EVALUATOR",
           "FINALIZE_EVALUATION_PANEL": "COORDINATOR",
           "FINALIZE_TASK_EVALUATION": "COORDINATOR",
@@ -6875,7 +6860,6 @@
           "ASSEMBLE_TASK": "#/components/schemas/ExecutorTargetAgentJobPayload",
           "TEST_TASK": "#/components/schemas/TesterTargetAgentJobPayload",
           "REVEAL_TEST_SHARD": "#/components/schemas/RevealTestShardAgentJobPayload",
-          "MAINTENANCE_VALIDATION": "#/components/schemas/MaintenanceValidationAgentJobPayload",
           "EVALUATE_TASK": "#/components/schemas/TesterTargetAgentJobPayload",
           "FINALIZE_EVALUATION_PANEL": "#/components/schemas/EvaluationPanelAgentJobPayload",
           "FINALIZE_TASK_EVALUATION": "#/components/schemas/BasicChainAgentJobPayload",

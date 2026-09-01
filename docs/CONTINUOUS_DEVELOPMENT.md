@@ -74,9 +74,13 @@ reward routing, DAO/source vesting and idempotent 20/30/70/30-bps lifecycle
 charges. Compilation, isolated economics tests, focused lifecycle regressions,
 the v0.8 machine surface and economics dashboard projection pass locally. The
 role-separated quality path now records validator and executor results plus a
-permissionless, one-shot evaluator settlement; anti-self-dealing/epoch caps,
-current-source full regression, deployment verification and final QA remain
-open. Therefore previous QA reports are historical evidence only.
+permissionless, one-shot evaluator settlement, freezes fixed-pool executor
+quality multipliers and caps positive gains per role/30-day epoch. Maintenance
+now has only the three-member shard commit/reveal queue path; the unused
+single-validator `MAINTENANCE_VALIDATION` contract was removed. Common-control
+self-dealing resistance, current-source full regression, deployment
+verification and final QA remain open. Therefore previous QA reports are
+historical evidence only.
 
 Governed source froze after adding visible failure, busy state and duplicate-
 safe boundaries to language, clipboard and Demo mutations. Discovery

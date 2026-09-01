@@ -512,6 +512,10 @@ real-user pilot.
 ## F. Pilot sign-off
 
 - [ ] Current-source contract/API/Worker evidence proves three unique validation Agents use criterion/test shards, commit before reveal, and require two independent votes per required criterion; no legacy single-Tester finalization entrypoint remains.
+  The production job union and OpenAPI no longer admit the unused single-agent
+  `MAINTENANCE_VALIDATION` kind; due maintenance starts a fresh panel and uses
+  only `TEST_TASK` plus `REVEAL_TEST_SHARD`. This row remains open for the
+  frozen-source complete regression and packaged Worker evidence.
 - [ ] Chain regression proves 4000/3333/2667 commit-order aggregation, 24-hour challenge gating, matching-resolution-hash 2/3 staked arbitration, correct-challenge 100/60/40 slash/reward/reserve accounting, repeated false-challenge 5%/15%/30% slashing, three-day no-quorum recovery, and an upheld case entering a fresh correction/panel epoch.
   The focused upheld-challenge path now proves an unbonded target cannot evade
   the 100-token slash: any court-stake shortfall is taken from its registered

@@ -19,7 +19,6 @@ const validJobs = [
     reportHash: hash, evidenceHash: hash, criterionPassMask: 3, winner: address,
     selectedArtifactHash: hash, executorWeightsBps: [10_000], salt: hash, passed: true, ...provenance,
   }, createdAt: now },
-  { id: "job:maintenance", role: "TESTER", kind: "MAINTENANCE_VALIDATION", payload: { taskId: "6", tester: address, checkpoint: 2, dueAt: "1800000000" }, createdAt: now },
   { id: "job:evaluate", role: "EVALUATOR", kind: "EVALUATE_TASK", payload: { taskId: "7", tester: address, ...provenance }, createdAt: now },
   { id: "job:panel", role: "COORDINATOR", kind: "FINALIZE_EVALUATION_PANEL", payload: { taskId: "8", selectionBlock: "100", deadline: "1800000000", ...provenance }, createdAt: now },
   ...["FINALIZE_TASK_EVALUATION", "ASSIGN_TESTER", "FINALIZE_TESTER"].map((kind, index) => ({
@@ -38,7 +37,6 @@ const validCompletionResults = {
   ASSEMBLE_TASK: { artifactHash, transactionHash: hash, contributions: 2 },
   TEST_TASK: { reportHash: hash, evidenceHash: hash, transactionHash: hash, passed: true },
   REVEAL_TEST_SHARD: { reportHash: hash, evidenceHash: hash, alreadyRevealed: true, passed: true },
-  MAINTENANCE_VALIDATION: { reportHash: hash, evidenceHash: hash, transactionHash: hash, passed: false },
   EVALUATE_TASK: { reportHash: hash, alreadySubmitted: true, approve: true },
   FINALIZE_EVALUATION_PANEL: { phase: "finalizeEvaluationPanel", alreadyFinalized: true },
   FINALIZE_TASK_EVALUATION: { phase: "finalizeTaskEvaluation", transactionHash: hash },
@@ -62,6 +60,7 @@ describe("Agent queue job contracts", () => {
     expect(agentJobSchema.safeParse({ ...validJobs[0], payload: { taskId: "1", chainId: 97 } }).success).toBe(false);
     expect(agentJobSchema.safeParse({ ...validJobs[0], payload: { taskId: "1", unexpected: true } }).success).toBe(false);
     expect(agentJobSchema.safeParse({ ...validJobs[0], payload: { taskId: "0" } }).success).toBe(false);
+    expect(agentJobSchema.safeParse({ id: "legacy-maintenance", role: "TESTER", kind: "MAINTENANCE_VALIDATION", payload: { taskId: "6", tester: address, checkpoint: 2, dueAt: "1800000000" }, createdAt: now }).success).toBe(false);
   });
 
   it("accepts every exact kind-specific completion result and rejects guessing or cross-kind output", () => {

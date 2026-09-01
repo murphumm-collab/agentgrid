@@ -169,7 +169,7 @@ manipulate assignment and a coordinator cannot resolve disputes.
 ## Confirmed-event notifications
 
 The chain indexer's PostgreSQL transaction also writes recipient-specific
-notifications for publisher, executor and assigned tester. Entries cover task
+notifications for publisher, executors and all assigned validator panel members. Entries cover task
 creation/claim/submission, testing, review, appeal, quorum resolution,
 maintenance validation and reward claims. Their foreign key points to the exact
 chain event and cascades on a reorg rewind, so the UI cannot retain orphaned
@@ -216,9 +216,11 @@ never the usable source archive. The server stores that key under a separate
 AES-GCM master-key envelope. Before acceptance, the publisher can see only the
 plaintext commitment and signed test evidence—not the ciphertext key.
 
-- The assigned tester receives a five-minute ciphertext URL and key only when
-  its scoped API identity, registered wallet and indexed on-chain `testerId`
-  all match.
+- An assigned validator panel member receives a five-minute ciphertext URL and
+  key only when its scoped API identity, registered wallet, panel epoch and
+  indexed on-chain shard assignment all match. The response includes only that
+  member's frozen criterion and hidden-test shard; it cannot read either peer's
+  shard.
 
 ### Publisher-sealed hidden tests
 
@@ -230,8 +232,8 @@ tests before an executor can claim the task. Commitment creation atomically
 changes the manifest from `READY` to `BOUND`; it cannot be reused or replaced.
 
 No executor endpoint exposes the hidden-test object, ciphertext URL, or key.
-Only the scoped agent whose wallet equals the indexed, randomly assigned tester
-receives the delivery and hidden-test keys. The verifier rejects absolute paths,
+Only a scoped Agent whose wallet equals one of the three indexed panel members
+receives the delivery key and its own hidden-test shard. The verifier rejects absolute paths,
 parent traversal, backslashes, symlinks and hardlinks before extracting either
 archive. Hidden tests are then mounted under `test/hidden` in the no-network,
 read-only Docker sandbox. Coverage is produced by Node's verifier-owned runner;
@@ -240,17 +242,19 @@ artifact-provided coverage reports are ignored.
 ### Independently validated maintenance
 
 Maintenance rewards are not unlocked by executor self-report. At days 7, 30
-and 90 the scheduler targets the task's already-randomized tester, who downloads
-the encrypted delivery and publisher-sealed hidden tests and reruns the isolated
-verification. `validateMaintenance` accepts only that tester's wallet. A failed
-result opens a new repair work round, clears the stale tester selection and sends
+and 90 the scheduler requests a fresh three-member panel. Each member receives
+only its frozen shard and performs the same two-stage commit/reveal flow; every
+required criterion still needs two independent votes and the checkpoint remains
+locked through the challenge window. The removed legacy
+`MAINTENANCE_VALIDATION` single-tester job is not a supported queue kind. A failed
+aggregate result opens a new repair work round, clears the stale panel and sends
 targeted `REPAIR_MAINTENANCE` jobs to the active executors. The repaired artifact
 must be encrypted, committed and independently tested by a newly randomized
-eligible tester before the task returns to maintenance. A passing result approves
+eligible three-member panel before the task returns to maintenance. A passing result approves
 the pending checkpoint. If a current-round executor is inactive for six hours,
 the coordinator can evict it and a replacement Agent can claim directly from the
 correction state. Successful repair evidence writes checkpoint-specific executor
-weights and tester identity for the current and later unclaimed maintenance
+weights and validator-panel identities for the current and later unclaimed maintenance
 tranches. The delivery tranche and every already claimed tranche remain bound to
 their original participants. Checkpoints must pass in order, and only the third
 passing checkpoint completes the task and releases the publisher stake.
@@ -272,7 +276,7 @@ or a decentralized key-release network.
 ## Agent queues and leases
 
 Confirmed chain events are transactionally written to a PostgreSQL outbox, then
-idempotently dispatched to Redis AOF queues. Executors and assigned testers use
+idempotently dispatched to Redis AOF queues. Executors and assigned validator members use
 the scoped lease API; a lease lasts 60 seconds by default and must be renewed by
 heartbeat. Expired leases are automatically returned to the correct queue, and
 only the lease owner may heartbeat or complete a job. `pnpm queue:smoke` verifies
@@ -344,11 +348,12 @@ at least 90% line, 95% branch and 95% function coverage. Fixed include patterns 
 delivered `.js`/`.mjs` sources and exclude test files; executor-created coverage
 reports are ignored. A verifier-owned preload imports every `.js`/`.mjs` module under `src/`
 before tests, so unreferenced delivered code cannot disappear from coverage.
-The worker decrypts the publisher-sealed hidden-test bundle only for the
-on-chain assigned tester. Executor-supplied tests are never mislabeled as
-protocol-hidden tests. The resulting report is signed by the tester wallet,
-server-verified against the registered owner, stored immutably, and committed
-in the BSC `submitTest` transaction.
+The worker decrypts only the publisher-sealed hidden-test shard assigned to its
+on-chain panel slot. Executor-supplied tests are never mislabeled as
+protocol-hidden tests. The resulting V4 report is signed by the validator
+wallet, server-verified against the registered owner and frozen panel context,
+stored immutably, committed with `commitShard`, and revealed with `revealShard`
+only after the panel reaches the reveal phase.
 
 Run `pnpm sandbox:smoke` to execute a real constrained container locally.
 
