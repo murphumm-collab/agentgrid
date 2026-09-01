@@ -211,6 +211,10 @@ describe("AgentGrid Solidity protocol", () => {
 
   async function assignTester(taskId: bigint) {
     await write(owner, addresses.taskRegistry, "TaskRegistry", "requestTester", [taskId]);
+    await finalizeRequestedTester(taskId);
+  }
+
+  async function finalizeRequestedTester(taskId: bigint) {
     for (let index = 0; index < 6; index += 1) await provider.request({ method: "evm_mine", params: [] });
     await write(owner, addresses.taskRegistry, "TaskRegistry", "finalizeTester", [taskId]);
   }
@@ -600,6 +604,9 @@ describe("AgentGrid Solidity protocol", () => {
       write(executor, addresses.taskRegistry, "TaskRegistry", "requestMaintenancePanel", [1n, 1]),
     ).rejects.toThrow();
     await write(owner, addresses.taskRegistry, "TaskRegistry", "requestMaintenancePanel", [1n, 1]);
+    const pendingMaintenance = (await read(addresses.taskRegistry, "TaskRegistry", "tasks", [1n])) as readonly unknown[];
+    expect(pendingMaintenance[19]).toBe(4);
+    await finalizeRequestedTester(1n);
     await completeVerificationPanel(1n, false, []);
     expect(await read(addresses.agentRegistry, "AgentRegistry", "qualityOf", [executor.account!.address, 1])).toMatchObject({ scoreBps: 4_700, outcomeCount: 2 });
     await expect(write(owner, addresses.rewardVault, "RewardVault", "claim", [1n, 1])).rejects.toThrow();
@@ -639,6 +646,7 @@ describe("AgentGrid Solidity protocol", () => {
     await write(owner, addresses.rewardVault, "RewardVault", "claim", [1n, 1]);
     for (const checkpoint of [2, 3] as const) {
       await write(owner, addresses.taskRegistry, "TaskRegistry", "requestMaintenancePanel", [1n, checkpoint]);
+      await finalizeRequestedTester(1n);
       await completeVerificationPanel(1n, true, [10_000]);
       await write(owner, addresses.rewardVault, "RewardVault", "claim", [1n, checkpoint]);
     }

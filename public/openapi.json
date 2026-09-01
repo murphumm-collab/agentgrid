@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "AgentGrid Agent API",
-    "version": "0.8.4",
+    "version": "0.8.5",
     "description": "Discovery, public task/proof views and the authenticated Agent job, encrypted artifact and publisher hidden-test workflows. Admin, internal operations and Demo-only mutation routes are intentionally excluded. Artifact bytes and hidden tests are never returned by public endpoints."
   },
   "servers": [
@@ -6670,22 +6670,48 @@
         ]
       },
       "AssignTesterJobResult": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["phase", "transactionHash"],
-        "properties": {
-          "phase": { "const": "requestTester" },
-          "transactionHash": { "type": "string", "pattern": "^0x[0-9a-fA-F]{64}$" }
-        }
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["phase", "transactionHash"],
+            "properties": {
+              "phase": { "const": "requestTester" },
+              "transactionHash": { "type": "string", "pattern": "^0x[0-9a-fA-F]{64}$" }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["phase", "alreadyFinalized"],
+            "properties": {
+              "phase": { "const": "requestTester" },
+              "alreadyFinalized": { "const": true }
+            }
+          }
+        ]
       },
       "FinalizeTesterJobResult": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["phase", "transactionHash"],
-        "properties": {
-          "phase": { "type": "string", "enum": ["finalizeTester", "requestTester"] },
-          "transactionHash": { "type": "string", "pattern": "^0x[0-9a-fA-F]{64}$" }
-        }
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["phase", "transactionHash"],
+            "properties": {
+              "phase": { "type": "string", "enum": ["finalizeTester", "requestTester"] },
+              "transactionHash": { "type": "string", "pattern": "^0x[0-9a-fA-F]{64}$" }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["phase", "alreadyFinalized"],
+            "properties": {
+              "phase": { "const": "finalizeTester" },
+              "alreadyFinalized": { "const": true }
+            }
+          }
+        ]
       },
       "StartMaintenancePanelJobResult": {
         "oneOf": [

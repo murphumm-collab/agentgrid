@@ -110,7 +110,7 @@ describe("production SDK successful response contracts", () => {
       paths: Record<string, Record<string, { responses: Record<string, { content?: { "application/json"?: { schema?: JsonSchema } } }> }>>;
       components: { schemas: Record<string, JsonSchema> };
     };
-    expect(openapi.info.version).toBe("0.8.4");
+    expect(openapi.info.version).toBe("0.8.5");
     expect(openapi.components.schemas.TaskDefinition.properties?.collaborationPlan?.$ref).toBe("#/components/schemas/CollaborationPlan");
     expect(openapi.components.schemas.CollaborationPlan.additionalProperties).toBe(false);
     expect(openapi.components.schemas.CollaborationPlan.required).toEqual(expect.arrayContaining(["workPackages", "sharedInterfaces", "assemblyStrategy", "underfilledStrategy", "integrationChecks"]));

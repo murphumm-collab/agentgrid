@@ -40,8 +40,8 @@ const validCompletionResults = {
   EVALUATE_TASK: { reportHash: hash, alreadySubmitted: true, approve: true },
   FINALIZE_EVALUATION_PANEL: { phase: "finalizeEvaluationPanel", alreadyFinalized: true },
   FINALIZE_TASK_EVALUATION: { phase: "finalizeTaskEvaluation", transactionHash: hash },
-  ASSIGN_TESTER: { phase: "requestTester", transactionHash: hash },
-  FINALIZE_TESTER: { phase: "finalizeTester", transactionHash: hash },
+  ASSIGN_TESTER: { phase: "requestTester", alreadyFinalized: true },
+  FINALIZE_TESTER: { phase: "finalizeTester", alreadyFinalized: true },
   START_MAINTENANCE_PANEL: { phase: "requestMaintenancePanel", alreadyFinalized: true },
   FINALIZE_VERIFICATION_PANEL: { phase: "finalizeVerificationPanel", transactionHash: hash },
   EXPIRE_VERIFICATION_PANEL: { phase: "expireVerificationPanel", transactionHash: hash },
@@ -77,7 +77,7 @@ describe("Agent queue job contracts", () => {
 
   it("binds every runtime kind to an exact OpenAPI payload and role mapping", () => {
     const openapi = JSON.parse(readFileSync(new URL("../../public/openapi.json", import.meta.url), "utf8"));
-    expect(openapi.info.version).toBe("0.8.4");
+    expect(openapi.info.version).toBe("0.8.5");
     const job = openapi.components.schemas.AgentJob;
     expect(job.additionalProperties).toBe(false);
     expect(job.properties.kind.enum).toEqual(agentJobKinds);

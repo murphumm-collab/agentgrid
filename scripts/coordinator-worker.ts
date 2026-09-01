@@ -6,6 +6,7 @@ import { taskRegistryAbi, verificationArbitrationCourtAbi, verificationPanelAbi 
 import { chainContractAddresses, chainDeploymentAddresses, runtimeConfig } from "../src/lib/env";
 import { requiredSecret } from "../src/lib/secrets";
 import { bscRpcTransport } from "../src/lib/bsc-rpc";
+import { decideTesterCoordinatorAction } from "../src/lib/tester-coordination";
 
 const privateKey = requiredSecret("PROTOCOL_OPERATOR_PRIVATE_KEY") as Hex;
 const account = privateKeyToAccount(privateKey);
@@ -136,17 +137,26 @@ async function coordinate() {
       console.log(JSON.stringify({ taskId, transactionHash: hash, phase: functionName }));
       return true;
     }
-    let functionName: "finalizeTester" | "requestTester" = leased.job.kind === "FINALIZE_TESTER" ? "finalizeTester" : "requestTester";
-    let hash: Hex;
-    await heartbeatAgentJob(leased.job.id, "protocol-coordinator");
-    try {
-      hash = await wallet.writeContract({ address: registry, abi: taskRegistryAbi, functionName, args: [BigInt(taskId)] });
-    } catch (error) {
-      if (functionName !== "finalizeTester") throw error;
-      functionName = "requestTester";
-      await heartbeatAgentJob(leased.job.id, "protocol-coordinator");
-      hash = await wallet.writeContract({ address: registry, abi: taskRegistryAbi, functionName, args: [BigInt(taskId)] });
+    const task = await publicClient.readContract({ address: registry, abi: evaluationCoordinatorAbi, functionName: "tasks", args: [BigInt(taskId)] });
+    const taskState = Number(task[19]);
+    const requestedSelectionBlock = BigInt(task[11]);
+    const currentBlock = await publicClient.getBlockNumber();
+    const decision = decideTesterCoordinatorAction({
+      kind: leased.job.kind as "ASSIGN_TESTER" | "FINALIZE_TESTER",
+      taskState,
+      selectionBlock: requestedSelectionBlock,
+      currentBlock,
+    });
+    if (decision.action === "complete") {
+      await completeAgentJob(leased.job.id, "protocol-coordinator", { phase: decision.phase, alreadyFinalized: true });
+      return true;
     }
+    if (decision.action === "retry") throw new Error(decision.code);
+    // Only an objectively expired blockhash window authorizes a redraw.  A
+    // transient RPC/write failure must never silently replace validators.
+    const functionName = decision.functionName;
+    await heartbeatAgentJob(leased.job.id, "protocol-coordinator");
+    const hash = await wallet.writeContract({ address: registry, abi: taskRegistryAbi, functionName, args: [BigInt(taskId)] });
     const receipt = await publicClient.waitForTransactionReceipt({ hash, confirmations: config.CHAIN_CONFIRMATIONS });
     if (receipt.status !== "success") throw new Error("ASSIGN_TESTER_TRANSACTION_REVERTED");
     await completeAgentJob(leased.job.id, "protocol-coordinator", { transactionHash: hash, phase: functionName });

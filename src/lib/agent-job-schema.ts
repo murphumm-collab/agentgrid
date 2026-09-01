@@ -186,8 +186,14 @@ export const agentJobCompletionSchemas = {
     coordinatorTransactionResult(["finalizeTaskEvaluation"]),
     coordinatorAlreadyFinalizedResult("finalizeTaskEvaluation"),
   ]),
-  ASSIGN_TESTER: coordinatorTransactionResult(["requestTester"]),
-  FINALIZE_TESTER: coordinatorTransactionResult(["finalizeTester", "requestTester"]),
+  ASSIGN_TESTER: z.union([
+    coordinatorTransactionResult(["requestTester"]),
+    coordinatorAlreadyFinalizedResult("requestTester"),
+  ]),
+  FINALIZE_TESTER: z.union([
+    coordinatorTransactionResult(["finalizeTester", "requestTester"]),
+    coordinatorAlreadyFinalizedResult("finalizeTester"),
+  ]),
   START_MAINTENANCE_PANEL: z.union([
     coordinatorTransactionResult(["requestMaintenancePanel"]),
     coordinatorAlreadyFinalizedResult("requestMaintenancePanel"),

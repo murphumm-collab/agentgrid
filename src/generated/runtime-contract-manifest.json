@@ -119,111 +119,111 @@
     },
     "taskRegistry": {
       "name": "TaskRegistry",
-      "normalizedRuntimeBytecodeHash": "0xb5f71fa14bf0ab60df67d16d256177c9b7039511c0c55cfecf6ab6b6eacdab08",
+      "normalizedRuntimeBytecodeHash": "0x5c67b4af3b40114696255fa863f4cd192c5ff37b4233e9bbb29289cdb99c7c69",
       "immutableReferences": [
         {
           "length": 32,
-          "start": 4142
+          "start": 4026
         },
         {
           "length": 32,
-          "start": 6891
+          "start": 6775
         },
         {
           "length": 32,
-          "start": 7312
+          "start": 7200
         },
         {
           "length": 32,
-          "start": 9193
+          "start": 9081
         },
         {
           "length": 32,
-          "start": 9484
+          "start": 9372
         },
         {
           "length": 32,
-          "start": 17538
+          "start": 17301
         },
         {
           "length": 32,
-          "start": 18468
+          "start": 18231
         },
         {
           "length": 32,
-          "start": 21442
+          "start": 21228
         },
         {
           "length": 32,
-          "start": 22405
+          "start": 22241
         },
         {
           "length": 32,
-          "start": 22770
+          "start": 22606
         },
         {
           "length": 32,
-          "start": 6724
+          "start": 6608
         },
         {
           "length": 32,
-          "start": 9357
+          "start": 9245
         },
         {
           "length": 32,
-          "start": 9872
+          "start": 9762
         },
         {
           "length": 32,
-          "start": 12296
+          "start": 12069
         },
         {
           "length": 32,
-          "start": 16972
+          "start": 16735
         },
         {
           "length": 32,
-          "start": 20087
+          "start": 19850
         },
         {
           "length": 32,
-          "start": 21164
+          "start": 20950
         },
         {
           "length": 32,
-          "start": 23995
+          "start": 23831
         },
         {
           "length": 32,
-          "start": 878
+          "start": 1325
         },
         {
           "length": 32,
-          "start": 1941
+          "start": 2687
         },
         {
           "length": 32,
-          "start": 2824
+          "start": 7697
         },
         {
           "length": 32,
-          "start": 7809
+          "start": 12746
         },
         {
           "length": 32,
-          "start": 12973
+          "start": 12904
         },
         {
           "length": 32,
-          "start": 13131
+          "start": 14532
         },
         {
           "length": 32,
-          "start": 14756
+          "start": 18356
         },
         {
           "length": 32,
-          "start": 18593
+          "start": 21498
         }
       ]
     },

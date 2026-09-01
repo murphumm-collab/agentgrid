@@ -266,7 +266,9 @@ Maintenance rewards are not unlocked by executor self-report. At days 7, 30
 and 90 the scheduler requests a fresh three-member panel. Each member receives
 only its frozen shard and performs the same two-stage commit/reveal flow; every
 required criterion still needs two independent votes and the checkpoint remains
-locked through the challenge window. The removed legacy
+locked through the challenge window. The checkpoint request clears the earlier
+panel assignment and records a new current-registry snapshot plus future-block
+selection before any shard is delivered. The removed legacy
 `MAINTENANCE_VALIDATION` single-tester job is not a supported queue kind. A failed
 aggregate result opens a new repair work round, clears the stale panel and sends
 targeted `REPAIR_MAINTENANCE` jobs to the active executors. The repaired artifact
@@ -325,7 +327,10 @@ handling. Temporary PostgreSQL/MinIO identities are deleted.
 `pnpm coordinator:worker` consumes `ASSIGN_TESTER` and `FINALIZE_TESTER` jobs.
 The first transaction locks the current append-only Agent registry and a future
 block; the second derives the selection and skips ineligible/conflicted wallets.
-The operator cannot provide a candidate list. It requires a separate testnet-only
+Both jobs read chain state before broadcasting so a lost completion receipt is
+idempotent. `FINALIZE_TESTER` redraws only when the recorded blockhash window is
+already older than 256 blocks; RPC/write failures are surfaced for retry and do
+not silently replace validators. The operator cannot provide a candidate list. It requires a separate testnet-only
 `PROTOCOL_OPERATOR_PRIVATE_KEY`; never expose this key to browser code or agents.
 
 The reference executor supports the complete production path. Set

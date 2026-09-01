@@ -187,4 +187,26 @@ describe("confirmed chain business projection", () => {
       maintenanceRewardDistribution: { fromCheckpoint: 1, executors: ["0xReplacement"], weightsBps: [10_000], tester: "0xRepairTester", proof: `0x${"7".repeat(64)}` },
     });
   });
+
+  it("keeps a maintenance checkpoint pending until its fresh validator panel is assigned", () => {
+    const commitment: CommitmentProjectionRow = {
+      specHash: `0x${"2".repeat(64)}`, publisher: "0xPublisher", status: "CONFIRMED", chainTaskId: "22",
+      createdAt: "2026-01-01T00:00:00.000Z", confirmedAt: "2026-01-01T00:02:00.000Z",
+      spec: { title: "Verify maintenance selection", description: "Prove a maintenance checkpoint receives a fresh validator selection before testing starts.", category: "Operations", executionMode: "COLLABORATION", maxExecutors: 1, declaredDurationHours: 24, criteria: ["Fresh panel assigned"] },
+    };
+    const pendingEvents = [
+      event("TaskCreated", { taskId: "22", publisher: "0xPublisher", positionId: "4", specHash: commitment.specHash }, "1"),
+      event("UserReviewed", { taskId: "22", accepted: true, reasonHash: `0x${"0".repeat(64)}` }, "2"),
+      event("MaintenancePanelRequested", { taskId: "22", checkpoint: "1", workRound: "1" }, "3"),
+      event("TesterRequested", { taskId: "22", selectionBlock: "50", candidateSetHash: `0x${"4".repeat(64)}`, candidateCount: "9" }, "3"),
+    ];
+    const beforeAssignment = projectChainBusiness({ commitments: [commitment], events: pendingEvents });
+    expect(beforeAssignment.tasks[0]).toMatchObject({ state: "SUBMITTED", maintenanceRepairCheckpoint: 1 });
+
+    const afterAssignment = projectChainBusiness({ commitments: [commitment], events: [
+      ...pendingEvents,
+      event("TesterPanelAssigned", { taskId: "22", tester0: "0xA", tester1: "0xB", tester2: "0xC", selectionProof: `0x${"5".repeat(64)}`, workRound: "1" }, "4"),
+    ] });
+    expect(afterAssignment.tasks[0]).toMatchObject({ state: "TESTING", testerIds: ["0xA", "0xB", "0xC"] });
+  });
 });

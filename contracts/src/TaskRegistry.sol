@@ -578,6 +578,10 @@ contract TaskRegistry is Ownable {
     /// BSC mainnet production should replace blockhash entropy with VRF.
     function requestTester(uint256 taskId) external onlyCoordinator {
         Task storage task = tasks[taskId];
+        _requestTester(taskId, task);
+    }
+
+    function _requestTester(uint256 taskId, Task storage task) private {
         if (task.state != State.Submitted) revert InvalidState();
         if (task.testerSelectionBlock != 0 && block.number <= task.testerSelectionBlock + 256) revert InvalidState();
         uint256 count = agentRegistry.agentCount();
@@ -760,10 +764,15 @@ contract TaskRegistry is Ownable {
         if (checkpoint > 1 && maintenanceEvidence[taskId][checkpoint - 1] == bytes32(0)) revert InvalidState();
         if (block.timestamp < rewardVault.checkpointDueAt(taskId, checkpoint)) revert InvalidState();
         maintenanceRepairCheckpoint[taskId] = checkpoint;
-        task.state = State.Testing;
-        _startVerificationPanel(taskId, task, taskTesters[taskId], checkpoint);
+        // Maintenance can happen months after the acceptance panel.  Reusing
+        // that panel would bypass current eligibility/quality and can deadlock
+        // the checkpoint after a validator exits or is banned.  Move through
+        // the same frozen, weighted selection protocol as initial testing.
+        delete taskTesters[taskId];
+        _resetTesterSelection(taskId, task);
+        task.state = State.Submitted;
         emit MaintenancePanelRequested(taskId, checkpoint, task.workRound);
-        emit TesterPanelAssigned(taskId, taskTesters[taskId][0], taskTesters[taskId][1], taskTesters[taskId][2], task.selectionProof, task.workRound);
+        _requestTester(taskId, task);
     }
 
     function _startVerificationPanel(uint256 taskId, Task storage task, address[3] memory testers, uint8 checkpoint) private {

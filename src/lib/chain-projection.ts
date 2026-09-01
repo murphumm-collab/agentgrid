@@ -336,7 +336,9 @@ export function projectChainBusiness(rows: { events: ChainProjectionRow[]; commi
       case "MaintenancePanelRequested": {
         const task = tasks.get(id(args, "taskId"));
         if (task) {
-          task.state = "TESTING";
+          // The maintenance request now enters a fresh future-block selection;
+          // TESTING begins only when TesterPanelAssigned is confirmed.
+          task.state = "SUBMITTED";
           task.maintenanceRepairCheckpoint = Number(args.checkpoint);
         }
         break;
