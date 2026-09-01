@@ -23,7 +23,7 @@ async function main() {
   const hiddenArchive = path.join(root, "hidden-tests.tar.gz");
   await exec("tar", ["-czf", hiddenArchive, "-C", hidden, "."], { env: { ...process.env, COPYFILE_DISABLE: "1" } });
   const report = await runSandboxArchive(await fs.readFile(archive), await fs.readFile(hiddenArchive));
-  await fs.writeFile(path.join(project, "src", "untested.mjs"), "export function hidden(v){if(v>10)return 'high';if(v<0)return 'low';return 'mid'}\n");
+  await fs.writeFile(path.join(project, "src", "untested.mjs"), "setInterval(()=>{},1000);export function hidden(v){if(v>10)return 'high';if(v<0)return 'low';return 'mid'}\n");
   await fs.mkdir(path.join(project, "coverage"));
   await fs.writeFile(path.join(project, "coverage", "coverage-summary.json"), JSON.stringify({ total: { lines: { pct: 100 }, branches: { pct: 100 } } }));
   const forgedArchive = path.join(root, "forged-artifact.tar.gz");

@@ -104,7 +104,7 @@ export async function runSandboxArchive(bytes: Uint8Array, hiddenTestBytes?: Uin
     "set -eu", "mkdir -p /tmp/work", "tar -xzf /input/artifact.tar.gz -C /tmp/work",
     "cd /tmp/work", "test -f package.json", "test -d src", "test -d test",
     ...(hiddenTestBytes ? ["mkdir -p /tmp/work/test/hidden", "tar -xzf /input/hidden-tests.tar.gz -C /tmp/work/test/hidden"] : []),
-    "node --import /verifier/preload.mjs --test --experimental-test-coverage --test-coverage-include='src/**/*.js' --test-coverage-include='src/**/*.mjs' --test-coverage-lines=90 --test-coverage-branches=95 --test-coverage-functions=95",
+    "node --import /verifier/preload.mjs --test --test-force-exit --test-timeout=300000 --experimental-test-coverage --test-coverage-include='src/**/*.js' --test-coverage-include='src/**/*.mjs' --test-coverage-lines=90 --test-coverage-branches=95 --test-coverage-functions=95",
   ].join(" && ");
   try {
     const result = await exec("docker", ["run", "--rm", "--network", "none", "--read-only", "--memory", "512m", "--cpus", "1", "--pids-limit", "128", "--cap-drop", "ALL", "--security-opt", "no-new-privileges:true", "--user", "65534:65534", "--tmpfs", "/tmp:rw,nosuid,size=128m", "--mount", `type=bind,src=${inputDir},dst=/input,readonly`, "--mount", `type=bind,src=${verifierDir},dst=/verifier,readonly`, image, "sh", "-lc", script], { timeout: 10 * 60_000, maxBuffer: maxOutput });
