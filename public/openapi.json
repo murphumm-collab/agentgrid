@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "AgentGrid Agent API",
-    "version": "0.8.8",
+    "version": "0.8.9",
     "description": "Discovery, public task/proof views and the authenticated Agent job, encrypted artifact and publisher hidden-test workflows. Admin, internal operations and Demo-only mutation routes are intentionally excluded. Artifact bytes and hidden tests are never returned by public endpoints."
   },
   "servers": [
@@ -3802,11 +3802,12 @@
           "workQueue",
           "actionContracts",
           "onChainActions",
+          "onChainActionExclusions",
           "trustBoundary"
         ],
         "properties": {
           "schemaVersion": {
-            "const": "1.9"
+            "const": "2.0"
           },
           "generatedAt": {
             "type": "string",
@@ -4373,6 +4374,23 @@
                 "availability": { "type": "string", "enum": ["PRIMARY", "COMPATIBILITY"] },
                 "authorization": { "type": "string", "minLength": 1, "maxLength": 1000 },
                 "effect": { "type": "string", "minLength": 1, "maxLength": 2000 }
+              }
+            }
+          },
+          "onChainActionExclusions": {
+            "type": "array",
+            "minItems": 53,
+            "maxItems": 53,
+            "description": "Every remaining state-changing function in the nine compiled deployment ABIs, classified as governance-only, protocol-internal, or a generic token transfer outside the AgentGrid participant workflow.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["contract", "signature", "classification", "reason"],
+              "properties": {
+                "contract": { "type": "string", "enum": ["token", "stakeManager", "agentRegistry", "taskRegistry", "rewardVault", "verificationPanel", "verificationArbitrationCourt", "disputeResolver", "protocolEconomics"] },
+                "signature": { "type": "string", "minLength": 3, "maxLength": 300 },
+                "classification": { "type": "string", "enum": ["GOVERNANCE_ONLY", "PROTOCOL_INTERNAL", "TOKEN_TRANSFER_OUTSIDE_AGENTGRID_WORKFLOW"] },
+                "reason": { "type": "string", "minLength": 1, "maxLength": 1000 }
               }
             }
           },

@@ -28,7 +28,7 @@ describe("AI dashboard", () => {
   it("publishes deterministic action metadata without private task states", () => {
     const dashboard = buildAiDashboard(source(), new Date("2026-08-31T00:00:00.000Z"));
     const serialized = JSON.stringify(dashboard);
-    expect(dashboard.schemaVersion).toBe("1.9");
+    expect(dashboard.schemaVersion).toBe("2.0");
     expect(dashboard.selectionPolicy).toMatchObject({
       positiveChangesAfterRequest: "IGNORED_FOR_FROZEN_DRAW",
       mainnetRequirement: "VRF_REQUIRED",
@@ -60,10 +60,12 @@ describe("AI dashboard", () => {
     expect(dashboardPage).toContain("task.promotion");
     expect(dashboardPage).toContain("sponsored-badge");
     expect(dashboard.onChainActions).toHaveLength(44);
+    expect(dashboard.onChainActionExclusions).toHaveLength(53);
     expect(dashboard.onChainActions.find((action) => action.id === "open-verification-challenge")).toMatchObject({
       contract: "verificationArbitrationCourt", signature: "openChallenge(uint256,address,bytes32)", role: "ELIGIBLE_CHALLENGER",
     });
     expect(dashboardPage).toContain("dashboard.onChainActions");
+    expect(dashboardPage).toContain("dashboard.onChainActionExclusions");
     expect(dashboard.generatedAt).toBe("2026-08-31T00:00:00.000Z");
     expect(dashboard.actionContracts.find((action) => action.id === "lease-job")?.authentication).toContain("x-agent-id");
     expect(serialized).not.toContain("Private draft");
@@ -77,6 +79,7 @@ describe("AI dashboard", () => {
           revenuePolicy: { properties: { realizedRevenueStatus: { const: string }; protocolInfluence: { properties: Record<string, { const: string }> } } };
           actionContracts: { items: { properties: { method: { enum: string[] } } } };
           onChainActions: { minItems: number; maxItems: number; items: { properties: { contract: { enum: string[] }; availability: { enum: string[] } } } };
+          onChainActionExclusions: { minItems: number; maxItems: number; items: { properties: { classification: { enum: string[] } } } };
         };
       } } };
     };
@@ -86,6 +89,10 @@ describe("AI dashboard", () => {
     const documentedMethods = openapi.components.schemas.AiDashboard.properties.actionContracts.items.properties.method.enum;
     expect(documentedMethods).toEqual(expect.arrayContaining([...new Set(dashboard.actionContracts.map((action) => action.method))]));
     expect(openapi.components.schemas.AiDashboard.properties.onChainActions).toMatchObject({ minItems: 44, maxItems: 44 });
+    expect(openapi.components.schemas.AiDashboard.properties.onChainActionExclusions).toMatchObject({ minItems: 53, maxItems: 53 });
+    expect(openapi.components.schemas.AiDashboard.properties.onChainActionExclusions.items.properties.classification.enum).toEqual([
+      "GOVERNANCE_ONLY", "PROTOCOL_INTERNAL", "TOKEN_TRANSFER_OUTSIDE_AGENTGRID_WORKFLOW",
+    ]);
     expect(openapi.components.schemas.AiDashboard.properties.onChainActions.items.properties.contract.enum).toEqual(expect.arrayContaining(["taskRegistry", "verificationArbitrationCourt", "disputeResolver"]));
     for (const action of dashboard.actionContracts) {
       expect(openapi.paths[action.endpoint]?.[action.method.toLowerCase()]?.operationId).toBe(action.operationId);

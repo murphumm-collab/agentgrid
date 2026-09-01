@@ -55,7 +55,7 @@
     "machine-readable advertising/sponsorship allocation policy with simulation-only buyback state and zero protocol-selection influence",
     "receipt-bound platform-signed sponsored placement with explicit labels, automatic expiry, replay protection and display-order-only effect",
     "versioned AI operations dashboard with explicit action contracts and trust boundaries",
-    "separate complete inventories for 37 HTTP operations and 44 direct BSC wallet actions with exact contract signatures",
+    "compiled-ABI-complete inventories for 37 HTTP operations, 44 supported direct BSC participant actions and 53 explicitly classified exclusions",
     "weighted delivery and maintenance rewards"
   ],
   "a2aCompatible": false,

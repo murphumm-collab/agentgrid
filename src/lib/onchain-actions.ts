@@ -17,6 +17,13 @@ export interface OnChainActionContract {
   effect: string;
 }
 
+export interface OnChainActionExclusion {
+  contract: OnChainContractKey;
+  signature: string;
+  classification: "GOVERNANCE_ONLY" | "PROTOCOL_INTERNAL" | "TOKEN_TRANSFER_OUTSIDE_AGENTGRID_WORKFLOW";
+  reason: string;
+}
+
 const action = (id: string, phase: OnChainActionPhase, role: string, contract: OnChainContractKey, signature: string, authorization: string, effect: string, availability: OnChainActionContract["availability"] = "PRIMARY"): OnChainActionContract => ({ id, phase, role, contract, signature, availability, authorization, effect });
 
 export const onChainActionContracts = [
@@ -73,3 +80,70 @@ export const onChainActionContracts = [
   action("claim-reward-checkpoint", "REWARDS", "RECIPIENT", "rewardVault", "claim(uint256,uint8)", "checkpoint is approved, due and caller has an unpaid allocation", "pays only the caller's frozen executor or validator allocation"),
   action("claim-source-vesting", "REWARDS", "VESTING_RECIPIENT", "protocolEconomics", "claimVesting(bytes32)", "caller is the vesting recipient and the governed unlock time elapsed", "pays one immutable DAO/source vesting exactly once"),
 ] as const satisfies readonly OnChainActionContract[];
+
+const excluded = (contract: OnChainContractKey, signature: string, classification: OnChainActionExclusion["classification"], reason: string): OnChainActionExclusion => ({ contract, signature, classification, reason });
+const governance = (contract: OnChainContractKey, signature: string) => excluded(contract, signature, "GOVERNANCE_ONLY", "Requires contract owner/bootstrap governance and is never a participant workflow action.");
+const internal = (contract: OnChainContractKey, signature: string) => excluded(contract, signature, "PROTOCOL_INTERNAL", "Authorized only for another configured protocol contract; wallets must use the originating lifecycle action.");
+
+export const onChainActionExclusions = [
+  governance("token", "mintRewardReserve(address,uint256)"),
+  governance("token", "renounceOwnership()"),
+  governance("token", "transferOwnership(address)"),
+  excluded("token", "transfer(address,uint256)", "TOKEN_TRANSFER_OUTSIDE_AGENTGRID_WORKFLOW", "Generic ERC-20 transfer; it does not create protocol stake, credit, payment attribution or task evidence."),
+  excluded("token", "transferFrom(address,address,uint256)", "TOKEN_TRANSFER_OUTSIDE_AGENTGRID_WORKFLOW", "Generic allowance transfer; protocol funding must use the named stake or Court entrypoint."),
+
+  internal("stakeManager", "chargeEvaluationFee(uint256,uint256,uint256,address)"),
+  internal("stakeManager", "chargeLifecycleFee(uint256,uint256,uint8,uint256)"),
+  internal("stakeManager", "chargePublicationFee(uint256,uint256,uint256,address)"),
+  internal("stakeManager", "consumeCredit(uint256,uint256,address)"),
+  internal("stakeManager", "releasePosition(uint256,uint256)"),
+  internal("stakeManager", "slashAgentPosition(uint256,uint256,address)"),
+  internal("stakeManager", "slashPosition(uint256,uint256,uint256,address)"),
+  governance("stakeManager", "renounceOwnership()"),
+  governance("stakeManager", "setProtocolEconomics(address)"),
+  governance("stakeManager", "setQualitySlasher(address)"),
+  governance("stakeManager", "setTaskRegistry(address)"),
+  governance("stakeManager", "transferOwnership(address)"),
+
+  internal("agentRegistry", "recordOutcome(address,uint8,bytes32,bytes32,bool,bool,bytes32)"),
+  internal("agentRegistry", "recordTaskOutcome(address,uint8,uint256,address,uint256,bytes32,bytes32,bool,bool,bytes32)"),
+  internal("agentRegistry", "rehabilitateRole(address,uint8,bytes32)"),
+  governance("agentRegistry", "setOutcomeReporter(address,uint8)"),
+
+  internal("taskRegistry", "finalizeVerificationPanel(uint256,uint32,uint8,bool,address,bytes32,bytes32,uint16[],address[3],uint16[3])"),
+  internal("taskRegistry", "resolveRejection(uint256,bool,bytes32)"),
+  governance("taskRegistry", "renounceOwnership()"),
+  governance("taskRegistry", "setCoordinator(address)"),
+  governance("taskRegistry", "setDisputeResolver(address)"),
+  governance("taskRegistry", "setProtocolEconomics(address)"),
+  governance("taskRegistry", "setVerificationPanel(address)"),
+  governance("taskRegistry", "transferOwnership(address)"),
+
+  internal("rewardVault", "approveCheckpoint(uint256,uint8)"),
+  internal("rewardVault", "createGrant(uint256,address[],uint16[],address,bytes32,uint256,uint256)"),
+  internal("rewardVault", "registerEvaluationFee(uint256,uint256)"),
+  internal("rewardVault", "setTesterPanel(uint256,uint8,address[3],uint16[3])"),
+  internal("rewardVault", "settleEvaluationFee(uint256,address[])"),
+  internal("rewardVault", "updateFutureParticipants(uint256,uint8,address[],uint16[],address)"),
+  governance("rewardVault", "renounceOwnership()"),
+  governance("rewardVault", "setProtocolEconomics(address)"),
+  governance("rewardVault", "setTaskRegistry(address)"),
+  governance("rewardVault", "setVerificationPanel(address)"),
+  governance("rewardVault", "transferOwnership(address)"),
+
+  internal("verificationPanel", "challenge(uint256,address,bytes32)"),
+  internal("verificationPanel", "resolveChallenge(uint256,bool,bytes32,bytes32)"),
+  internal("verificationPanel", "startPanel(uint256,uint32,uint8,uint8,address[3],uint16,uint16[3],bytes32[3])"),
+  governance("verificationPanel", "setArbitrationCourt(address)"),
+
+  governance("disputeResolver", "renounceOwnership()"),
+  governance("disputeResolver", "transferOwnership(address)"),
+
+  internal("protocolEconomics", "freezeTaskSource(uint256,address)"),
+  internal("protocolEconomics", "routeLifecycleCharge(uint256,uint8,uint256,uint256)"),
+  internal("protocolEconomics", "routeTaskReward(uint256,uint256,uint256)"),
+  governance("protocolEconomics", "configureProtocol(address,address)"),
+  governance("protocolEconomics", "configureSource(bytes32,address,bool)"),
+  governance("protocolEconomics", "renounceOwnership()"),
+  governance("protocolEconomics", "transferOwnership(address)"),
+] as const satisfies readonly OnChainActionExclusion[];

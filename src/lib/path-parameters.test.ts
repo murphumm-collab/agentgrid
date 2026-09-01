@@ -40,7 +40,7 @@ describe("production path parameter contracts", () => {
       info: { version: string };
       paths: Record<string, Record<string, { operationId?: string; parameters?: Array<{ in: string; schema: Record<string, unknown> }>; responses?: Record<string, { content?: { "application/json"?: { schema?: { $ref?: string } } } }> }>>;
     };
-    expect(openapi.info.version).toBe("0.8.8");
+    expect(openapi.info.version).toBe("0.8.9");
     const contracts: Array<[string, string[], Record<string, unknown>]> = [
       ["/api/tasks/{taskId}", ["get"], taskSchema],
       ["/api/chain/task-commitments/{commitmentId}/transaction", ["post", "delete"], uuidSchema],

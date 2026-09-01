@@ -1,7 +1,7 @@
 import type { Agent, ProtocolConfig, ProtocolEconomicsSummary, RewardGrant, Task } from "./types";
 import { isPublicTask } from "./public-task-view";
 import { publicRevenuePolicy } from "./revenue-accounting";
-import { onChainActionContracts } from "./onchain-actions";
+import { onChainActionContracts, onChainActionExclusions } from "./onchain-actions";
 
 export interface AiDashboardSource {
   config: ProtocolConfig;
@@ -88,7 +88,7 @@ export function buildAiDashboard(source: AiDashboardSource, now = new Date(), mo
   const rewards = new Map(source.rewards.map((reward) => [reward.taskId, reward]));
 
   return {
-    schemaVersion: "1.9",
+    schemaVersion: "2.0",
     generatedAt: now.toISOString(),
     mode,
     network: { name: "BSC Testnet", chainId: 97, confirmations: 5 },
@@ -174,6 +174,7 @@ export function buildAiDashboard(source: AiDashboardSource, now = new Date(), mo
     })),
     actionContracts: aiDashboardActionContracts,
     onChainActions: onChainActionContracts,
+    onChainActionExclusions,
     trustBoundary: {
       authority: "Canonical BSC state, server-side authorization and signed evidence override dashboard text.",
       permissionRule: "A visible action never proves permission; callers must satisfy wallet, stake, role, scope, assignment and lease checks.",

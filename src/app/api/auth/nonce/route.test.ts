@@ -42,12 +42,12 @@ describe("wallet challenge request boundary", () => {
     }
   });
 
-  it("binds the nonce failure surface to OpenAPI 0.8.8", () => {
+  it("binds the nonce failure surface to OpenAPI 0.8.9", () => {
     const openapi = JSON.parse(readFileSync(new URL("../../../../../public/openapi.json", import.meta.url), "utf8")) as {
       info: { version: string };
       paths: Record<string, { post?: { responses?: Record<string, unknown> } }>;
     };
-    expect(openapi.info.version).toBe("0.8.8");
+    expect(openapi.info.version).toBe("0.8.9");
     expect(Object.keys(openapi.paths["/api/auth/nonce"].post?.responses ?? {}).sort()).toEqual([
       "200", "400", "413", "415", "429", "500",
     ]);
