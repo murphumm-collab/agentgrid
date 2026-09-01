@@ -59,6 +59,15 @@ export default async function AiDashboardPage() {
         <div className="stat-card"><div className="stat-head"><span>{zh ? "锁仓分配" : "Vested allocation"}</span></div><div className="stat-value">{(dashboard.economics.daoVested + dashboard.economics.sourceVested).toLocaleString()}</div><div className="stat-note">DAO {dashboard.economics.daoVested.toLocaleString()} · source {dashboard.economics.sourceVested.toLocaleString()}</div></div>
       </div>
       <div className="notice" style={{ marginTop: 14 }}><strong>AGT net demand 30d / 90d: UNAVAILABLE</strong><p>{zh ? "外部回购执行和金库出售回执尚未纳入索引，因此不会用不完整数据计算或暗示净需求为正。" : dashboard.economics.netDemand30d.reason}</p></div>
+      <div className="notice" style={{ marginTop: 14 }} aria-label={zh ? "广告与赞助账本边界" : "Advertising and sponsorship accounting boundary"}>
+        <strong>{zh ? "广告/赞助账本：仅本地模拟" : "Advertising/sponsorship accounting: local simulation only"}</strong>
+        <p>{zh
+          ? `广告按 50% 平台现金 / 40% RewardVault 回购 / 10% 回购销毁；赞助按 70% 赞助任务池 / 10% 平台现金 / 10% 回购销毁 / 10% RewardVault 回购。真实收入状态：${dashboard.revenuePolicy.realizedRevenueStatus}。`
+          : `Advertising routes 50% platform cash / 40% RewardVault buyback / 10% buy-and-burn. Sponsorship routes 70% sponsored task pool / 10% platform cash / 10% buy-and-burn / 10% RewardVault buyback. Realized revenue status: ${dashboard.revenuePolicy.realizedRevenueStatus}.`}</p>
+        <p>{zh
+          ? "未完成 DEX/Oracle 审计前不执行真实回购。广告与赞助对评估者、验证者、仲裁者选择、质量排名、完成规则和挑战窗口的影响均为 NONE。"
+          : "No live buyback executes before DEX/oracle audit. Advertising and sponsorship influence over evaluator, validator and arbitrator selection, quality ranking, completion rules and challenge windows is NONE."}</p>
+      </div>
     </section>
 
     <div className="grid stats-grid">

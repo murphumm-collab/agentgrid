@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "AgentGrid Agent API",
-    "version": "0.8.5",
+    "version": "0.8.6",
     "description": "Discovery, public task/proof views and the authenticated Agent job, encrypted artifact and publisher hidden-test workflows. Admin, internal operations and Demo-only mutation routes are intentionally excluded. Artifact bytes and hidden tests are never returned by public endpoints."
   },
   "servers": [
@@ -3796,6 +3796,7 @@
           "discovery",
           "summary",
           "economics",
+          "revenuePolicy",
           "selectionPolicy",
           "workQueue",
           "actionContracts",
@@ -3803,7 +3804,7 @@
         ],
         "properties": {
           "schemaVersion": {
-            "const": "1.6"
+            "const": "1.7"
           },
           "generatedAt": {
             "type": "string",
@@ -3965,6 +3966,94 @@
                 "additionalProperties": false,
                 "required": ["status", "reason"],
                 "properties": { "status": { "const": "UNAVAILABLE" }, "reason": { "type": "string" } }
+              }
+            }
+          },
+          "revenuePolicy": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "accountingMode",
+              "activation",
+              "liveReceiptsIndexed",
+              "realizedRevenueStatus",
+              "settlementAssets",
+              "advertisingAllocationBps",
+              "sponsorshipAllocationBps",
+              "accountingStates",
+              "executionControls",
+              "protocolInfluence"
+            ],
+            "properties": {
+              "accountingMode": { "const": "LOCAL_SIMULATION_ONLY" },
+              "activation": { "const": "SIMULATION_ONLY_EXTERNAL_DEX_ORACLE_AUDIT_REQUIRED" },
+              "liveReceiptsIndexed": { "const": false },
+              "realizedRevenueStatus": { "const": "UNAVAILABLE" },
+              "settlementAssets": {
+                "type": "array",
+                "prefixItems": [{ "const": "USDT" }, { "const": "USDC" }, { "const": "BNB" }],
+                "minItems": 3,
+                "maxItems": 3
+              },
+              "advertisingAllocationBps": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["platformCash", "rewardVaultBuyback", "burnBuyback"],
+                "properties": {
+                  "platformCash": { "const": 5000 },
+                  "rewardVaultBuyback": { "const": 4000 },
+                  "burnBuyback": { "const": 1000 }
+                }
+              },
+              "sponsorshipAllocationBps": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["sponsoredTaskPoolBuyback", "platformCash", "burnBuyback", "rewardVaultBuyback"],
+                "properties": {
+                  "sponsoredTaskPoolBuyback": { "const": 7000 },
+                  "platformCash": { "const": 1000 },
+                  "burnBuyback": { "const": 1000 },
+                  "rewardVaultBuyback": { "const": 1000 }
+                }
+              },
+              "accountingStates": {
+                "type": "array",
+                "prefixItems": [
+                  { "const": "UNCONFIRMED_REVENUE" },
+                  { "const": "CONFIRMED_PLATFORM_CASH" },
+                  { "const": "AVAILABLE_TO_SCHEDULE" },
+                  { "const": "SUBMITTED_UNCONFIRMED_BUYBACK" },
+                  { "const": "CONFIRMED_AGT_RECEIPT" }
+                ],
+                "minItems": 5,
+                "maxItems": 5
+              },
+              "executionControls": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["settlementAssetScoped", "receiptReplayProtected", "transactionReplayProtected", "twapRequired", "maximumSlippageRequired", "periodSpendCapRequired", "minimumAgtOutRequired"],
+                "properties": {
+                  "settlementAssetScoped": { "const": true },
+                  "receiptReplayProtected": { "const": true },
+                  "transactionReplayProtected": { "const": true },
+                  "twapRequired": { "const": true },
+                  "maximumSlippageRequired": { "const": true },
+                  "periodSpendCapRequired": { "const": true },
+                  "minimumAgtOutRequired": { "const": true }
+                }
+              },
+              "protocolInfluence": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["evaluatorSelection", "validatorSelection", "arbitratorSelection", "qualityRanking", "completionRules", "challengeWindow"],
+                "properties": {
+                  "evaluatorSelection": { "const": "NONE" },
+                  "validatorSelection": { "const": "NONE" },
+                  "arbitratorSelection": { "const": "NONE" },
+                  "qualityRanking": { "const": "NONE" },
+                  "completionRules": { "const": "NONE" },
+                  "challengeWindow": { "const": "NONE" }
+                }
               }
             }
           },

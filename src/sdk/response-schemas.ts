@@ -125,7 +125,7 @@ const protocolEconomicsSummarySchema = z.object({
 }).strict();
 
 export const publicDashboardResponseSchema = z.object({
-  schemaVersion: z.literal("1.6"),
+  schemaVersion: z.literal("1.7"),
   generatedAt: dateTime,
   mode: z.enum(["demo", "production"]),
   network: z.object({ name: z.literal("BSC Testnet"), chainId: z.literal(97), confirmations: z.literal(5) }).strict(),
@@ -145,6 +145,36 @@ export const publicDashboardResponseSchema = z.object({
     issuedRewardsAgt: z.number().nonnegative(),
   }).strict(),
   economics: protocolEconomicsSummarySchema,
+  revenuePolicy: z.object({
+    accountingMode: z.literal("LOCAL_SIMULATION_ONLY"),
+    activation: z.literal("SIMULATION_ONLY_EXTERNAL_DEX_ORACLE_AUDIT_REQUIRED"),
+    liveReceiptsIndexed: z.literal(false),
+    realizedRevenueStatus: z.literal("UNAVAILABLE"),
+    settlementAssets: z.tuple([z.literal("USDT"), z.literal("USDC"), z.literal("BNB")]),
+    advertisingAllocationBps: z.object({
+      platformCash: z.literal(5_000), rewardVaultBuyback: z.literal(4_000), burnBuyback: z.literal(1_000),
+    }).strict(),
+    sponsorshipAllocationBps: z.object({
+      sponsoredTaskPoolBuyback: z.literal(7_000), platformCash: z.literal(1_000),
+      burnBuyback: z.literal(1_000), rewardVaultBuyback: z.literal(1_000),
+    }).strict(),
+    accountingStates: z.tuple([
+      z.literal("UNCONFIRMED_REVENUE"), z.literal("CONFIRMED_PLATFORM_CASH"),
+      z.literal("AVAILABLE_TO_SCHEDULE"), z.literal("SUBMITTED_UNCONFIRMED_BUYBACK"),
+      z.literal("CONFIRMED_AGT_RECEIPT"),
+    ]),
+    executionControls: z.object({
+      settlementAssetScoped: z.literal(true), receiptReplayProtected: z.literal(true),
+      transactionReplayProtected: z.literal(true), twapRequired: z.literal(true),
+      maximumSlippageRequired: z.literal(true), periodSpendCapRequired: z.literal(true),
+      minimumAgtOutRequired: z.literal(true),
+    }).strict(),
+    protocolInfluence: z.object({
+      evaluatorSelection: z.literal("NONE"), validatorSelection: z.literal("NONE"),
+      arbitratorSelection: z.literal("NONE"), qualityRanking: z.literal("NONE"),
+      completionRules: z.literal("NONE"), challengeWindow: z.literal("NONE"),
+    }).strict(),
+  }).strict(),
   selectionPolicy: z.object({
     snapshot: z.literal("REQUEST_TIME_REGISTRY_VERSION_AND_TIMESTAMP"),
     positiveChangesAfterRequest: z.literal("IGNORED_FOR_FROZEN_DRAW"),

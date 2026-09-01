@@ -3,6 +3,34 @@ import { splitAdvertisingRevenue, splitSponsorshipRevenue } from "./protocol-eco
 export type RevenueChannel = "ADVERTISING" | "SPONSORSHIP";
 export type BuybackPurpose = "REWARD_VAULT" | "BURN" | "SPONSORED_TASK_POOL";
 
+export const publicRevenuePolicy = {
+  accountingMode: "LOCAL_SIMULATION_ONLY" as const,
+  activation: "SIMULATION_ONLY_EXTERNAL_DEX_ORACLE_AUDIT_REQUIRED" as const,
+  liveReceiptsIndexed: false,
+  realizedRevenueStatus: "UNAVAILABLE" as const,
+  settlementAssets: ["USDT", "USDC", "BNB"] as const,
+  advertisingAllocationBps: { platformCash: 5_000, rewardVaultBuyback: 4_000, burnBuyback: 1_000 },
+  sponsorshipAllocationBps: { sponsoredTaskPoolBuyback: 7_000, platformCash: 1_000, burnBuyback: 1_000, rewardVaultBuyback: 1_000 },
+  accountingStates: ["UNCONFIRMED_REVENUE", "CONFIRMED_PLATFORM_CASH", "AVAILABLE_TO_SCHEDULE", "SUBMITTED_UNCONFIRMED_BUYBACK", "CONFIRMED_AGT_RECEIPT"] as const,
+  executionControls: {
+    settlementAssetScoped: true,
+    receiptReplayProtected: true,
+    transactionReplayProtected: true,
+    twapRequired: true,
+    maximumSlippageRequired: true,
+    periodSpendCapRequired: true,
+    minimumAgtOutRequired: true,
+  },
+  protocolInfluence: {
+    evaluatorSelection: "NONE" as const,
+    validatorSelection: "NONE" as const,
+    arbitratorSelection: "NONE" as const,
+    qualityRanking: "NONE" as const,
+    completionRules: "NONE" as const,
+    challengeWindow: "NONE" as const,
+  },
+};
+
 export interface RevenueReceipt {
   id: string;
   channel: RevenueChannel;

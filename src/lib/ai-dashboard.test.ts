@@ -28,7 +28,7 @@ describe("AI dashboard", () => {
   it("publishes deterministic action metadata without private task states", () => {
     const dashboard = buildAiDashboard(source(), new Date("2026-08-31T00:00:00.000Z"));
     const serialized = JSON.stringify(dashboard);
-    expect(dashboard.schemaVersion).toBe("1.6");
+    expect(dashboard.schemaVersion).toBe("1.7");
     expect(dashboard.selectionPolicy).toMatchObject({
       positiveChangesAfterRequest: "IGNORED_FOR_FROZEN_DRAW",
       mainnetRequirement: "VRF_REQUIRED",
@@ -47,6 +47,13 @@ describe("AI dashboard", () => {
       },
     });
     expect(dashboard.economics).toMatchObject({ agentPool: 190, burned: 3, netDemand30d: { status: "UNAVAILABLE" } });
+    expect(dashboard.revenuePolicy).toMatchObject({
+      accountingMode: "LOCAL_SIMULATION_ONLY",
+      realizedRevenueStatus: "UNAVAILABLE",
+      advertisingAllocationBps: { platformCash: 5_000, rewardVaultBuyback: 4_000, burnBuyback: 1_000 },
+      sponsorshipAllocationBps: { sponsoredTaskPoolBuyback: 7_000, platformCash: 1_000 },
+      protocolInfluence: { evaluatorSelection: "NONE", validatorSelection: "NONE", qualityRanking: "NONE" },
+    });
     expect(dashboard.generatedAt).toBe("2026-08-31T00:00:00.000Z");
     expect(dashboard.actionContracts.find((action) => action.id === "lease-job")?.authentication).toContain("x-agent-id");
     expect(serialized).not.toContain("Private draft");
@@ -54,8 +61,17 @@ describe("AI dashboard", () => {
     expect(dashboard.trustBoundary.redacted).toContain("hidden tests");
     const openapi = JSON.parse(readFileSync(new URL("../../public/openapi.json", import.meta.url), "utf8")) as {
       paths: Record<string, Record<string, { operationId?: string }>>;
-      components: { schemas: { AiDashboard: { properties: { actionContracts: { items: { properties: { method: { enum: string[] } } } } } } } };
+      components: { schemas: { AiDashboard: {
+        required: string[];
+        properties: {
+          revenuePolicy: { properties: { realizedRevenueStatus: { const: string }; protocolInfluence: { properties: Record<string, { const: string }> } } };
+          actionContracts: { items: { properties: { method: { enum: string[] } } } };
+        };
+      } } };
     };
+    expect(openapi.components.schemas.AiDashboard.required).toContain("revenuePolicy");
+    expect(openapi.components.schemas.AiDashboard.properties.revenuePolicy.properties.realizedRevenueStatus.const).toBe("UNAVAILABLE");
+    expect(new Set(Object.values(openapi.components.schemas.AiDashboard.properties.revenuePolicy.properties.protocolInfluence.properties).map((item) => item.const))).toEqual(new Set(["NONE"]));
     const documentedMethods = openapi.components.schemas.AiDashboard.properties.actionContracts.items.properties.method.enum;
     expect(documentedMethods).toEqual(expect.arrayContaining([...new Set(dashboard.actionContracts.map((action) => action.method))]));
     for (const action of dashboard.actionContracts) {

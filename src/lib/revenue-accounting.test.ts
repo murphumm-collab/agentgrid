@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { reconcileRevenueAccounting, type BuybackExecution } from "./revenue-accounting";
+import { publicRevenuePolicy, reconcileRevenueAccounting, type BuybackExecution } from "./revenue-accounting";
 
 const policy = { settlementAsset: "USDC", settlementDecimals: 18, agtDecimals: 18, maxSlippageBps: 100, periodSeconds: 86_400, maxSettlementSpendPerPeriod: 1_000n };
 const receipt = (id: string, channel: "ADVERTISING" | "SPONSORSHIP", amount: bigint, confirmations = 5) => ({
@@ -14,6 +14,9 @@ const execution = (overrides: Partial<BuybackExecution> = {}): BuybackExecution 
 
 describe("advertising and sponsorship revenue accounting", () => {
   it("separates confirmed cash, unconfirmed revenue, pending purchases and executed AGT", () => {
+    expect(Object.values(publicRevenuePolicy.advertisingAllocationBps).reduce((sum, value) => sum + value, 0)).toBe(10_000);
+    expect(Object.values(publicRevenuePolicy.sponsorshipAllocationBps).reduce((sum, value) => sum + value, 0)).toBe(10_000);
+    expect(new Set(Object.values(publicRevenuePolicy.protocolInfluence))).toEqual(new Set(["NONE"]));
     const report = reconcileRevenueAccounting({
       receipts: [receipt("ad-1", "ADVERTISING", 1_000n), receipt("sponsor-1", "SPONSORSHIP", 1_000n), receipt("ad-pending", "ADVERTISING", 500n, 2)],
       executions: [

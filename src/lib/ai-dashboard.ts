@@ -1,5 +1,6 @@
 import type { Agent, ProtocolConfig, ProtocolEconomicsSummary, RewardGrant, Task } from "./types";
 import { isPublicTask } from "./public-task-view";
+import { publicRevenuePolicy } from "./revenue-accounting";
 
 export interface AiDashboardSource {
   config: ProtocolConfig;
@@ -86,7 +87,7 @@ export function buildAiDashboard(source: AiDashboardSource, now = new Date(), mo
   const rewards = new Map(source.rewards.map((reward) => [reward.taskId, reward]));
 
   return {
-    schemaVersion: "1.6",
+    schemaVersion: "1.7",
     generatedAt: now.toISOString(),
     mode,
     network: { name: "BSC Testnet", chainId: 97, confirmations: 5 },
@@ -106,6 +107,7 @@ export function buildAiDashboard(source: AiDashboardSource, now = new Date(), mo
       issuedRewardsAgt: source.stats.issuedRewards,
     },
     economics: source.economics,
+    revenuePolicy: publicRevenuePolicy,
     selectionPolicy: {
       snapshot: "REQUEST_TIME_REGISTRY_VERSION_AND_TIMESTAMP",
       positiveChangesAfterRequest: "IGNORED_FOR_FROZEN_DRAW",
