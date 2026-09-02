@@ -23,6 +23,7 @@ export const browserChainConfigSchema = z.object({
     verificationArbitrationCourt: address,
     disputeResolver: address,
     protocolEconomics: address,
+    competitionSlotPassRegistry: address,
   }).strict(),
 }).strict();
 
@@ -40,6 +41,7 @@ export interface BrowserChainConfig {
     verificationArbitrationCourt: Address;
     disputeResolver: Address;
     protocolEconomics: Address;
+    competitionSlotPassRegistry: Address;
   };
 }
 

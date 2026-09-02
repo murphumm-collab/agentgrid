@@ -9,6 +9,7 @@ const artifactNames = {
   agentRegistry: "AgentRegistry",
   rewardVault: "RewardVault",
   taskRegistry: "TaskRegistry",
+  competitionSlotPassRegistry: "CompetitionSlotPassRegistry",
   verificationPanel: "VerificationPanel",
   verificationArbitrationCourt: "VerificationArbitrationCourt",
   disputeResolver: "DisputeResolver",

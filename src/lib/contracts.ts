@@ -119,6 +119,7 @@ export const taskRegistryAbi = parseAbi([
   "event TaskEvaluationFinalized(uint256 indexed taskId,bool approved,bytes32 categoryHash,uint16 difficultyBps,uint32 estimatedHours,uint16 testabilityBps,uint256 requestedReward)",
   "event TaskEvaluationExpired(uint256 indexed taskId)",
   "event TaskPublicationFeeCharged(uint256 indexed taskId,uint256 indexed positionId,uint256 amount,address indexed recipient)",
+  "event ExecutorSlotsFrozen(uint256 indexed taskId,uint8 includedSlots,uint8 paidExtraSlots,uint8 totalSlots,bytes32 indexed authorizationId,bytes32 indexed paymentReceiptHash)",
   "event TaskClaimed(uint256 indexed taskId,address indexed executor)",
   "event ExecutorEvicted(uint256 indexed taskId,address indexed executor)",
   "event TeamClosed(uint256 indexed taskId,uint256 executorCount)",
@@ -137,6 +138,18 @@ export const taskRegistryAbi = parseAbi([
   "event MaintenanceRepairRequested(uint256 indexed taskId,uint8 indexed checkpoint,uint32 indexed workRound,bytes32 evidenceHash)",
   "event MaintenancePanelRequested(uint256 indexed taskId,uint8 indexed checkpoint,uint32 indexed workRound)",
   "event RejectionResolved(uint256 indexed taskId,bool executorWins,bytes32 resolutionHash,uint256 publisherSlash)",
+]);
+
+// Read/event-only application surface. Commercial authorization issuance and
+// consumption are deliberately not exposed as participant SDK actions.
+export const competitionSlotPassRegistryAbi = parseAbi([
+  "function taskRegistry() view returns (address)",
+  "function issuer() view returns (address)",
+  "function receiptAuthorizationId(bytes32) view returns (bytes32)",
+  "function publisherSpecAuthorizationId(bytes32) view returns (bytes32)",
+  "event CompetitionSlotIssuerUpdated(address indexed previousIssuer,address indexed newIssuer)",
+  "event CompetitionSlotAuthorizationRegistered(bytes32 indexed authorizationId,address indexed publisher,bytes32 indexed paymentReceiptHash,address taskRegistry,bytes32 specHash,bytes32 asset,uint256 amountAtomic,uint64 issuedAt,uint64 expiresAt,uint8 includedSlots,uint8 paidSlots,uint8 totalSlots,address issuer)",
+  "event CompetitionSlotAuthorizationConsumed(bytes32 indexed authorizationId,address indexed publisher,bytes32 indexed paymentReceiptHash,address taskRegistry,bytes32 specHash,bytes32 asset,uint256 amountAtomic,uint64 issuedAt,uint64 expiresAt,uint8 includedSlots,uint8 paidSlots,uint8 totalSlots)",
 ]);
 
 export const verificationPanelAbi = parseAbi([

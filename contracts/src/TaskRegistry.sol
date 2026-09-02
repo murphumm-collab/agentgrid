@@ -8,6 +8,12 @@ import {AgentRegistry} from "./AgentRegistry.sol";
 import {VerificationPanel} from "./VerificationPanel.sol";
 import {ProtocolEconomics} from "./ProtocolEconomics.sol";
 
+interface ICompetitionSlotPassRegistry {
+    function taskRegistry() external view returns (address);
+    function consumeFor(address publisher, bytes32 specHash, uint8 totalSlots)
+        external returns (bytes32 authorizationId, bytes32 paymentReceiptHash);
+}
+
 contract TaskRegistry is Ownable {
     uint256 public constant ABUSIVE_REJECTION_SLASH_BPS = 500;
     uint256 public constant BPS = 10_000;
@@ -50,6 +56,7 @@ contract TaskRegistry is Ownable {
     address public disputeResolver;
     VerificationPanel public verificationPanel;
     ProtocolEconomics public protocolEconomics;
+    ICompetitionSlotPassRegistry private competitionSlotPassRegistry;
     uint256 public nextTaskId = 1;
     mapping(uint256 => Task) public tasks;
     mapping(uint256 => ExecutionMode) private taskExecutionMode;
@@ -113,6 +120,14 @@ contract TaskRegistry is Ownable {
     event TaskCreated(uint256 indexed taskId, address indexed publisher, uint256 indexed positionId, bytes32 specHash);
     event TaskExecutionModeSet(uint256 indexed taskId, ExecutionMode mode);
     event TaskTesterCapabilitiesSet(uint256 indexed taskId, uint8 requiredCapabilities);
+    event ExecutorSlotsFrozen(
+        uint256 indexed taskId,
+        uint8 includedSlots,
+        uint8 paidExtraSlots,
+        uint8 totalSlots,
+        bytes32 authorizationId,
+        bytes32 paymentReceiptHash
+    );
     event TaskEvaluationRequested(
         uint256 indexed taskId,
         address indexed publisher,
@@ -181,6 +196,13 @@ contract TaskRegistry is Ownable {
         protocolEconomics = economics;
     }
 
+    function setCompetitionSlotPassRegistry(ICompetitionSlotPassRegistry registry) external onlyOwner {
+        if (
+            address(competitionSlotPassRegistry) != address(0) || registry.taskRegistry() != address(this)
+        ) revert InvalidState();
+        competitionSlotPassRegistry = registry;
+    }
+
     function setDisputeResolver(address newResolver) external onlyOwner {
         if (newResolver == address(0)) revert Unauthorized();
         disputeResolver = newResolver;
@@ -221,6 +243,16 @@ contract TaskRegistry is Ownable {
         // A task may require one or more verification specialities, but it may
         // not accidentally require executor/evaluator roles from its tester.
         if ((requiredTesterCapabilities & agentRegistry.BASE_CAPABILITIES()) != agentRegistry.CAPABILITY_TEST()) revert InvalidTesterSet();
+        uint8 includedSlots = maxExecutors;
+        uint8 paidExtraSlots;
+        bytes32 slotAuthorizationId;
+        bytes32 paymentReceiptHash;
+        if (mode == ExecutionMode.Competition && maxExecutors > 2) {
+            includedSlots = 2;
+            (slotAuthorizationId, paymentReceiptHash) =
+                competitionSlotPassRegistry.consumeFor(msg.sender, specHash, maxExecutors);
+            unchecked { paidExtraSlots = maxExecutors - 2; }
+        }
         taskId = nextTaskId++;
         tasks[taskId] = Task({
             publisher: msg.sender,
@@ -246,6 +278,15 @@ contract TaskRegistry is Ownable {
         });
         taskExecutionMode[taskId] = mode;
         taskRequiredTesterCapabilities[taskId] = requiredTesterCapabilities;
+        assembly ("memory-safe") {
+            let data := mload(0x40)
+            mstore(data, includedSlots)
+            mstore(add(data, 0x20), paidExtraSlots)
+            mstore(add(data, 0x40), maxExecutors)
+            mstore(add(data, 0x60), slotAuthorizationId)
+            mstore(add(data, 0x80), paymentReceiptHash)
+            log2(data, 0xa0, 0xabbe88df6b45f15906e3a8cb97a6be59321abdb4448528f1b1714ad653410abd, taskId)
+        }
         uint256 count = agentRegistry.agentCount();
         if (count < EVALUATOR_COUNT) revert InvalidEvaluation();
         publisherStakeBasis[taskId] = stakeManager.stakeOf(positionId);

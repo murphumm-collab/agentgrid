@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "AgentGrid Agent API",
-    "version": "0.8.15",
+    "version": "0.8.16",
     "description": "Discovery, public task/proof views and the authenticated Agent job, encrypted artifact and publisher hidden-test workflows. Admin, internal operations and Demo-only mutation routes are intentionally excluded. Artifact bytes and hidden tests are never returned by public endpoints."
   },
   "servers": [
@@ -555,7 +555,7 @@
         ],
         "summary": "Read runtime BSC configuration",
         "operationId": "getBrowserChainConfig",
-        "description": "Returns chain ID, five-confirmation policy and all nine current contract addresses from runtime configuration; production images do not bake addresses at build time.",
+        "description": "Returns chain ID, five-confirmation policy and all ten current contract addresses from runtime configuration; production images do not bake addresses at build time.",
         "responses": {
           "200": {
             "description": "Runtime chain and exact contract address configuration",
@@ -3808,7 +3808,7 @@
         ],
         "properties": {
           "schemaVersion": {
-            "const": "2.5"
+            "const": "2.6"
           },
           "generatedAt": {
             "type": "string",
@@ -4085,11 +4085,14 @@
           "paidCapacityPolicy": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["implementationStatus", "available", "purchaseEndpoint", "activation", "receiptBinding", "entitlements", "unaffected"],
+            "required": ["implementationStatus", "available", "purchaseEndpoint", "enforcementContract", "enforcementExposure", "participantPurchaseAction", "activation", "receiptBinding", "entitlements", "unaffected"],
             "properties": {
               "implementationStatus": { "const": "DOMAIN_MODEL_ONLY" },
               "available": { "const": false },
               "purchaseEndpoint": { "type": "null" },
+              "enforcementContract": { "const": "competitionSlotPassRegistry" },
+              "enforcementExposure": { "const": "INTERNAL_COMMERCIAL_ENFORCEMENT_ONLY" },
+              "participantPurchaseAction": { "const": false },
               "activation": { "const": "PRE_PUBLICATION_ONLY" },
               "receiptBinding": { "const": "PLATFORM_SIGNED_UNIQUE_PAYMENT_RECEIPT" },
               "entitlements": {
@@ -4495,7 +4498,7 @@
                 "id": { "type": "string", "minLength": 1, "maxLength": 120 },
                 "phase": { "type": "string", "enum": ["FUNDING", "IDENTITY", "PUBLISHING", "EVALUATION", "EXECUTION", "VERIFICATION", "ARBITRATION", "MAINTENANCE", "REWARDS"] },
                 "role": { "type": "string", "minLength": 1, "maxLength": 120 },
-                "contract": { "type": "string", "enum": ["token", "stakeManager", "agentRegistry", "taskRegistry", "rewardVault", "verificationPanel", "verificationArbitrationCourt", "disputeResolver", "protocolEconomics"] },
+                "contract": { "type": "string", "enum": ["token", "stakeManager", "agentRegistry", "taskRegistry", "rewardVault", "verificationPanel", "verificationArbitrationCourt", "disputeResolver", "protocolEconomics", "competitionSlotPassRegistry"] },
                 "signature": { "type": "string", "minLength": 3, "maxLength": 300 },
                 "availability": { "type": "string", "enum": ["PRIMARY", "COMPATIBILITY"] },
                 "authorization": { "type": "string", "minLength": 1, "maxLength": 1000 },
@@ -4505,15 +4508,15 @@
           },
           "onChainActionExclusions": {
             "type": "array",
-            "minItems": 55,
-            "maxItems": 55,
-            "description": "Every remaining state-changing function in the nine compiled deployment ABIs, classified as governance-only, protocol-internal, or a generic token transfer outside the AgentGrid participant workflow.",
+            "minItems": 62,
+            "maxItems": 62,
+            "description": "Every remaining state-changing function in the ten compiled deployment ABIs, completing the 108-function partition as governance-only, protocol-internal, or a generic token transfer outside the AgentGrid participant workflow.",
             "items": {
               "type": "object",
               "additionalProperties": false,
               "required": ["contract", "signature", "classification", "reason"],
               "properties": {
-                "contract": { "type": "string", "enum": ["token", "stakeManager", "agentRegistry", "taskRegistry", "rewardVault", "verificationPanel", "verificationArbitrationCourt", "disputeResolver", "protocolEconomics"] },
+                "contract": { "type": "string", "enum": ["token", "stakeManager", "agentRegistry", "taskRegistry", "rewardVault", "verificationPanel", "verificationArbitrationCourt", "disputeResolver", "protocolEconomics", "competitionSlotPassRegistry"] },
                 "signature": { "type": "string", "minLength": 3, "maxLength": 300 },
                 "classification": { "type": "string", "enum": ["GOVERNANCE_ONLY", "PROTOCOL_INTERNAL", "TOKEN_TRANSFER_OUTSIDE_AGENTGRID_WORKFLOW"] },
                 "reason": { "type": "string", "minLength": 1, "maxLength": 1000 }
@@ -6608,7 +6611,8 @@
               "verificationPanel",
               "verificationArbitrationCourt",
               "disputeResolver",
-              "protocolEconomics"
+              "protocolEconomics",
+              "competitionSlotPassRegistry"
             ],
             "properties": {
               "token": {
@@ -6644,6 +6648,10 @@
                 "pattern": "^0x[0-9a-fA-F]{40}$"
               },
               "protocolEconomics": {
+                "type": "string",
+                "pattern": "^0x[0-9a-fA-F]{40}$"
+              },
+              "competitionSlotPassRegistry": {
                 "type": "string",
                 "pattern": "^0x[0-9a-fA-F]{40}$"
               }

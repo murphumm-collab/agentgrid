@@ -130,7 +130,7 @@ const protocolEconomicsSummarySchema = z.object({
 }).strict();
 
 export const publicDashboardResponseSchema = z.object({
-  schemaVersion: z.literal("2.5"),
+  schemaVersion: z.literal("2.6"),
   generatedAt: dateTime,
   mode: z.enum(["demo", "production"]),
   network: z.object({ name: z.literal("BSC Testnet"), chainId: z.literal(97), confirmations: z.literal(5) }).strict(),
@@ -195,6 +195,9 @@ export const publicDashboardResponseSchema = z.object({
     implementationStatus: z.literal("DOMAIN_MODEL_ONLY"),
     available: z.literal(false),
     purchaseEndpoint: z.null(),
+    enforcementContract: z.literal("competitionSlotPassRegistry"),
+    enforcementExposure: z.literal("INTERNAL_COMMERCIAL_ENFORCEMENT_ONLY"),
+    participantPurchaseAction: z.literal(false),
     activation: z.literal("PRE_PUBLICATION_ONLY"),
     receiptBinding: z.literal("PLATFORM_SIGNED_UNIQUE_PAYMENT_RECEIPT"),
     entitlements: z.object({
@@ -307,18 +310,18 @@ export const publicDashboardResponseSchema = z.object({
     id: boundedText(1, 120),
     phase: z.enum(["FUNDING", "IDENTITY", "PUBLISHING", "EVALUATION", "EXECUTION", "VERIFICATION", "ARBITRATION", "MAINTENANCE", "REWARDS"]),
     role: boundedText(1, 120),
-    contract: z.enum(["token", "stakeManager", "agentRegistry", "taskRegistry", "rewardVault", "verificationPanel", "verificationArbitrationCourt", "disputeResolver", "protocolEconomics"]),
+    contract: z.enum(["token", "stakeManager", "agentRegistry", "taskRegistry", "rewardVault", "verificationPanel", "verificationArbitrationCourt", "disputeResolver", "protocolEconomics", "competitionSlotPassRegistry"]),
     signature: boundedText(3, 300),
     availability: z.enum(["PRIMARY", "COMPATIBILITY"]),
     authorization: boundedText(1, 1_000),
     effect: boundedText(1, 2_000),
   }).strict()).length(46),
   onChainActionExclusions: z.array(z.object({
-    contract: z.enum(["token", "stakeManager", "agentRegistry", "taskRegistry", "rewardVault", "verificationPanel", "verificationArbitrationCourt", "disputeResolver", "protocolEconomics"]),
+    contract: z.enum(["token", "stakeManager", "agentRegistry", "taskRegistry", "rewardVault", "verificationPanel", "verificationArbitrationCourt", "disputeResolver", "protocolEconomics", "competitionSlotPassRegistry"]),
     signature: boundedText(3, 300),
     classification: z.enum(["GOVERNANCE_ONLY", "PROTOCOL_INTERNAL", "TOKEN_TRANSFER_OUTSIDE_AGENTGRID_WORKFLOW"]),
     reason: boundedText(1, 1_000),
-  }).strict()).length(55),
+  }).strict()).length(62),
   trustBoundary: z.object({
     authority: boundedText(1, 1_000),
     permissionRule: boundedText(1, 1_000),
@@ -481,7 +484,7 @@ export const chainConfigResponseSchema = z.object({
   walletConnectProjectId: boundedText(16, 128).optional(),
   contracts: z.object({
     token: address, stakeManager: address, agentRegistry: address, taskRegistry: address,
-    rewardVault: address, verificationPanel: address, verificationArbitrationCourt: address, disputeResolver: address, protocolEconomics: address,
+    rewardVault: address, verificationPanel: address, verificationArbitrationCourt: address, disputeResolver: address, protocolEconomics: address, competitionSlotPassRegistry: address,
   }).strict(),
 }).strict();
 

@@ -16,7 +16,7 @@ import { requiredConfigValue, requiredSecret } from "../../src/lib/secrets";
 import { publicBscRpcTransport } from "./pilot-policy";
 
 const ACKNOWLEDGEMENT = "I_UNDERSTAND_THIS_BROADCASTS_BSC_TESTNET_TRANSACTIONS";
-const contractKeys = ["token", "stakeManager", "agentRegistry", "rewardVault", "taskRegistry", "verificationPanel", "verificationArbitrationCourt", "disputeResolver", "protocolEconomics"] as const;
+const contractKeys = ["token", "stakeManager", "agentRegistry", "rewardVault", "taskRegistry", "competitionSlotPassRegistry", "verificationPanel", "verificationArbitrationCourt", "disputeResolver", "protocolEconomics"] as const;
 type ContractKey = typeof contractKeys[number];
 
 async function main() {
@@ -47,6 +47,8 @@ async function main() {
   const daoTreasury = getAddress(requiredConfigValue("PROTOCOL_DAO_TREASURY_ADDRESS"));
   const securityReserve = getAddress(requiredConfigValue("PROTOCOL_SECURITY_RESERVE_ADDRESS"));
   const coordinator = getAddress(requiredConfigValue("PROTOCOL_COORDINATOR_ADDRESS"));
+  const competitionSlotPassIssuer = getAddress(requiredConfigValue("COMPETITION_SLOT_PASS_ISSUER_ADDRESS"));
+  if (competitionSlotPassIssuer === "0x0000000000000000000000000000000000000000") throw new Error("COMPETITION_SLOT_PASS_ISSUER_ADDRESS_REQUIRED");
   if (owner.toLowerCase() === coordinator.toLowerCase()) throw new Error("OWNER_AND_COORDINATOR_MUST_DIFFER");
   const arbitrators = (process.env.ARBITRATOR_ADDRESSES ?? "").split(",").map((value) => value.trim()).filter(Boolean).map((value) => getAddress(value));
   if (arbitrators.length < 3) throw new Error("THREE_ARBITRATORS_REQUIRED");
@@ -58,7 +60,7 @@ async function main() {
   if (!Number.isInteger(quorum) || quorum < 2 || quorum > arbitrators.length) throw new Error("ARBITRATOR_QUORUM_INVALID");
 
   const runtimeBytecodeHashes = Object.fromEntries(
-    ["TestToken", "StakeCreditManager", "AgentRegistry", "RewardVault", "TaskRegistry", "VerificationPanel", "VerificationArbitrationCourt", "DisputeResolver", "ProtocolEconomics"]
+    ["TestToken", "StakeCreditManager", "AgentRegistry", "RewardVault", "TaskRegistry", "CompetitionSlotPassRegistry", "VerificationPanel", "VerificationArbitrationCourt", "DisputeResolver", "ProtocolEconomics"]
       .map((name) => [name, runtimeBytecodeHash(artifacts[name])]),
   );
   const configuration = {
@@ -67,6 +69,7 @@ async function main() {
     deployer,
     owner,
     coordinator,
+    competitionSlotPassIssuer,
     reserve,
     daoTreasury,
     securityReserve,
@@ -129,6 +132,7 @@ async function main() {
   const agentRegistry = await deploy("deploy.agentRegistry", "agentRegistry", "AgentRegistry", [stakeManager]);
   const rewardVault = await deploy("deploy.rewardVault", "rewardVault", "RewardVault", [token, reserve, parseEther("100000"), deployer]);
   const taskRegistry = await deploy("deploy.taskRegistry", "taskRegistry", "TaskRegistry", [stakeManager, rewardVault, agentRegistry, coordinator, deployer]);
+  const competitionSlotPassRegistry = await deploy("deploy.competitionSlotPassRegistry", "competitionSlotPassRegistry", "CompetitionSlotPassRegistry", [taskRegistry, competitionSlotPassIssuer, deployer]);
   const protocolEconomics = await deploy("deploy.protocolEconomics", "protocolEconomics", "ProtocolEconomics", [
     token, rewardVault, daoTreasury, securityReserve,
     "0x000000000000000000000000000000000000dEaD", 365 * 24 * 60 * 60, deployer,
@@ -149,14 +153,15 @@ async function main() {
   await write("wire.stakeManagerEconomics", stakeManager, "StakeCreditManager", "setProtocolEconomics", [protocolEconomics]);
   await write("wire.rewardVaultEconomics", rewardVault, "RewardVault", "setProtocolEconomics", [protocolEconomics]);
   await write("wire.taskRegistryEconomics", taskRegistry, "TaskRegistry", "setProtocolEconomics", [protocolEconomics]);
+  await write("wire.competitionSlotPassRegistry", taskRegistry, "TaskRegistry", "setCompetitionSlotPassRegistry", [competitionSlotPassRegistry]);
   await write("wire.agentQualityReporter", agentRegistry, "AgentRegistry", "setOutcomeReporter", [verificationPanel, 7]);
   await write("wire.arbitrationQualityReporter", agentRegistry, "AgentRegistry", "setOutcomeReporter", [verificationArbitrationCourt, 7]);
   await write("fund.rewardReserve", token, "TestToken", "mintRewardReserve", [rewardVault, parseEther("100000")]);
-  for (const [name, address] of Object.entries({ TestToken: token, StakeCreditManager: stakeManager, RewardVault: rewardVault, TaskRegistry: taskRegistry, DisputeResolver: disputeResolver, ProtocolEconomics: protocolEconomics })) {
+  for (const [name, address] of Object.entries({ TestToken: token, StakeCreditManager: stakeManager, RewardVault: rewardVault, TaskRegistry: taskRegistry, CompetitionSlotPassRegistry: competitionSlotPassRegistry, DisputeResolver: disputeResolver, ProtocolEconomics: protocolEconomics })) {
     await write(`ownership.${name}`, address as Address, name, "transferOwnership", [owner]);
   }
 
-  const contracts = { token, stakeManager, agentRegistry, rewardVault, taskRegistry, verificationPanel, verificationArbitrationCourt, disputeResolver, protocolEconomics };
+  const contracts = { token, stakeManager, agentRegistry, rewardVault, taskRegistry, competitionSlotPassRegistry, verificationPanel, verificationArbitrationCourt, disputeResolver, protocolEconomics };
   if (contractKeys.some((key) => !state.contracts[key])) throw new Error("DEPLOYMENT_CONTRACT_SET_INCOMPLETE");
   const deployment = {
     ...configuration,

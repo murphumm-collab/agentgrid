@@ -74,7 +74,7 @@ describe("production environment", () => {
     expect(() => runtimeConfig()).toThrow();
   });
 
-  it("requires every verification, dispute and economics contract for nine-contract deployment readiness", () => {
+  it("requires every verification, dispute, economics and commercial-enforcement contract for ten-contract deployment readiness", () => {
     process.env.PROTOCOL_MODE = "demo";
     process.env.TOKEN_ADDRESS = "0x1111111111111111111111111111111111111111";
     process.env.STAKE_MANAGER_ADDRESS = "0x2222222222222222222222222222222222222222";
@@ -85,6 +85,7 @@ describe("production environment", () => {
     delete process.env.VERIFICATION_ARBITRATION_COURT_ADDRESS;
     delete process.env.DISPUTE_RESOLVER_ADDRESS;
     delete process.env.PROTOCOL_ECONOMICS_ADDRESS;
+    delete process.env.COMPETITION_SLOT_PASS_REGISTRY_ADDRESS;
     resetRuntimeConfigForTests();
     expect(() => chainDeploymentAddresses()).toThrow("DISPUTE_RESOLVER_ADDRESS_REQUIRED");
 
@@ -101,6 +102,10 @@ describe("production environment", () => {
     expect(() => chainDeploymentAddresses()).toThrow("PROTOCOL_ECONOMICS_ADDRESS_REQUIRED");
 
     process.env.PROTOCOL_ECONOMICS_ADDRESS = "0x9999999999999999999999999999999999999999";
+    resetRuntimeConfigForTests();
+    expect(() => chainDeploymentAddresses()).toThrow("COMPETITION_SLOT_PASS_REGISTRY_ADDRESS_REQUIRED");
+
+    process.env.COMPETITION_SLOT_PASS_REGISTRY_ADDRESS = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
     resetRuntimeConfigForTests();
     expect(chainDeploymentAddresses().disputeResolver).toBe(process.env.DISPUTE_RESOLVER_ADDRESS);
   });

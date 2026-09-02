@@ -61,7 +61,10 @@
     "production:secrets:smoke": "tsx scripts/production-secrets-smoke.ts",
     "workers:build": "tsx scripts/build-workers.ts",
     "release:local:snapshot": "tsx scripts/create-local-release.ts",
-    "promotion:import": "tsx scripts/import-task-promotion.ts"
+    "promotion:import": "tsx scripts/import-task-promotion.ts",
+    "capacity:import": "tsx scripts/import-paid-capacity.ts",
+    "capacity:postgres:smoke": "tsx scripts/paid-capacity-postgres-smoke.ts",
+    "capacity:redis:smoke": "tsx scripts/paid-scheduling-redis-smoke.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1121.0",

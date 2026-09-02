@@ -98,18 +98,29 @@ still required. Priority scheduling binds the same pre-publication scope and
 declares only `EXECUTOR_GENERAL_QUEUE_ORDER_ONLY` plus a required 3:1 fair
 application queue. Neither kind may alter criteria, deadlines, evaluator /
 validator / arbitrator selection, quality, challenge rules or the reward pool.
-The complete application regression now passes 362/362 tests across 94 files;
-the complete contract regression passes 35/35 across seven files, TypeScript,
-ESLint and compilation of 21 deployable contracts pass. A standalone EIP-712
+The current application regression passes 363/363 tests across 95 files and the
+uninterrupted contract regression passes 38/38 across eight files. Compilation
+produces 21 deployable contracts; the feature-dense TaskRegistry is 24,575 bytes,
+one byte below EIP-170, so any later Solidity edit must re-run the size gate. A standalone EIP-712
 `CompetitionSlotPassRegistry` now restricts settlement assets to USDT/USDC/BNB,
 prevents authorization/receipt replay, enforces the 2+1..30 slot bounds and lets
-only its immutable TaskRegistry consume exact unexpired terms. The 3:1 scheduling
-state machine separately proves eligibility, no starvation, lease-success-only
-cursor movement, original-lane recovery and binding conflict rejection. OpenAPI
-0.8.15, the strict SDK response and the bilingual Dashboard publish the exact
-policy as `DOMAIN_MODEL_ONLY`, `available:false` with no purchase endpoint.
-Persistence, TaskRegistry consumption wiring, fair Redis lanes and deployment
-integration remain open, so this is not yet a completed product.
+only its immutable TaskRegistry consume exact unexpired terms. TaskRegistry now
+consumes the exact publisher/spec/slot authorization before allocating a task ID
+or mutating credit and fee state; downstream reverts restore the authorization,
+and every free, paid or collaboration task emits a slot-freeze proof. PostgreSQL
+now imports only fixed-issuer signed priority entitlements, consumes them in the
+definition-review/hidden-test/commitment transaction and freezes the first N
+eligible executor jobs. Redis uses immutable internal bindings, a global 3:1
+priority/standard cursor advanced only by a successful general executor lease,
+targeted-job precedence and original-lane recovery. The tenth deployment
+contract, runtime verification, chain config, indexer and action inventory are
+integrated as internal commercial enforcement: 108 mutable signatures are
+partitioned into 46 participant actions and 62 exclusions. OpenAPI 0.8.16, the
+strict SDK response and the bilingual Dashboard keep the product visibly
+`DOMAIN_MODEL_ONLY`, `available:false`, `participantPurchaseAction:false` with
+no purchase endpoint. The final runtime manifest, complete current-source gates,
+fixed 22-command QA and candidate binding remain open, so this is not yet a
+completed product.
 
 Public production also remains blocked by the external-authority items in
 `docs/EXTERNAL_COLLABORATION.md`: GitHub authentication, funded/separated BSC

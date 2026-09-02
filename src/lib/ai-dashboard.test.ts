@@ -28,7 +28,7 @@ describe("AI dashboard", () => {
   it("publishes deterministic action metadata without private task states", () => {
     const dashboard = buildAiDashboard(source(), new Date("2026-08-31T00:00:00.000Z"));
     const serialized = JSON.stringify(dashboard);
-    expect(dashboard.schemaVersion).toBe("2.5");
+    expect(dashboard.schemaVersion).toBe("2.6");
     expect(dashboard.selectionPolicy).toMatchObject({
       positiveChangesAfterRequest: "IGNORED_FOR_FROZEN_DRAW",
       mainnetRequirement: "VRF_REQUIRED",
@@ -75,7 +75,9 @@ describe("AI dashboard", () => {
     });
     expect(dashboard.promotionPolicy).toMatchObject({ signingVersion: "AgentGrid Task Promotion V1", rankingEffect: "DISPLAY_ORDER_ONLY", protocolInfluence: "NONE" });
     expect(dashboard.paidCapacityPolicy).toMatchObject({
-      implementationStatus: "DOMAIN_MODEL_ONLY", available: false, purchaseEndpoint: null, activation: "PRE_PUBLICATION_ONLY",
+      implementationStatus: "DOMAIN_MODEL_ONLY", available: false, purchaseEndpoint: null,
+      enforcementContract: "competitionSlotPassRegistry", enforcementExposure: "INTERNAL_COMMERCIAL_ENFORCEMENT_ONLY", participantPurchaseAction: false,
+      activation: "PRE_PUBLICATION_ONLY",
       entitlements: {
         extraCompetitionSlots: { includedCompetitionSlots: 2, maximumPaidExtraSlots: 30, maximumResultingExecutors: 32, effect: "EXECUTOR_CAPACITY_ONLY", executorRecipientWeightsMayChange: true, rewardPoolAffected: false, requiredEnforcement: "ONCHAIN_COMPETITION_SLOT_PASS_REGISTRY" },
         priorityScheduling: { maximumPrioritySlots: 32, eligibleJobKinds: ["EXECUTE_TASK"], effect: "EXECUTOR_GENERAL_QUEUE_ORDER_ONLY", fairnessEnforcement: "APPLICATION_FAIR_QUEUE_3_TO_1", paidToOrganicDispatchRatio: "3:1", rewardPoolAffected: false },
@@ -90,10 +92,11 @@ describe("AI dashboard", () => {
     expect(dashboardPage).toContain("DOMAIN_MODEL_ONLY");
     expect(dashboardPage).not.toContain("purchasePaidCapacity");
     expect(dashboard.onChainActions).toHaveLength(46);
+    expect(dashboard.onChainActions.some((action) => action.contract === "competitionSlotPassRegistry")).toBe(false);
     for (const id of ["evict-inactive-executor", "request-validator-draw", "finalize-validator-draw", "request-maintenance-panel"]) {
       expect(dashboard.onChainActions.find((action) => action.id === id)?.role).toBe("ANYONE");
     }
-    expect(dashboard.onChainActionExclusions).toHaveLength(55);
+    expect(dashboard.onChainActionExclusions).toHaveLength(62);
     expect(dashboard.onChainActions.find((action) => action.id === "open-verification-challenge")).toMatchObject({
       contract: "verificationArbitrationCourt", signature: "openChallenge(uint256,address,bytes32)", role: "ELIGIBLE_CHALLENGER",
     });
@@ -112,7 +115,8 @@ describe("AI dashboard", () => {
         properties: {
           revenuePolicy: { properties: { realizedRevenueStatus: { const: string }; protocolInfluence: { properties: Record<string, { const: string }> } } };
           paidCapacityPolicy: { properties: {
-            implementationStatus: { const: string }; available: { const: boolean };
+            implementationStatus: { const: string }; available: { const: boolean }; enforcementContract: { const: string };
+            enforcementExposure: { const: string }; participantPurchaseAction: { const: boolean };
             entitlements: { properties: {
               extraCompetitionSlots: { properties: { includedCompetitionSlots: { const: number }; maximumPaidExtraSlots: { const: number }; effect: { const: string }; rewardPoolAffected: { const: boolean } } };
               priorityScheduling: { properties: { eligibleJobKinds: { prefixItems: Array<{ const: string }> }; fairnessEnforcement: { const: string }; effect: { const: string } } };
@@ -132,7 +136,8 @@ describe("AI dashboard", () => {
     expect(openapi.components.schemas.AiDashboard.required).toContain("revenuePolicy");
     expect(openapi.components.schemas.AiDashboard.required).toContain("paidCapacityPolicy");
     expect(openapi.components.schemas.AiDashboard.properties.paidCapacityPolicy.properties).toMatchObject({
-      implementationStatus: { const: "DOMAIN_MODEL_ONLY" }, available: { const: false },
+      implementationStatus: { const: "DOMAIN_MODEL_ONLY" }, available: { const: false }, enforcementContract: { const: "competitionSlotPassRegistry" },
+      enforcementExposure: { const: "INTERNAL_COMMERCIAL_ENFORCEMENT_ONLY" }, participantPurchaseAction: { const: false },
       entitlements: { properties: {
         extraCompetitionSlots: { properties: { includedCompetitionSlots: { const: 2 }, maximumPaidExtraSlots: { const: 30 }, effect: { const: "EXECUTOR_CAPACITY_ONLY" }, rewardPoolAffected: { const: false } } },
         priorityScheduling: { properties: { eligibleJobKinds: { prefixItems: [{ const: "EXECUTE_TASK" }] }, fairnessEnforcement: { const: "APPLICATION_FAIR_QUEUE_3_TO_1" }, effect: { const: "EXECUTOR_GENERAL_QUEUE_ORDER_ONLY" } } },
@@ -158,11 +163,11 @@ describe("AI dashboard", () => {
     const documentedMethods = openapi.components.schemas.AiDashboard.properties.actionContracts.items.properties.method.enum;
     expect(documentedMethods).toEqual(expect.arrayContaining([...new Set(dashboard.actionContracts.map((action) => action.method))]));
     expect(openapi.components.schemas.AiDashboard.properties.onChainActions).toMatchObject({ minItems: 46, maxItems: 46 });
-    expect(openapi.components.schemas.AiDashboard.properties.onChainActionExclusions).toMatchObject({ minItems: 55, maxItems: 55 });
+    expect(openapi.components.schemas.AiDashboard.properties.onChainActionExclusions).toMatchObject({ minItems: 62, maxItems: 62 });
     expect(openapi.components.schemas.AiDashboard.properties.onChainActionExclusions.items.properties.classification.enum).toEqual([
       "GOVERNANCE_ONLY", "PROTOCOL_INTERNAL", "TOKEN_TRANSFER_OUTSIDE_AGENTGRID_WORKFLOW",
     ]);
-    expect(openapi.components.schemas.AiDashboard.properties.onChainActions.items.properties.contract.enum).toEqual(expect.arrayContaining(["taskRegistry", "verificationArbitrationCourt", "disputeResolver"]));
+    expect(openapi.components.schemas.AiDashboard.properties.onChainActions.items.properties.contract.enum).toEqual(expect.arrayContaining(["taskRegistry", "verificationArbitrationCourt", "disputeResolver", "competitionSlotPassRegistry"]));
     for (const action of dashboard.actionContracts) {
       expect(openapi.paths[action.endpoint]?.[action.method.toLowerCase()]?.operationId).toBe(action.operationId);
     }

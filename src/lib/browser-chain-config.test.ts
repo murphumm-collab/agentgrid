@@ -11,6 +11,7 @@ const contracts = {
   verificationArbitrationCourt: "0x7777777777777777777777777777777777777777",
   disputeResolver: "0x8888888888888888888888888888888888888888",
   protocolEconomics: "0x9999999999999999999999999999999999999999",
+  competitionSlotPassRegistry: "0x1010101010101010101010101010101010101010",
 };
 
 describe("browser chain config", () => {

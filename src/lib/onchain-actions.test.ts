@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { Abi } from "viem";
 import {
-  agentRegistryAbi, disputeResolverAbi, protocolEconomicsAbi, rewardVaultAbi, stakeManagerAbi,
+  agentRegistryAbi, competitionSlotPassRegistryAbi, disputeResolverAbi, protocolEconomicsAbi, rewardVaultAbi, stakeManagerAbi,
   taskRegistryAbi, tokenAbi, verificationArbitrationCourtAbi, verificationPanelAbi,
 } from "./contracts";
 import { onChainActionContracts, onChainActionExclusions, onChainContractKeys } from "./onchain-actions";
@@ -12,6 +12,7 @@ const clientAbis = {
   rewardVault: rewardVaultAbi, verificationPanel: verificationPanelAbi,
   verificationArbitrationCourt: verificationArbitrationCourtAbi, disputeResolver: disputeResolverAbi,
   protocolEconomics: protocolEconomicsAbi,
+  competitionSlotPassRegistry: competitionSlotPassRegistryAbi,
 } satisfies Record<(typeof onChainContractKeys)[number], Abi>;
 
 const artifactNames = {
@@ -19,6 +20,7 @@ const artifactNames = {
   rewardVault: "RewardVault", verificationPanel: "VerificationPanel",
   verificationArbitrationCourt: "VerificationArbitrationCourt", disputeResolver: "DisputeResolver",
   protocolEconomics: "ProtocolEconomics",
+  competitionSlotPassRegistry: "CompetitionSlotPassRegistry",
 } satisfies Record<(typeof onChainContractKeys)[number], string>;
 
 function abiSignature(item: Extract<Abi[number], { type: "function" }>) {
@@ -42,8 +44,8 @@ describe("AI on-chain action inventory", () => {
     const actions = onChainActionContracts.map((item) => `${item.contract}.${item.signature}`);
     const exclusions = onChainActionExclusions.map((item) => `${item.contract}.${item.signature}`);
     expect(onChainActionContracts).toHaveLength(46);
-    expect(onChainActionExclusions).toHaveLength(55);
-    expect(compiled).toHaveLength(101);
+    expect(onChainActionExclusions).toHaveLength(62);
+    expect(compiled).toHaveLength(108);
     expect(new Set(actions).size).toBe(actions.length);
     expect(new Set(exclusions).size).toBe(exclusions.length);
     expect(actions.filter((signature) => exclusions.includes(signature))).toEqual([]);
@@ -60,5 +62,15 @@ describe("AI on-chain action inventory", () => {
     expect(new Set(onChainActionExclusions.map((item) => item.classification))).toEqual(new Set([
       "GOVERNANCE_ONLY", "PROTOCOL_INTERNAL", "TOKEN_TRANSFER_OUTSIDE_AGENTGRID_WORKFLOW",
     ]));
+    expect(onChainActionContracts.some((item) => item.contract === "competitionSlotPassRegistry")).toBe(false);
+    expect(onChainActionExclusions.filter((item) => item.contract === "competitionSlotPassRegistry")).toEqual(expect.arrayContaining([
+      expect.objectContaining({ signature: "registerAuthorization(tuple,bytes)", classification: "PROTOCOL_INTERNAL" }),
+      expect.objectContaining({ signature: "consume(bytes32,address,bytes32,bytes32,bytes32,uint256,uint8,uint8)", classification: "PROTOCOL_INTERNAL" }),
+      expect.objectContaining({ signature: "consumeFor(address,bytes32,uint8)", classification: "PROTOCOL_INTERNAL" }),
+      expect.objectContaining({ signature: "setIssuer(address)", classification: "GOVERNANCE_ONLY" }),
+    ]));
+    expect(onChainActionExclusions).toContainEqual(expect.objectContaining({
+      contract: "taskRegistry", signature: "setCompetitionSlotPassRegistry(address)", classification: "GOVERNANCE_ONLY",
+    }));
   });
 });

@@ -52,11 +52,14 @@ Overrides remain explicitly bound to `127.0.0.1`; configure the matching smoke
 URLs with the selected ports. Do not stop unrelated containers to reclaim the
 default ports.
 
-After deploying the nine protocol contracts, copy the application-facing addresses into
+After deploying the ten protocol contracts, copy the application-facing addresses into
 the server runtime (`TOKEN_ADDRESS`, `STAKE_MANAGER_ADDRESS`,
 `AGENT_REGISTRY_ADDRESS`, `TASK_REGISTRY_ADDRESS`, `REWARD_VAULT_ADDRESS`,
 `VERIFICATION_PANEL_ADDRESS`, `VERIFICATION_ARBITRATION_COURT_ADDRESS`,
-`DISPUTE_RESOLVER_ADDRESS`, and `PROTOCOL_ECONOMICS_ADDRESS`). The
+`DISPUTE_RESOLVER_ADDRESS`, `PROTOCOL_ECONOMICS_ADDRESS`, and
+`COMPETITION_SLOT_PASS_REGISTRY_ADDRESS`). Configure the public
+`COMPETITION_SLOT_PASS_ISSUER_ADDRESS` used by the on-chain EIP-712 registry;
+its private key must stay outside the application runtime. The
 public `/api/chain/config` route validates and exposes only the BSC Testnet chain
 ID, confirmation count, public contract addresses and optional public
 `WALLETCONNECT_PROJECT_ID`; wallet code does not rely on values baked into the
@@ -69,6 +72,14 @@ external controlled signing workflow. Import a signed JSON envelope with
 verifies the V1 domain, BSC TaskRegistry, unique settlement receipt and bounded
 window before storage. Without this address, production shows no sponsored
 placements.
+
+Priority scheduling is also fail-closed. Configure only the public
+`PAID_CAPACITY_ATTESTATION_SIGNER`, then import a signed V1 entitlement with
+`pnpm capacity:import -- /absolute/path/to/signed-capacity.json`. The importer
+accepts only pre-publication priority scheduling and consumes it atomically with
+the matching task commitment. Extra competition slots additionally require the
+separate EIP-712 authorization to be registered on-chain before task creation;
+there is intentionally no public purchase or registration HTTP endpoint.
 
 Set `CHAIN_START_BLOCK` to the `startBlock` emitted by the deployment script.
 Run the confirmed-event worker continuously (a process supervisor should
@@ -86,7 +97,7 @@ Readiness endpoints:
 - `/api/health/live`: process liveness.
 - `/api/health/ready`: file-backed Secret policy, encryption configuration,
   PostgreSQL, Redis, artifact storage, alert delivery configuration, BSC RPC
-  chain ID, and exact normalized runtime bytecode at all nine deployment contract
+  chain ID, and exact normalized runtime bytecode at all ten deployment contract
   addresses. Only compiler-declared immutable ranges may differ; an older,
   unrelated or modified implementation returns HTTP 503.
   Readiness returns HTTP 503 until every check passes.
@@ -413,7 +424,7 @@ challenge window must pass before the checkpoint unlocks.
 Before BSC deployment, configure three distinct `ARBITRATOR_ADDRESSES`, a valid
 `ARBITRATOR_QUORUM`, `PROTOCOL_COORDINATOR_ADDRESS`, reserve address and a
 testnet-only deployer key. Run `pnpm contracts:deploy:check`; it compiles all
-nine protocol contracts, verifies chain ID 97, validates arbitration configuration and
+ten protocol contracts, verifies chain ID 97, validates arbitration and paid-slot issuer configuration and
 reports deployer tBNB balance without broadcasting. After deployment run
 `pnpm contracts:deploy:verify` to check bytecode, registry wiring, separated
 roles, arbitrator membership/quorum and the 100,000 tAGT reward reserve. Runtime
@@ -440,9 +451,9 @@ waiting for five confirmations. If the process exits or the RPC disconnects,
 rerun with the same configuration and `DEPLOYMENT_RUN_FILE`; a changed role,
 bytecode hash or compiler configuration is rejected, and an already recorded
 hash is awaited instead of rebroadcast. Keep both the pending run file and final
-manifest as launch evidence. The current final manifest contains exactly 29
-successful transactions: nine deployments, thirteen wiring/authorization calls,
-reserve funding and six ownership transfers.
+manifest as launch evidence. The current final manifest contains exactly 33
+successful transactions: ten deployments, fifteen wiring/authorization calls,
+reserve funding and seven ownership transfers.
 
 `pnpm contracts:deploy:verify` is also fail-closed. It opens the mode-0600
 manifest without following symlinks, checks every recorded receipt and its

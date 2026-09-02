@@ -8,6 +8,7 @@ import { z } from "zod";
 import { compileContracts } from "./compiler";
 import { verifyRuntimeBytecode } from "./bytecode-verification";
 import { publicBscRpcTransport } from "./pilot-policy";
+import { isCompetitionSlotPassWiringTransaction } from "./competition-slot-pass-wiring";
 
 const addressSchema = z.string().regex(/^0x[0-9a-fA-F]{40}$/).transform((value) => getAddress(value));
 const transactionSchema = z.object({
@@ -19,24 +20,24 @@ const transactionSchema = z.object({
 }).strict();
 const deploymentSchema = z.object({
   chainId: z.literal(97), owner: addressSchema, coordinator: addressSchema, reserve: addressSchema,
-  daoTreasury: addressSchema, securityReserve: addressSchema,
+  daoTreasury: addressSchema, securityReserve: addressSchema, competitionSlotPassIssuer: addressSchema,
   arbitrators: z.array(addressSchema).min(3), arbitratorQuorum: z.number().int().min(2),
   startBlock: z.string().regex(/^\d+$/), confirmations: z.literal(5),
   contracts: z.object({
     token: addressSchema, stakeManager: addressSchema, agentRegistry: addressSchema,
-    rewardVault: addressSchema, taskRegistry: addressSchema, verificationPanel: addressSchema, verificationArbitrationCourt: addressSchema, disputeResolver: addressSchema, protocolEconomics: addressSchema,
+    rewardVault: addressSchema, taskRegistry: addressSchema, competitionSlotPassRegistry: addressSchema, verificationPanel: addressSchema, verificationArbitrationCourt: addressSchema, disputeResolver: addressSchema, protocolEconomics: addressSchema,
   }).strict(),
   transactions: z.record(z.string(), transactionSchema),
 }).passthrough();
 
 const requiredTransactions = [
-  "deploy.token", "deploy.stakeManager", "deploy.agentRegistry", "deploy.rewardVault", "deploy.taskRegistry", "deploy.protocolEconomics", "deploy.verificationPanel", "deploy.verificationArbitrationCourt", "deploy.disputeResolver",
-  "wire.stakeManager", "wire.agentSelectionRequester", "wire.disputeResolver", "wire.verificationPanel", "wire.rewardVaultVerificationPanel", "wire.verificationArbitrationCourt", "wire.qualitySlasher", "wire.rewardVault", "wire.protocolEconomics", "wire.stakeManagerEconomics", "wire.rewardVaultEconomics", "wire.taskRegistryEconomics", "wire.agentQualityReporter", "wire.arbitrationQualityReporter", "fund.rewardReserve",
-  "ownership.TestToken", "ownership.StakeCreditManager", "ownership.RewardVault", "ownership.TaskRegistry", "ownership.DisputeResolver", "ownership.ProtocolEconomics",
+  "deploy.token", "deploy.stakeManager", "deploy.agentRegistry", "deploy.rewardVault", "deploy.taskRegistry", "deploy.competitionSlotPassRegistry", "deploy.protocolEconomics", "deploy.verificationPanel", "deploy.verificationArbitrationCourt", "deploy.disputeResolver",
+  "wire.stakeManager", "wire.agentSelectionRequester", "wire.disputeResolver", "wire.verificationPanel", "wire.rewardVaultVerificationPanel", "wire.verificationArbitrationCourt", "wire.qualitySlasher", "wire.rewardVault", "wire.protocolEconomics", "wire.stakeManagerEconomics", "wire.rewardVaultEconomics", "wire.taskRegistryEconomics", "wire.competitionSlotPassRegistry", "wire.agentQualityReporter", "wire.arbitrationQualityReporter", "fund.rewardReserve",
+  "ownership.TestToken", "ownership.StakeCreditManager", "ownership.RewardVault", "ownership.TaskRegistry", "ownership.CompetitionSlotPassRegistry", "ownership.DisputeResolver", "ownership.ProtocolEconomics",
 ] as const;
 const deploymentContractByTransaction = {
   "deploy.token": "token", "deploy.stakeManager": "stakeManager", "deploy.agentRegistry": "agentRegistry",
-  "deploy.rewardVault": "rewardVault", "deploy.taskRegistry": "taskRegistry", "deploy.disputeResolver": "disputeResolver",
+  "deploy.rewardVault": "rewardVault", "deploy.taskRegistry": "taskRegistry", "deploy.competitionSlotPassRegistry": "competitionSlotPassRegistry", "deploy.disputeResolver": "disputeResolver",
   "deploy.protocolEconomics": "protocolEconomics",
   "deploy.verificationPanel": "verificationPanel", "deploy.verificationArbitrationCourt": "verificationArbitrationCourt",
 } as const;
@@ -91,12 +92,12 @@ export async function runDeploymentVerification() {
     }
     return receipt;
   }));
-  const firstDeploymentBlock = receipts.slice(0, 9).reduce((minimum, receipt) => receipt.blockNumber < minimum ? receipt.blockNumber : minimum, receipts[0]!.blockNumber);
+  const firstDeploymentBlock = receipts.slice(0, 10).reduce((minimum, receipt) => receipt.blockNumber < minimum ? receipt.blockNumber : minimum, receipts[0]!.blockNumber);
   if (BigInt(deployment.startBlock) !== firstDeploymentBlock) throw new Error("DEPLOYMENT_START_BLOCK_MISMATCH");
 
   const artifactNames = {
     token: "TestToken", stakeManager: "StakeCreditManager", agentRegistry: "AgentRegistry",
-    rewardVault: "RewardVault", taskRegistry: "TaskRegistry", verificationPanel: "VerificationPanel", verificationArbitrationCourt: "VerificationArbitrationCourt", disputeResolver: "DisputeResolver", protocolEconomics: "ProtocolEconomics",
+    rewardVault: "RewardVault", taskRegistry: "TaskRegistry", competitionSlotPassRegistry: "CompetitionSlotPassRegistry", verificationPanel: "VerificationPanel", verificationArbitrationCourt: "VerificationArbitrationCourt", disputeResolver: "DisputeResolver", protocolEconomics: "ProtocolEconomics",
   } as const;
   for (const [name, address] of Object.entries(deployment.contracts)) {
     const code = await client.getCode({ address });
@@ -106,6 +107,7 @@ export async function runDeploymentVerification() {
   const stakeAbi = parseAbi(["function taskRegistry() view returns(address)", "function protocolEconomics() view returns(address)", "function qualitySlasher() view returns(address)"]);
   const vaultAbi = parseAbi(["function taskRegistry() view returns(address)", "function verificationPanel() view returns(address)", "function protocolEconomics() view returns(address)"]);
   const taskAbi = parseAbi(["function coordinator() view returns(address)", "function disputeResolver() view returns(address)", "function agentRegistry() view returns(address)", "function verificationPanel() view returns(address)", "function protocolEconomics() view returns(address)"]);
+  const passAbi = parseAbi(["function taskRegistry() view returns(address)", "function issuer() view returns(address)"]);
   const agentAbi = parseAbi(["function stakeManager() view returns(address)", "function selectionRequester() view returns(address)", "function outcomeReporterRoles(address) view returns(uint8)"]);
   const resolverAbi = parseAbi(["function registry() view returns(address)", "function quorum() view returns(uint256)", "function isArbitrator(address) view returns(bool)"]);
   const tokenAbi = parseAbi(["function balanceOf(address) view returns(uint256)"]);
@@ -113,7 +115,7 @@ export async function runDeploymentVerification() {
   const panelAbi = parseAbi(["function registry() view returns(address)", "function rewardVault() view returns(address)", "function qualityRegistry() view returns(address)", "function arbitrationCourt() view returns(address)"]);
   const courtAbi = parseAbi(["function token() view returns(address)", "function panel() view returns(address)", "function agentRegistry() view returns(address)", "function stakeManager() view returns(address)", "function reserve() view returns(address)", "function isArbitrator(address) view returns(bool)"]);
   const economicsAbi = parseAbi(["function taskRegistry() view returns(address)", "function stakeManager() view returns(address)", "function rewardVault() view returns(address)", "function daoTreasury() view returns(address)", "function securityReserve() view returns(address)", "function burnSink() view returns(address)", "function vestingDuration() view returns(uint32)"]);
-  const [stakeRegistry, stakeEconomics, stakeQualitySlasher, vaultRegistry, vaultPanel, vaultEconomics, coordinator, disputeResolver, taskAgentRegistry, taskPanel, taskEconomics, agentStakeManager, selectionRequester, qualityReporterRoles, courtQualityReporterRoles, resolverRegistry, quorum, reserveBalance, arbitratorChecks, panelRegistry, panelVault, panelQualityRegistry, panelCourt, courtToken, courtPanel, courtAgentRegistry, courtStakeManager, courtReserve, courtArbitrators, economicsRegistry, economicsStake, economicsVault, economicsDao, economicsSecurity, economicsBurn, economicsVesting] = await Promise.all([
+  const [stakeRegistry, stakeEconomics, stakeQualitySlasher, vaultRegistry, vaultPanel, vaultEconomics, coordinator, disputeResolver, taskAgentRegistry, taskPanel, taskEconomics, passTaskRegistry, passIssuer, agentStakeManager, selectionRequester, qualityReporterRoles, courtQualityReporterRoles, resolverRegistry, quorum, reserveBalance, arbitratorChecks, panelRegistry, panelVault, panelQualityRegistry, panelCourt, courtToken, courtPanel, courtAgentRegistry, courtStakeManager, courtReserve, courtArbitrators, economicsRegistry, economicsStake, economicsVault, economicsDao, economicsSecurity, economicsBurn, economicsVesting] = await Promise.all([
     client.readContract({ address: deployment.contracts.stakeManager, abi: stakeAbi, functionName: "taskRegistry" }),
     client.readContract({ address: deployment.contracts.stakeManager, abi: stakeAbi, functionName: "protocolEconomics" }),
     client.readContract({ address: deployment.contracts.stakeManager, abi: stakeAbi, functionName: "qualitySlasher" }),
@@ -125,6 +127,8 @@ export async function runDeploymentVerification() {
     client.readContract({ address: deployment.contracts.taskRegistry, abi: taskAbi, functionName: "agentRegistry" }),
     client.readContract({ address: deployment.contracts.taskRegistry, abi: taskAbi, functionName: "verificationPanel" }),
     client.readContract({ address: deployment.contracts.taskRegistry, abi: taskAbi, functionName: "protocolEconomics" }),
+    client.readContract({ address: deployment.contracts.competitionSlotPassRegistry, abi: passAbi, functionName: "taskRegistry" }),
+    client.readContract({ address: deployment.contracts.competitionSlotPassRegistry, abi: passAbi, functionName: "issuer" }),
     client.readContract({ address: deployment.contracts.agentRegistry, abi: agentAbi, functionName: "stakeManager" }),
     client.readContract({ address: deployment.contracts.agentRegistry, abi: agentAbi, functionName: "selectionRequester" }),
     client.readContract({ address: deployment.contracts.agentRegistry, abi: agentAbi, functionName: "outcomeReporterRoles", args: [deployment.contracts.verificationPanel] }),
@@ -153,6 +157,9 @@ export async function runDeploymentVerification() {
   ]);
   if (!equal(stakeRegistry, deployment.contracts.taskRegistry) || !equal(stakeQualitySlasher, deployment.contracts.verificationArbitrationCourt) || !equal(vaultRegistry, deployment.contracts.taskRegistry) || !equal(vaultPanel, deployment.contracts.verificationPanel)) throw new Error("REGISTRY_WIRING_INVALID");
   if (!equal(stakeEconomics, deployment.contracts.protocolEconomics) || !equal(vaultEconomics, deployment.contracts.protocolEconomics) || !equal(taskEconomics, deployment.contracts.protocolEconomics) || !equal(economicsRegistry, deployment.contracts.taskRegistry) || !equal(economicsStake, deployment.contracts.stakeManager) || !equal(economicsVault, deployment.contracts.rewardVault) || !equal(economicsDao, deployment.daoTreasury) || !equal(economicsSecurity, deployment.securityReserve) || !equal(economicsBurn, "0x000000000000000000000000000000000000dEaD") || Number(economicsVesting) !== 365 * 24 * 60 * 60) throw new Error("PROTOCOL_ECONOMICS_WIRING_INVALID");
+  const passWiringTransaction = await client.getTransaction({ hash: deployment.transactions["wire.competitionSlotPassRegistry"]!.hash as Hash });
+  if (!isCompetitionSlotPassWiringTransaction(passWiringTransaction, deployment.contracts.taskRegistry, deployment.contracts.competitionSlotPassRegistry)
+    || !equal(passTaskRegistry, deployment.contracts.taskRegistry) || !equal(passIssuer, deployment.competitionSlotPassIssuer)) throw new Error("COMPETITION_SLOT_PASS_REGISTRY_WIRING_INVALID");
   if (!equal(coordinator, deployment.coordinator) || !equal(disputeResolver, deployment.contracts.disputeResolver) || !equal(resolverRegistry, deployment.contracts.taskRegistry)) throw new Error("ROLE_WIRING_INVALID");
   if (!equal(taskAgentRegistry, deployment.contracts.agentRegistry) || !equal(agentStakeManager, deployment.contracts.stakeManager) || !equal(selectionRequester, deployment.contracts.taskRegistry)) throw new Error("AGENT_REGISTRY_WIRING_INVALID");
   if (!equal(taskPanel, deployment.contracts.verificationPanel) || !equal(panelRegistry, deployment.contracts.taskRegistry) || !equal(panelVault, deployment.contracts.rewardVault) || !equal(panelQualityRegistry, deployment.contracts.agentRegistry) || Number(qualityReporterRoles) !== 7 || Number(courtQualityReporterRoles) !== 7 || !equal(panelCourt, deployment.contracts.verificationArbitrationCourt)
@@ -161,7 +168,7 @@ export async function runDeploymentVerification() {
   if (reserveBalance < parseEther("100000")) throw new Error("REWARD_RESERVE_UNDERFUNDED");
   const ownership = await Promise.all([
     deployment.contracts.token, deployment.contracts.stakeManager, deployment.contracts.rewardVault,
-    deployment.contracts.taskRegistry, deployment.contracts.disputeResolver, deployment.contracts.protocolEconomics,
+    deployment.contracts.taskRegistry, deployment.contracts.competitionSlotPassRegistry, deployment.contracts.disputeResolver, deployment.contracts.protocolEconomics,
   ].map((address) => client.readContract({ address, abi: ownableAbi, functionName: "owner" })));
   if (ownership.some((address) => !equal(address, deployment.owner))) throw new Error("PROTOCOL_OWNERSHIP_INVALID");
 

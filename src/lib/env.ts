@@ -39,7 +39,10 @@ const schema = z.object({
   VERIFICATION_PANEL_ADDRESS: z.string().regex(/^0x[0-9a-fA-F]{40}$/).optional(),
   VERIFICATION_ARBITRATION_COURT_ADDRESS: z.string().regex(/^0x[0-9a-fA-F]{40}$/).optional(),
   PROTOCOL_ECONOMICS_ADDRESS: z.string().regex(/^0x[0-9a-fA-F]{40}$/).optional(),
+  COMPETITION_SLOT_PASS_REGISTRY_ADDRESS: z.string().regex(/^0x[0-9a-fA-F]{40}$/).optional(),
+  COMPETITION_SLOT_PASS_ISSUER_ADDRESS: z.string().regex(/^0x[0-9a-fA-F]{40}$/).optional(),
   PROMOTION_ATTESTATION_SIGNER: z.string().regex(/^0x[0-9a-fA-F]{40}$/).optional(),
+  PAID_CAPACITY_ATTESTATION_SIGNER: z.string().regex(/^0x[0-9a-fA-F]{40}$/).optional(),
   NEXT_PUBLIC_TOKEN_ADDRESS: z.string().regex(/^0x[0-9a-fA-F]{40}$/).optional(),
   NEXT_PUBLIC_STAKE_MANAGER_ADDRESS: z.string().regex(/^0x[0-9a-fA-F]{40}$/).optional(),
   NEXT_PUBLIC_AGENT_REGISTRY_ADDRESS: z.string().regex(/^0x[0-9a-fA-F]{40}$/).optional(),
@@ -86,11 +89,13 @@ export function chainDeploymentAddresses() {
   const verificationPanel = runtimeConfig().VERIFICATION_PANEL_ADDRESS;
   const verificationArbitrationCourt = runtimeConfig().VERIFICATION_ARBITRATION_COURT_ADDRESS;
   const protocolEconomics = runtimeConfig().PROTOCOL_ECONOMICS_ADDRESS;
+  const competitionSlotPassRegistry = runtimeConfig().COMPETITION_SLOT_PASS_REGISTRY_ADDRESS;
   if (!disputeResolver) throw new Error("DISPUTE_RESOLVER_ADDRESS_REQUIRED");
   if (!verificationPanel) throw new Error("VERIFICATION_PANEL_ADDRESS_REQUIRED");
   if (!verificationArbitrationCourt) throw new Error("VERIFICATION_ARBITRATION_COURT_ADDRESS_REQUIRED");
   if (!protocolEconomics) throw new Error("PROTOCOL_ECONOMICS_ADDRESS_REQUIRED");
-  return { ...contracts, verificationPanel: verificationPanel as `0x${string}`, verificationArbitrationCourt: verificationArbitrationCourt as `0x${string}`, disputeResolver: disputeResolver as `0x${string}`, protocolEconomics: protocolEconomics as `0x${string}` };
+  if (!competitionSlotPassRegistry) throw new Error("COMPETITION_SLOT_PASS_REGISTRY_ADDRESS_REQUIRED");
+  return { ...contracts, verificationPanel: verificationPanel as `0x${string}`, verificationArbitrationCourt: verificationArbitrationCourt as `0x${string}`, disputeResolver: disputeResolver as `0x${string}`, protocolEconomics: protocolEconomics as `0x${string}`, competitionSlotPassRegistry: competitionSlotPassRegistry as `0x${string}` };
 }
 
 export function isProductionMode() {

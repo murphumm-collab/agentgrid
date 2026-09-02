@@ -99,6 +99,13 @@ export type PaidCapacityEntitlement = z.infer<typeof paidCapacityEntitlementSche
 export type ExtraCompetitionSlotsEntitlement = Extract<PaidCapacityEntitlement, { kind: "EXTRA_COMPETITION_SLOTS" }>;
 export type PrioritySchedulingEntitlement = Extract<PaidCapacityEntitlement, { kind: "PRIORITY_SCHEDULING" }>;
 
+export function assertPrioritySlotsFitTask(prioritySlots: number, maxExecutors: number) {
+  if (!Number.isInteger(prioritySlots) || prioritySlots < 1 || prioritySlots > prioritySchedulingSlotLimit
+    || !Number.isInteger(maxExecutors) || maxExecutors < 1 || maxExecutors > prioritySchedulingSlotLimit
+    || prioritySlots > maxExecutors) throw new Error("PAID_CAPACITY_PRIORITY_SLOTS_EXCEED_TASK");
+  return prioritySlots;
+}
+
 export const signedPaidCapacityEntitlementSchema = z.object({
   entitlement: paidCapacityEntitlementSchema,
   signature: z.string().regex(/^0x[0-9a-fA-F]{130}$/),

@@ -119,123 +119,173 @@
     },
     "taskRegistry": {
       "name": "TaskRegistry",
-      "normalizedRuntimeBytecodeHash": "0xe43f74325412c3ecaea021fd82f67984462562a11d6e3cd91ae99e6ebb77dd15",
+      "normalizedRuntimeBytecodeHash": "0xef1888991f68630145c624696758332e3904a8e30c94ab629c51646dc78a3246",
       "immutableReferences": [
         {
           "length": 32,
-          "start": 1843
+          "start": 1854
         },
         {
           "length": 32,
-          "start": 4630
+          "start": 4641
         },
         {
           "length": 32,
-          "start": 5055
+          "start": 5066
         },
         {
           "length": 32,
-          "start": 6913
+          "start": 7125
         },
         {
           "length": 32,
-          "start": 7220
+          "start": 7432
         },
         {
           "length": 32,
-          "start": 15237
+          "start": 15469
         },
         {
           "length": 32,
-          "start": 17718
+          "start": 17931
         },
         {
           "length": 32,
-          "start": 20591
+          "start": 21059
         },
         {
           "length": 32,
-          "start": 21980
+          "start": 22448
         },
         {
           "length": 32,
-          "start": 22345
+          "start": 22813
         },
         {
           "length": 32,
-          "start": 4463
+          "start": 4474
         },
         {
           "length": 32,
-          "start": 7077
+          "start": 7289
         },
         {
           "length": 32,
-          "start": 7592
+          "start": 7804
         },
         {
           "length": 32,
-          "start": 9899
+          "start": 10111
         },
         {
           "length": 32,
-          "start": 14671
+          "start": 14903
         },
         {
           "length": 32,
-          "start": 19002
+          "start": 19303
         },
         {
           "length": 32,
-          "start": 20313
+          "start": 20781
         },
         {
           "length": 32,
-          "start": 23570
+          "start": 24038
         },
         {
           "length": 32,
-          "start": 5482
+          "start": 5493
         },
         {
           "length": 32,
-          "start": 10577
+          "start": 10789
         },
         {
           "length": 32,
-          "start": 10770
+          "start": 10982
         },
         {
           "length": 32,
-          "start": 12426
+          "start": 12638
         },
         {
           "length": 32,
-          "start": 15965
+          "start": 16177
         },
         {
           "length": 32,
-          "start": 16471
+          "start": 16683
         },
         {
           "length": 32,
-          "start": 17843
+          "start": 18056
         },
         {
           "length": 32,
-          "start": 20857
+          "start": 21325
         },
         {
           "length": 32,
-          "start": 21326
+          "start": 21794
         },
         {
           "length": 32,
-          "start": 1568
+          "start": 1579
         },
         {
           "length": 32,
-          "start": 11089
+          "start": 11301
+        }
+      ]
+    },
+    "competitionSlotPassRegistry": {
+      "name": "CompetitionSlotPassRegistry",
+      "normalizedRuntimeBytecodeHash": "0x7789765e70cb2866009d5c25adb56e30025fcaceaea63c51d7aa089cffac77ff",
+      "immutableReferences": [
+        {
+          "length": 32,
+          "start": 456
+        },
+        {
+          "length": 32,
+          "start": 665
+        },
+        {
+          "length": 32,
+          "start": 2811
+        },
+        {
+          "length": 32,
+          "start": 2934
+        },
+        {
+          "length": 32,
+          "start": 4624
+        },
+        {
+          "length": 32,
+          "start": 4807
+        },
+        {
+          "length": 32,
+          "start": 4570
+        },
+        {
+          "length": 32,
+          "start": 4703
+        },
+        {
+          "length": 32,
+          "start": 4741
+        },
+        {
+          "length": 32,
+          "start": 908
+        },
+        {
+          "length": 32,
+          "start": 949
         }
       ]
     },

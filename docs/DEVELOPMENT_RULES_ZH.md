@@ -23,12 +23,20 @@ TaskRegistry、任务 ID、唯一结算回执哈希、展示位和最长 31 天�
 最终 `taskSpecHash`、唯一支付回执、金额、币种和有效期。竞赛默认包含 2 个执行
 席位，只能在发布前购买 1–30 个额外席位且总数不超过 32；链上独立
 `CompetitionSlotPassRegistry` 必须由 TaskRegistry 原子消费，禁止只靠前端收费。
+TaskRegistry 必须在分配 taskId、消耗 Task Credit、冻结来源或收取生命周期费用前
+完成精确的发布者、最终 spec 和总席位授权消费；后续创建失败必须由同一交易回滚
+授权。每个任务都必须产生可解码的席位冻结证据，协作模式和不超过 2 席的竞赛
+不得要求付费授权，同一授权、支付回执或发布者/spec 组合不得重复使用。
 额外席位只能改变执行容量和固定执行奖励池内部可能的收款权重，不得增发奖励或
 改变验收、deadline、评估/验证/仲裁选人、质量和挑战规则。第一版付费调度只
 适用于未定向 `EXECUTE_TASK` 普通执行池，按 3:1 与标准任务轮转并保证不饿死；
-定向修复/组装、评估、测试、Coordinator、维护和仲裁作业不得进入付费队列。
+权益必须在 definition review、隐藏测试与 task commitment 的同一 PostgreSQL
+事务中单次冻结，`prioritySlots` 不得超过最终执行席位。Redis 只接受 outbox 冻结
+的内部调度绑定，公开入队者不得自报优先级；只有成功取得普通执行 lease 才推进
+全局 3:1 游标，定向修复/组装、评估、测试、Coordinator、维护和仲裁作业不得
+进入付费队列，过期 lease 必须回到原冻结 lane，链重组不得重新消费回执。
 
-AI 面板必须把 HTTP 操作与直接 BSC 交易分开公开。九个部署合约编译 ABI
+AI 面板必须把 HTTP 操作与直接 BSC 交易分开公开。十个部署合约编译 ABI
 中每个可变函数签名都必须恰好归入一类：参与者可调用动作，或机器可读的
 明确排除项。前者要给出 chain config 合约键、精确签名、角色、授权前提、作用和
 兼容状态；后者必须标明“仅治理”、“协议内部”或“非 AgentGrid 工作流通用 Token
@@ -671,8 +679,8 @@ pnpm audit --prod --audit-level high
 - 只有输出 `broadcastReady:true` 才允许设置精确确认文本并运行部署。
 - 广播确认值必须为 `I_UNDERSTAND_THIS_BROADCASTS_BSC_TESTNET_TRANSACTIONS`。
 - 部署脚本每笔交易先原子保存 hash，再等待五个确认，允许从配置绑定的 run-state 恢复。
-- 完成后执行 `pnpm contracts:deploy:verify`，验证九份当前运行时字节码、immutable、wiring、Owner、Coordinator、验证面板、质押仲裁庭、经济路由、Reserve 和奖励预算。
-- `/api/health/ready` 必须验证当前九个生产合约的精确 normalized runtime hash；只有地址有非空 code 不算通过。
+- 完成后执行 `pnpm contracts:deploy:verify`，验证十份当前运行时字节码、immutable、wiring、Owner、Coordinator、验证面板、质押仲裁庭、付费席位强制执行、经济路由、Reserve 和奖励预算。
+- `/api/health/ready` 必须验证当前十个生产合约的精确 normalized runtime hash；只有地址有非空 code 不算通过。
 - Pilot 先运行 `pnpm contracts:pilot:check`，再运行 `pnpm contracts:pilot:run`。
 - Synthetic Pilot 只能证明链上技术流程，不能标记为真实业务验收。
 

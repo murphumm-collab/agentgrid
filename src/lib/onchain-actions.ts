@@ -1,6 +1,7 @@
 export const onChainContractKeys = [
   "token", "stakeManager", "agentRegistry", "taskRegistry", "rewardVault",
   "verificationPanel", "verificationArbitrationCourt", "disputeResolver", "protocolEconomics",
+  "competitionSlotPassRegistry",
 ] as const;
 
 export type OnChainContractKey = typeof onChainContractKeys[number];
@@ -120,6 +121,7 @@ export const onChainActionExclusions = [
   governance("taskRegistry", "renounceOwnership()"),
   governance("taskRegistry", "setDisputeResolver(address)"),
   governance("taskRegistry", "setProtocolEconomics(address)"),
+  governance("taskRegistry", "setCompetitionSlotPassRegistry(address)"),
   governance("taskRegistry", "setVerificationPanel(address)"),
   governance("taskRegistry", "transferOwnership(address)"),
 
@@ -150,4 +152,11 @@ export const onChainActionExclusions = [
   governance("protocolEconomics", "configureSource(bytes32,address,bool)"),
   governance("protocolEconomics", "renounceOwnership()"),
   governance("protocolEconomics", "transferOwnership(address)"),
+
+  internal("competitionSlotPassRegistry", "registerAuthorization(tuple,bytes)"),
+  internal("competitionSlotPassRegistry", "consume(bytes32,address,bytes32,bytes32,bytes32,uint256,uint8,uint8)"),
+  internal("competitionSlotPassRegistry", "consumeFor(address,bytes32,uint8)"),
+  governance("competitionSlotPassRegistry", "renounceOwnership()"),
+  governance("competitionSlotPassRegistry", "setIssuer(address)"),
+  governance("competitionSlotPassRegistry", "transferOwnership(address)"),
 ] as const satisfies readonly OnChainActionExclusion[];

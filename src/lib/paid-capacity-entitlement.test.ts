@@ -3,6 +3,7 @@ import { privateKeyToAccount } from "viem/accounts";
 import {
   authorizeExtraCompetitionSlots,
   authorizePriorityScheduling,
+  assertPrioritySlotsFitTask,
   extraCompetitionSlotLimit,
   includedCompetitionSlots,
   paidCapacityEntitlementMessage,
@@ -140,6 +141,8 @@ describe("paid capacity entitlement", () => {
     expect(() => paidCapacityEntitlementSchema.parse({ ...priority, prioritySlots: prioritySchedulingSlotLimit + 1 })).toThrow();
     expect(() => paidCapacityEntitlementSchema.parse({ ...extra, taskId: "42" })).toThrow();
     expect(() => paidCapacityEntitlementSchema.parse({ ...priority, priorityUnits: 4 })).toThrow();
+    expect(assertPrioritySlotsFitTask(2, 2)).toBe(2);
+    expect(() => assertPrioritySlotsFitTask(3, 2)).toThrow("PAID_CAPACITY_PRIORITY_SLOTS_EXCEED_TASK");
   });
 
   it("makes all quality, selection, challenge and protocol-result exclusions immutable", () => {

@@ -11,7 +11,7 @@ async function main() {
   const chainId = await client.getChainId();
   if (chainId !== bscTestnet.id) throw new Error(`WRONG_CHAIN_${chainId}`);
   const artifacts = compileContracts();
-  const required = ["TestToken", "StakeCreditManager", "AgentRegistry", "RewardVault", "TaskRegistry", "VerificationPanel", "VerificationArbitrationCourt", "DisputeResolver", "ProtocolEconomics"];
+  const required = ["TestToken", "StakeCreditManager", "AgentRegistry", "RewardVault", "TaskRegistry", "CompetitionSlotPassRegistry", "VerificationPanel", "VerificationArbitrationCourt", "DisputeResolver", "ProtocolEconomics"];
   for (const name of required) if (!artifacts[name]?.bytecode || artifacts[name].bytecode === "0x") throw new Error(`MISSING_BYTECODE_${name}`);
   const blockers: string[] = [];
   const rawArbitrators = (process.env.ARBITRATOR_ADDRESSES ?? "").split(",").map((value) => value.trim()).filter(Boolean);
@@ -30,6 +30,9 @@ async function main() {
   let coordinator: string | undefined;
   try { coordinator = getAddress(process.env.PROTOCOL_COORDINATOR_ADDRESS ?? ""); } catch { blockers.push("PROTOCOL_COORDINATOR_ADDRESS_REQUIRED"); }
   if (protocolOwner && coordinator && protocolOwner.toLowerCase() === coordinator.toLowerCase()) blockers.push("OWNER_AND_COORDINATOR_MUST_DIFFER");
+  try {
+    if (getAddress(process.env.COMPETITION_SLOT_PASS_ISSUER_ADDRESS ?? "") === "0x0000000000000000000000000000000000000000") throw new Error();
+  } catch { blockers.push("COMPETITION_SLOT_PASS_ISSUER_ADDRESS_REQUIRED"); }
   if (protocolOwner && coordinator && arbitrators.some((address) => [protocolOwner!, coordinator!].some((role) => role.toLowerCase() === address.toLowerCase()))) {
     blockers.push("ARBITRATORS_MUST_DIFFER_FROM_OWNER_AND_COORDINATOR");
   }

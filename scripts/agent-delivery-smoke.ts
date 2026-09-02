@@ -48,6 +48,7 @@ const contractAddresses = {
   verificationPanel: "0x2222222222222222222222222222222222222227",
   verificationArbitrationCourt: "0x2222222222222222222222222222222222222228",
   protocolEconomics: "0x2222222222222222222222222222222222222229",
+  competitionSlotPassRegistry: "0x2222222222222222222222222222222222222230",
 } as const;
 const contractAddress = contractAddresses.taskRegistry;
 const taskId = "42";
@@ -249,7 +250,7 @@ async function verifyPackagedAiFrontend(baseUrl: string, secretValues: Record<st
   notificationsResponseSchema.parse(await notificationResponse.json());
 
   const dashboard = publicDashboardResponseSchema.parse(JSON.parse(bodies["/api/public/dashboard"]));
-  if (dashboard.schemaVersion !== "2.5" || dashboard.mode !== "production"
+  if (dashboard.schemaVersion !== "2.6" || dashboard.mode !== "production"
     || dashboard.discovery?.a2aCompatible !== false
     || dashboard.discovery.manifest !== "/.well-known/agentgrid.json"
     || dashboard.discovery.openapi !== "/openapi.json"
@@ -284,7 +285,7 @@ async function verifyPackagedAiFrontend(baseUrl: string, secretValues: Record<st
     };
   };
   const requiredPaths = ["/api/public/dashboard", "/api/tasks", "/api/artifacts/uploads", "/api/hidden-tests/uploads", "/api/tasks/{taskId}/business-adoption", "/api/notifications", "/api/notifications/{notificationId}/read"];
-  if (openapi.info?.version !== "0.8.15" || requiredPaths.some((route) => !openapi.paths?.[route])
+  if (openapi.info?.version !== "0.8.16" || requiredPaths.some((route) => !openapi.paths?.[route])
     || !openapi.paths?.["/api/agents"]?.get || !openapi.paths?.["/api/agents"]?.post) {
     throw new Error("DELIVERY_SMOKE_OPENAPI_CONTRACT_INVALID");
   }
@@ -491,6 +492,7 @@ async function main() {
     [contractAddresses.verificationPanel.toLowerCase()]: artifacts.VerificationPanel.deployedBytecode,
     [contractAddresses.verificationArbitrationCourt.toLowerCase()]: artifacts.VerificationArbitrationCourt.deployedBytecode,
     [contractAddresses.protocolEconomics.toLowerCase()]: artifacts.ProtocolEconomics.deployedBytecode,
+    [contractAddresses.competitionSlotPassRegistry.toLowerCase()]: artifacts.CompetitionSlotPassRegistry.deployedBytecode,
   };
   const admin = new Pool({ connectionString: baseDatabaseUrl, max: 1 });
   const redis = createClient({ url: redisUrl });
@@ -561,6 +563,7 @@ async function main() {
     VERIFICATION_PANEL_ADDRESS: contractAddresses.verificationPanel,
     VERIFICATION_ARBITRATION_COURT_ADDRESS: contractAddresses.verificationArbitrationCourt,
     PROTOCOL_ECONOMICS_ADDRESS: contractAddresses.protocolEconomics,
+    COMPETITION_SLOT_PASS_REGISTRY_ADDRESS: contractAddresses.competitionSlotPassRegistry,
     PORT: String(port),
     HOSTNAME: "127.0.0.1",
   };
@@ -752,7 +755,7 @@ async function main() {
     if (
       !chainConfigResponse.ok || chainConfig.chainId !== 97 || chainConfig.confirmations !== 5 ||
       chainConfig.walletConnectProjectId !== "delivery-smoke-walletconnect-project" ||
-      Object.values(chainConfig.contracts ?? {}).length !== 9 ||
+      Object.values(chainConfig.contracts ?? {}).length !== 10 ||
       Object.entries({
         token: contractAddresses.token,
         stakeManager: contractAddresses.stakeManager,
@@ -763,6 +766,7 @@ async function main() {
         verificationPanel: contractAddresses.verificationPanel,
         verificationArbitrationCourt: contractAddresses.verificationArbitrationCourt,
         protocolEconomics: contractAddresses.protocolEconomics,
+        competitionSlotPassRegistry: contractAddresses.competitionSlotPassRegistry,
       }).some(([key, address]) => chainConfig.contracts?.[key]?.toLowerCase() !== address.toLowerCase())
     ) throw new Error("DELIVERY_SMOKE_RUNTIME_BROWSER_CHAIN_CONFIG_FAILED");
     await verifyJsonBodyPolicy(baseUrl);

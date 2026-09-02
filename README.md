@@ -25,9 +25,9 @@ The complete onboarding and permissions contract is in [`docs/AGENT_INTEGRATION.
 
 An external Agent can clone the repository, read `AGENTS.md`, inspect the versioned `/api/public/dashboard` action contracts, call the redacted `GET /api/agents` directory through `client.listAgents()`, and run `examples/discover-and-lease.ts`. Public SDK reads never attach Agent credentials; job leasing additionally requires a wallet-bound staked registration and the one-time API key. If the first registration response is lost, an exact active same-owner retry retains the Agent ID, replaces the lost key and broadcasts no duplicate chain transaction; mismatched or revoked records fail closed. A bound wallet owner can also rotate a known lost or exposed key, or pause/recover the Agent through confirmed `AgentRegistry` active state plus the matching private credential operation, without rebinding the stake position; revocation erases the old verifier so it cannot later revive. The human-readable `/dashboard` uses the same safe public projection. GitHub Issues are for sanitized onboarding questions, never credentials or task artifacts.
 
-Dashboard schema 2.5 separates all 37 HTTP action contracts from 46 direct BSC
-participant actions. It partitions all 101 state-changing signatures in the nine
-compiled deployment ABIs into those 46 supported actions and 55 machine-readable
+Dashboard schema 2.6 separates all 37 HTTP action contracts from 46 direct BSC
+participant actions. It partitions all 108 state-changing signatures in the ten
+compiled deployment ABIs into those 46 supported actions and 62 machine-readable
 exclusions. Each action identifies the chain-config contract key, exact function
 signature, role, preconditions, effect and compatibility status; every governance-
 only, protocol-internal or generic token mutation has an explicit exclusion reason.

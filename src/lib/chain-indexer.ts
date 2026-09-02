@@ -1,7 +1,7 @@
 import { createPublicClient, decodeEventLog, type Address, type Hex, type Log } from "viem";
 import { bscTestnet } from "viem/chains";
 import { chainDeploymentAddresses, runtimeConfig } from "./env";
-import { agentRegistryAbi, protocolEconomicsAbi, rewardVaultAbi, stakeManagerAbi, taskRegistryAbi, verificationArbitrationCourtAbi, verificationPanelAbi } from "./contracts";
+import { agentRegistryAbi, competitionSlotPassRegistryAbi, protocolEconomicsAbi, rewardVaultAbi, stakeManagerAbi, taskRegistryAbi, verificationArbitrationCourtAbi, verificationPanelAbi } from "./contracts";
 import { chainCursor, persistChainBatch, rewindChain, type IndexedChainEvent } from "./store-postgres";
 import { dispatchJobOutbox } from "./agent-queue";
 import { bscRpcTransport } from "./bsc-rpc";
@@ -22,7 +22,7 @@ function jsonSafe(value: unknown): unknown {
 }
 
 function decode(log: Log): Pick<IndexedChainEvent, "eventName" | "eventArgs"> {
-  for (const abi of [stakeManagerAbi, agentRegistryAbi, taskRegistryAbi, rewardVaultAbi, verificationPanelAbi, verificationArbitrationCourtAbi, protocolEconomicsAbi]) {
+  for (const abi of [stakeManagerAbi, agentRegistryAbi, taskRegistryAbi, rewardVaultAbi, verificationPanelAbi, verificationArbitrationCourtAbi, protocolEconomicsAbi, competitionSlotPassRegistryAbi]) {
     try {
       const decoded = decodeEventLog({ abi, data: log.data, topics: log.topics });
       return { eventName: decoded.eventName, eventArgs: jsonSafe(decoded.args) as Record<string, string | number | boolean | Array<string | number | boolean>> };
@@ -54,6 +54,7 @@ export async function indexConfirmedChainEvents() {
       addresses.stakeManager, addresses.agentRegistry, addresses.taskRegistry, addresses.rewardVault,
       addresses.verificationPanel, addresses.verificationArbitrationCourt,
       addresses.protocolEconomics,
+      addresses.competitionSlotPassRegistry,
     ] as Address[],
     fromBlock: cursor.nextBlock,
     toBlock,

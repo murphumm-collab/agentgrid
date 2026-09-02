@@ -51,6 +51,7 @@ contract CompetitionSlotPassRegistry is Ownable, EIP712 {
     address public issuer;
     mapping(bytes32 => Authorization) private authorizations;
     mapping(bytes32 => bytes32) public receiptAuthorizationId;
+    mapping(bytes32 => bytes32) public publisherSpecAuthorizationId;
 
     error Unauthorized();
     error InvalidAuthorization();
@@ -111,6 +112,8 @@ contract CompetitionSlotPassRegistry is Ownable, EIP712 {
         _validateInput(input);
         if (authorizations[input.authorizationId].publisher != address(0)) revert AuthorizationAlreadyRegistered();
         if (receiptAuthorizationId[input.paymentReceiptHash] != bytes32(0)) revert PaymentReceiptAlreadyRegistered();
+        bytes32 publisherSpecKey = _publisherSpecKey(input.publisher, input.specHash);
+        if (publisherSpecAuthorizationId[publisherSpecKey] != bytes32(0)) revert AuthorizationAlreadyRegistered();
         if (ECDSA.recover(_hashTypedDataV4(_authorizationStructHash(input)), signature) != issuer) revert Unauthorized();
 
         authorizations[input.authorizationId] = Authorization({
@@ -126,6 +129,7 @@ contract CompetitionSlotPassRegistry is Ownable, EIP712 {
             consumed: false
         });
         receiptAuthorizationId[input.paymentReceiptHash] = input.authorizationId;
+        publisherSpecAuthorizationId[publisherSpecKey] = input.authorizationId;
         emit CompetitionSlotAuthorizationRegistered(
             input.authorizationId, input.publisher, input.paymentReceiptHash, input.taskRegistry,
             input.specHash, input.asset, input.amountAtomic, input.issuedAt, input.expiresAt,
@@ -145,20 +149,28 @@ contract CompetitionSlotPassRegistry is Ownable, EIP712 {
     ) external {
         if (msg.sender != taskRegistry) revert Unauthorized();
         Authorization storage authorization = authorizations[authorizationId];
-        if (authorization.publisher == address(0) || authorization.consumed) revert InvalidAuthorization();
-        if (block.timestamp >= authorization.expiresAt) revert AuthorizationExpired();
         if (
             authorization.publisher != publisher || authorization.specHash != specHash ||
             authorization.paymentReceiptHash != paymentReceiptHash || authorization.asset != asset ||
             authorization.amountAtomic != amountAtomic || authorization.paidSlots != paidSlots ||
             authorization.totalSlots != totalSlots
         ) revert AuthorizationMismatch();
-        authorization.consumed = true;
-        emit CompetitionSlotAuthorizationConsumed(
-            authorizationId, publisher, paymentReceiptHash, msg.sender, specHash, asset,
-            amountAtomic, authorization.issuedAt, authorization.expiresAt,
-            INCLUDED_COMPETITION_SLOTS, paidSlots, totalSlots
-        );
+        _consume(authorizationId, authorization);
+    }
+
+    function consumeFor(address publisher, bytes32 specHash, uint8 totalSlots)
+        external
+        returns (bytes32 authorizationId, bytes32 paymentReceiptHash)
+    {
+        if (msg.sender != taskRegistry) revert Unauthorized();
+        authorizationId = publisherSpecAuthorizationId[_publisherSpecKey(publisher, specHash)];
+        Authorization storage authorization = authorizations[authorizationId];
+        if (
+            authorization.publisher != publisher || authorization.specHash != specHash ||
+            authorization.totalSlots != totalSlots
+        ) revert AuthorizationMismatch();
+        paymentReceiptHash = authorization.paymentReceiptHash;
+        _consume(authorizationId, authorization);
     }
 
     function getAuthorization(bytes32 authorizationId) external view returns (Authorization memory) {
@@ -181,6 +193,22 @@ contract CompetitionSlotPassRegistry is Ownable, EIP712 {
 
     function _supportedAsset(bytes32 asset) private pure returns (bool) {
         return asset == ASSET_USDT || asset == ASSET_USDC || asset == ASSET_BNB;
+    }
+
+    function _consume(bytes32 authorizationId, Authorization storage authorization) private {
+        if (authorization.publisher == address(0) || authorization.consumed) revert InvalidAuthorization();
+        if (block.timestamp >= authorization.expiresAt) revert AuthorizationExpired();
+        authorization.consumed = true;
+        emit CompetitionSlotAuthorizationConsumed(
+            authorizationId, authorization.publisher, authorization.paymentReceiptHash, msg.sender,
+            authorization.specHash, authorization.asset, authorization.amountAtomic,
+            authorization.issuedAt, authorization.expiresAt, INCLUDED_COMPETITION_SLOTS,
+            authorization.paidSlots, authorization.totalSlots
+        );
+    }
+
+    function _publisherSpecKey(address publisher, bytes32 specHash) private pure returns (bytes32) {
+        return keccak256(abi.encode(publisher, specHash));
     }
 
     function _authorizationStructHash(AuthorizationInput calldata input) private pure returns (bytes32) {

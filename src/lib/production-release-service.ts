@@ -32,15 +32,17 @@ const deploymentSchema = z.object({
   confirmations: z.literal(5),
   contracts: z.object({
     token: addressSchema, stakeManager: addressSchema, agentRegistry: addressSchema,
-    rewardVault: addressSchema, taskRegistry: addressSchema, disputeResolver: addressSchema,
+    rewardVault: addressSchema, taskRegistry: addressSchema, competitionSlotPassRegistry: addressSchema,
+    verificationPanel: addressSchema, verificationArbitrationCourt: addressSchema,
+    disputeResolver: addressSchema, protocolEconomics: addressSchema,
   }).strict(),
   transactions: z.record(z.string(), transactionSchema),
 }).passthrough();
 
 const requiredDeploymentTransactions = [
-  "deploy.token", "deploy.stakeManager", "deploy.agentRegistry", "deploy.rewardVault", "deploy.taskRegistry", "deploy.disputeResolver",
-  "wire.stakeManager", "wire.disputeResolver", "wire.rewardVault", "fund.rewardReserve",
-  "ownership.TestToken", "ownership.StakeCreditManager", "ownership.RewardVault", "ownership.TaskRegistry", "ownership.DisputeResolver",
+  "deploy.token", "deploy.stakeManager", "deploy.agentRegistry", "deploy.rewardVault", "deploy.taskRegistry", "deploy.competitionSlotPassRegistry", "deploy.protocolEconomics", "deploy.verificationPanel", "deploy.verificationArbitrationCourt", "deploy.disputeResolver",
+  "wire.stakeManager", "wire.agentSelectionRequester", "wire.disputeResolver", "wire.verificationPanel", "wire.rewardVaultVerificationPanel", "wire.verificationArbitrationCourt", "wire.qualitySlasher", "wire.rewardVault", "wire.protocolEconomics", "wire.stakeManagerEconomics", "wire.rewardVaultEconomics", "wire.taskRegistryEconomics", "wire.competitionSlotPassRegistry", "wire.agentQualityReporter", "wire.arbitrationQualityReporter", "fund.rewardReserve",
+  "ownership.TestToken", "ownership.StakeCreditManager", "ownership.RewardVault", "ownership.TaskRegistry", "ownership.CompetitionSlotPassRegistry", "ownership.DisputeResolver", "ownership.ProtocolEconomics",
 ] as const;
 
 export async function readReleaseEvidenceFile(root: string, relative: string, maxBytes = 32 * 1024 * 1024) {
@@ -106,6 +108,7 @@ export async function productionReleaseReadinessReport() {
       if (candidate.buildId !== release.manifest.candidateBuildId) blockers.push("PRODUCTION_RELEASE_CANDIDATE_BUILD_MISMATCH");
       if (new Date(candidate.createdAt).getTime() > new Date(release.manifest.createdAt).getTime()) blockers.push("PRODUCTION_RELEASE_PREDATES_CANDIDATE");
       if (requiredDeploymentTransactions.some((label) => !deployment.transactions[label])) blockers.push("PRODUCTION_RELEASE_DEPLOYMENT_TRANSACTIONS_INCOMPLETE");
+      if (Object.keys(deployment.transactions).length !== requiredDeploymentTransactions.length) blockers.push("PRODUCTION_RELEASE_DEPLOYMENT_TRANSACTIONS_UNEXPECTED");
       if (pilot.files.deployment?.sha256.toLowerCase() !== release.manifest.files.deploymentManifest.sha256.toLowerCase()) blockers.push("PRODUCTION_RELEASE_PILOT_DEPLOYMENT_MISMATCH");
       if (pilot.files.signoff?.sha256.toLowerCase() !== release.manifest.files.pilotSignoffBundle.sha256.toLowerCase()) blockers.push("PRODUCTION_RELEASE_PILOT_SIGNOFF_MISMATCH");
       if (pilot.evidence.pilotId !== pilotSignoff.pilotId || pilot.evidence.taskSetHash?.toLowerCase() !== pilotSignoff.taskSetHash.toLowerCase()) blockers.push("PRODUCTION_RELEASE_PILOT_SCOPE_MISMATCH");

@@ -3,7 +3,7 @@ import { lookup } from "node:dns/promises";
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { createPublicClient, formatEther, getAddress, parseAbi, parseEther, type Address } from "viem";
+import { createPublicClient, formatEther, getAddress, parseAbi, parseEther, type Address, type Hash } from "viem";
 import { privateKeyToAccount, type PrivateKeyAccount } from "viem/accounts";
 import { bscTestnet } from "viem/chains";
 import { z } from "zod";
@@ -11,18 +11,23 @@ import { configuredSecret } from "../../src/lib/secrets";
 import { isPrivateNetworkAddress, pilotRoleNames, publicBscRpcTransport, validateBscTestnetIdentity, validatePilotRoleSeparation, validatePilotRpcUrl, type PilotRoleName } from "./pilot-policy";
 import { compileContracts } from "./compiler";
 import { verifyRuntimeBytecode } from "./bytecode-verification";
+import { isCompetitionSlotPassWiringTransaction } from "./competition-slot-pass-wiring";
 
 const addressSchema = z.string().transform((value) => getAddress(value));
 const deploymentSchema = z.object({
   chainId: z.literal(97), owner: addressSchema, coordinator: addressSchema, reserve: addressSchema,
-  daoTreasury: addressSchema, securityReserve: addressSchema,
+  daoTreasury: addressSchema, securityReserve: addressSchema, competitionSlotPassIssuer: addressSchema,
   arbitrators: z.array(addressSchema).min(3), arbitratorQuorum: z.number().int().min(2),
   startBlock: z.string().regex(/^\d+$/),
   contracts: z.object({
     token: addressSchema, stakeManager: addressSchema, agentRegistry: addressSchema,
-    rewardVault: addressSchema, taskRegistry: addressSchema, verificationPanel: addressSchema,
+    rewardVault: addressSchema, taskRegistry: addressSchema, competitionSlotPassRegistry: addressSchema, verificationPanel: addressSchema,
     verificationArbitrationCourt: addressSchema, disputeResolver: addressSchema, protocolEconomics: addressSchema,
   }).strict(),
+  transactions: z.record(z.string(), z.object({ hash: z.string().regex(/^0x[0-9a-fA-F]{64}$/) }).passthrough()).refine(
+    (transactions) => Boolean(transactions["wire.competitionSlotPassRegistry"]),
+    "competition slot pass wiring transaction required",
+  ),
 }).passthrough().superRefine((deployment, context) => {
   const arbitrators = deployment.arbitrators.map((address) => address.toLowerCase());
   if (new Set(arbitrators).size !== arbitrators.length) {
@@ -128,7 +133,7 @@ export async function runPilotPreflight(options: { requirePristine?: boolean; si
   try {
     const artifactNames = {
       token: "TestToken", stakeManager: "StakeCreditManager", agentRegistry: "AgentRegistry",
-      rewardVault: "RewardVault", taskRegistry: "TaskRegistry", verificationPanel: "VerificationPanel",
+      rewardVault: "RewardVault", taskRegistry: "TaskRegistry", competitionSlotPassRegistry: "CompetitionSlotPassRegistry", verificationPanel: "VerificationPanel",
       verificationArbitrationCourt: "VerificationArbitrationCourt", disputeResolver: "DisputeResolver", protocolEconomics: "ProtocolEconomics",
     } as const;
     const compiled = compileContracts();
@@ -139,6 +144,7 @@ export async function runPilotPreflight(options: { requirePristine?: boolean; si
     contractEntries.forEach(([name], index) => verifyRuntimeBytecode(name, codes[index], compiled[artifactNames[name]]));
     const runtimeBytecodeVerified = true;
     const taskAbi = parseAbi(["function nextTaskId() view returns(uint256)", "function coordinator() view returns(address)", "function disputeResolver() view returns(address)", "function agentRegistry() view returns(address)", "function verificationPanel() view returns(address)", "function protocolEconomics() view returns(address)"]);
+    const passAbi = parseAbi(["function taskRegistry() view returns(address)", "function issuer() view returns(address)"]);
     const agentAbi = parseAbi(["function agentCount() view returns(uint256)", "function stakeManager() view returns(address)", "function selectionRequester() view returns(address)", "function outcomeReporterRoles(address) view returns(uint8)"]);
     const registryAbi = parseAbi(["function taskRegistry() view returns(address)", "function protocolEconomics() view returns(address)", "function qualitySlasher() view returns(address)"]);
     const resolverAbi = parseAbi(["function registry() view returns(address)", "function quorum() view returns(uint256)", "function isArbitrator(address) view returns(bool)"]);
@@ -149,7 +155,7 @@ export async function runPilotPreflight(options: { requirePristine?: boolean; si
     const courtAbi = parseAbi(["function token() view returns(address)", "function panel() view returns(address)", "function agentRegistry() view returns(address)", "function stakeManager() view returns(address)", "function reserve() view returns(address)", "function isArbitrator(address) view returns(bool)"]);
     const economicsAbi = parseAbi(["function taskRegistry() view returns(address)", "function stakeManager() view returns(address)", "function rewardVault() view returns(address)", "function daoTreasury() view returns(address)", "function securityReserve() view returns(address)", "function burnSink() view returns(address)", "function vestingDuration() view returns(uint32)"]);
     const [
-      nextTaskId, registeredAgents, onchainCoordinator, disputeResolver, taskAgentRegistry, taskPanel, taskEconomics, agentStakeManager, selectionRequester, qualityReporterRoles,
+      nextTaskId, registeredAgents, onchainCoordinator, disputeResolver, taskAgentRegistry, taskPanel, taskEconomics, passTaskRegistry, passIssuer, passWiringTransaction, passWiringReceipt, agentStakeManager, selectionRequester, qualityReporterRoles,
       stakeRegistry, stakeEconomics, stakeQualitySlasher, vaultRegistry, vaultPanel, vaultEconomics, resolverRegistry, resolverQuorum, reserveBalance, arbitratorChecks,
       panelRegistry, panelVault, panelQualityRegistry, panelCourt, courtToken, courtPanel, courtAgentRegistry, courtStakeManager, courtReserve, courtArbitrators, ownership,
       economicsRegistry, economicsStake, economicsVault, economicsDao, economicsSecurity, economicsBurn, economicsVesting,
@@ -161,6 +167,10 @@ export async function runPilotPreflight(options: { requirePristine?: boolean; si
       publicClient.readContract({ address: deployment.contracts.taskRegistry, abi: taskAbi, functionName: "agentRegistry" }),
       publicClient.readContract({ address: deployment.contracts.taskRegistry, abi: taskAbi, functionName: "verificationPanel" }),
       publicClient.readContract({ address: deployment.contracts.taskRegistry, abi: taskAbi, functionName: "protocolEconomics" }),
+      publicClient.readContract({ address: deployment.contracts.competitionSlotPassRegistry, abi: passAbi, functionName: "taskRegistry" }),
+      publicClient.readContract({ address: deployment.contracts.competitionSlotPassRegistry, abi: passAbi, functionName: "issuer" }),
+      publicClient.getTransaction({ hash: deployment.transactions["wire.competitionSlotPassRegistry"]!.hash as Hash }),
+      publicClient.getTransactionReceipt({ hash: deployment.transactions["wire.competitionSlotPassRegistry"]!.hash as Hash }),
       publicClient.readContract({ address: deployment.contracts.agentRegistry, abi: agentAbi, functionName: "stakeManager" }),
       publicClient.readContract({ address: deployment.contracts.agentRegistry, abi: agentAbi, functionName: "selectionRequester" }),
       publicClient.readContract({ address: deployment.contracts.agentRegistry, abi: agentAbi, functionName: "outcomeReporterRoles", args: [deployment.contracts.verificationPanel] }),
@@ -184,7 +194,7 @@ export async function runPilotPreflight(options: { requirePristine?: boolean; si
       publicClient.readContract({ address: deployment.contracts.verificationArbitrationCourt, abi: courtAbi, functionName: "stakeManager" }),
       publicClient.readContract({ address: deployment.contracts.verificationArbitrationCourt, abi: courtAbi, functionName: "reserve" }),
       Promise.all(deployment.arbitrators.slice(0, 3).map((address) => publicClient.readContract({ address: deployment.contracts.verificationArbitrationCourt, abi: courtAbi, functionName: "isArbitrator", args: [address] }))),
-      Promise.all([deployment.contracts.token, deployment.contracts.stakeManager, deployment.contracts.rewardVault, deployment.contracts.taskRegistry, deployment.contracts.disputeResolver, deployment.contracts.protocolEconomics]
+      Promise.all([deployment.contracts.token, deployment.contracts.stakeManager, deployment.contracts.rewardVault, deployment.contracts.taskRegistry, deployment.contracts.competitionSlotPassRegistry, deployment.contracts.disputeResolver, deployment.contracts.protocolEconomics]
         .map((address) => publicClient.readContract({ address, abi: ownableAbi, functionName: "owner" }))),
       publicClient.readContract({ address: deployment.contracts.protocolEconomics, abi: economicsAbi, functionName: "taskRegistry" }),
       publicClient.readContract({ address: deployment.contracts.protocolEconomics, abi: economicsAbi, functionName: "stakeManager" }),
@@ -199,6 +209,8 @@ export async function runPilotPreflight(options: { requirePristine?: boolean; si
       equal(onchainCoordinator, deployment.coordinator) && equal(disputeResolver, deployment.contracts.disputeResolver) &&
       equal(taskAgentRegistry, deployment.contracts.agentRegistry) && equal(agentStakeManager, deployment.contracts.stakeManager) && equal(selectionRequester, deployment.contracts.taskRegistry) &&
       equal(taskPanel, deployment.contracts.verificationPanel) && equal(stakeRegistry, deployment.contracts.taskRegistry) &&
+      isCompetitionSlotPassWiringTransaction(passWiringTransaction, deployment.contracts.taskRegistry, deployment.contracts.competitionSlotPassRegistry) && passWiringReceipt.status === "success" &&
+      equal(passTaskRegistry, deployment.contracts.taskRegistry) && equal(passIssuer, deployment.competitionSlotPassIssuer) &&
       equal(stakeQualitySlasher, deployment.contracts.verificationArbitrationCourt) &&
       equal(vaultRegistry, deployment.contracts.taskRegistry) && equal(vaultPanel, deployment.contracts.verificationPanel) &&
       equal(taskEconomics, deployment.contracts.protocolEconomics) && equal(stakeEconomics, deployment.contracts.protocolEconomics) && equal(vaultEconomics, deployment.contracts.protocolEconomics) &&

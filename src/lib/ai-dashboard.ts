@@ -90,7 +90,7 @@ export function buildAiDashboard(source: AiDashboardSource, now = new Date(), mo
   const rewards = new Map(source.rewards.map((reward) => [reward.taskId, reward]));
 
   return {
-    schemaVersion: "2.5",
+    schemaVersion: "2.6",
     generatedAt: now.toISOString(),
     mode,
     network: { name: "BSC Testnet", chainId: 97, confirmations: 5 },
@@ -126,6 +126,9 @@ export function buildAiDashboard(source: AiDashboardSource, now = new Date(), mo
       implementationStatus: "DOMAIN_MODEL_ONLY",
       available: false,
       purchaseEndpoint: null,
+      enforcementContract: "competitionSlotPassRegistry",
+      enforcementExposure: "INTERNAL_COMMERCIAL_ENFORCEMENT_ONLY",
+      participantPurchaseAction: false,
       activation: "PRE_PUBLICATION_ONLY",
       receiptBinding: "PLATFORM_SIGNED_UNIQUE_PAYMENT_RECEIPT",
       entitlements: {

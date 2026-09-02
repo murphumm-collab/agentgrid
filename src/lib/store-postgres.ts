@@ -1,6 +1,6 @@
 import { Pool, type PoolClient } from "pg";
 import type { ProtocolDatabase } from "./types";
-import { runtimeConfig } from "./env";
+import { chainContractAddresses, runtimeConfig } from "./env";
 import { randomUUID } from "node:crypto";
 import { rewrapArtifactKey } from "./artifact-crypto";
 import { taskDefinitionReviewBindingHash, taskDefinitionSchema } from "./task-definition";
@@ -9,6 +9,12 @@ import { keccak256, stringToHex } from "viem";
 import { storedEvidenceHash } from "./signed-evidence";
 import { testEvidenceReportSchema } from "./test-evidence-schema";
 import type { SignedTaskPromotion } from "./task-promotion";
+import {
+  assertPrioritySlotsFitTask,
+  authorizePriorityScheduling,
+  paidCapacityEntitlementSigningVersion,
+  type PrioritySchedulingEntitlement,
+} from "./paid-capacity-entitlement";
 
 let pool: Pool | undefined;
 let migrated = false;
@@ -236,8 +242,48 @@ export async function migratePostgres(initialState?: ProtocolDatabase) {
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         UNIQUE(task_id,placement,starts_at,ends_at)
       );
+      CREATE TABLE IF NOT EXISTS paid_capacity_entitlements (
+        entitlement_id UUID PRIMARY KEY,
+        kind TEXT NOT NULL CHECK(kind='PRIORITY_SCHEDULING'),
+        effect TEXT NOT NULL CHECK(effect='EXECUTOR_GENERAL_QUEUE_ORDER_ONLY'),
+        definition_review_id UUID NOT NULL REFERENCES task_definition_reviews(id) ON DELETE RESTRICT,
+        publisher TEXT NOT NULL CHECK(publisher ~ '^0x[0-9a-f]{40}$'),
+        spec_hash TEXT NOT NULL CHECK(spec_hash ~ '^0x[0-9a-f]{64}$'),
+        issuer TEXT NOT NULL CHECK(issuer ~ '^0x[0-9a-f]{40}$'),
+        attestation_hash TEXT NOT NULL UNIQUE CHECK(attestation_hash ~ '^0x[0-9a-f]{64}$'),
+        receipt_processor TEXT NOT NULL,
+        receipt_id TEXT NOT NULL,
+        receipt_hash TEXT NOT NULL UNIQUE CHECK(receipt_hash ~ '^sha256:[0-9a-f]{64}$'),
+        priority_slots INTEGER NOT NULL CHECK(priority_slots BETWEEN 1 AND 32),
+        paid_at TIMESTAMPTZ NOT NULL,
+        issued_at TIMESTAMPTZ NOT NULL CHECK(issued_at >= paid_at),
+        starts_at TIMESTAMPTZ NOT NULL CHECK(starts_at >= issued_at),
+        expires_at TIMESTAMPTZ NOT NULL CHECK(expires_at > starts_at),
+        isolation JSONB NOT NULL,
+        attestation JSONB NOT NULL,
+        signature TEXT NOT NULL CHECK(signature ~ '^0x[0-9a-fA-F]{130}$'),
+        signing_version TEXT NOT NULL CHECK(signing_version='AgentGrid Paid Capacity Entitlement V1'),
+        signing_message TEXT NOT NULL CHECK(signing_message LIKE 'AgentGrid Paid Capacity Entitlement V1%'),
+        consumed_commitment_id UUID UNIQUE REFERENCES task_commitments(id) ON DELETE RESTRICT,
+        consumed_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(receipt_processor,receipt_id),
+        UNIQUE(definition_review_id,kind),
+        CHECK((consumed_commitment_id IS NULL AND consumed_at IS NULL) OR (consumed_commitment_id IS NOT NULL AND consumed_at IS NOT NULL))
+      );
       ALTER TABLE auth_nonces ADD COLUMN IF NOT EXISTS message_hash TEXT;
       ALTER TABLE task_commitments DROP CONSTRAINT IF EXISTS task_commitments_spec_hash_key;
+      ALTER TABLE task_commitments ADD COLUMN IF NOT EXISTS priority_scheduling_attestation_hash TEXT;
+      ALTER TABLE task_commitments ADD COLUMN IF NOT EXISTS priority_slots INTEGER;
+      ALTER TABLE task_commitments DROP CONSTRAINT IF EXISTS task_commitments_priority_scheduling_check;
+      ALTER TABLE task_commitments ADD CONSTRAINT task_commitments_priority_scheduling_check CHECK(
+        (priority_scheduling_attestation_hash IS NULL AND priority_slots IS NULL) OR
+        (priority_scheduling_attestation_hash IS NOT NULL AND priority_slots IS NOT NULL
+          AND priority_scheduling_attestation_hash ~ '^0x[0-9a-f]{64}$' AND priority_slots BETWEEN 1 AND 32)
+      );
+      ALTER TABLE task_commitments DROP CONSTRAINT IF EXISTS task_commitments_priority_scheduling_attestation_fkey;
+      ALTER TABLE task_commitments ADD CONSTRAINT task_commitments_priority_scheduling_attestation_fkey
+        FOREIGN KEY(priority_scheduling_attestation_hash) REFERENCES paid_capacity_entitlements(attestation_hash) ON DELETE RESTRICT;
       ALTER TABLE task_commitments ADD COLUMN IF NOT EXISTS evaluation_transaction_hash TEXT;
       ALTER TABLE task_commitments ADD COLUMN IF NOT EXISTS evaluation_selection_block NUMERIC;
       ALTER TABLE task_commitments ADD COLUMN IF NOT EXISTS evaluation_candidate_set_hash TEXT;
@@ -247,6 +293,18 @@ export async function migratePostgres(initialState?: ProtocolDatabase) {
       ALTER TABLE task_commitments ADD CONSTRAINT task_commitments_status_check CHECK(status IN ('DRAFT','EVALUATING','APPROVED','CONFIRMED','REJECTED','ORPHANED'));
       ALTER TABLE job_outbox DROP CONSTRAINT IF EXISTS job_outbox_role_check;
       ALTER TABLE job_outbox ADD CONSTRAINT job_outbox_role_check CHECK(role IN ('EXECUTOR','TESTER','EVALUATOR','COORDINATOR'));
+      ALTER TABLE job_outbox ADD COLUMN IF NOT EXISTS scheduling_class TEXT NOT NULL DEFAULT 'STANDARD';
+      ALTER TABLE job_outbox ADD COLUMN IF NOT EXISTS scheduling_attestation_hash TEXT;
+      ALTER TABLE job_outbox DROP CONSTRAINT IF EXISTS job_outbox_scheduling_check;
+      ALTER TABLE job_outbox ADD CONSTRAINT job_outbox_scheduling_check CHECK(
+        (scheduling_class='STANDARD' AND scheduling_attestation_hash IS NULL) OR
+        (scheduling_class='PRIORITY_SCHEDULING' AND role='EXECUTOR' AND kind='EXECUTE_TASK'
+          AND scheduling_attestation_hash IS NOT NULL AND scheduling_attestation_hash ~ '^0x[0-9a-f]{64}$'
+          AND payload ? 'slot' AND NOT(payload ? 'executor'))
+      );
+      ALTER TABLE job_outbox DROP CONSTRAINT IF EXISTS job_outbox_scheduling_attestation_fkey;
+      ALTER TABLE job_outbox ADD CONSTRAINT job_outbox_scheduling_attestation_fkey
+        FOREIGN KEY(scheduling_attestation_hash) REFERENCES paid_capacity_entitlements(attestation_hash) ON DELETE RESTRICT;
       ALTER TABLE signed_task_evaluations DROP CONSTRAINT IF EXISTS signed_task_evaluations_task_id_report_hash_key;
       ALTER TABLE signed_test_evidence ADD COLUMN IF NOT EXISTS signing_version TEXT;
       ALTER TABLE signed_test_evidence ADD COLUMN IF NOT EXISTS signing_message TEXT;
@@ -297,6 +355,7 @@ export async function migratePostgres(initialState?: ProtocolDatabase) {
       CREATE INDEX IF NOT EXISTS signed_test_evidence_task_idx ON signed_test_evidence(task_id, created_at DESC);
       CREATE INDEX IF NOT EXISTS signed_task_evaluations_task_idx ON signed_task_evaluations(task_id, created_at DESC);
       CREATE INDEX IF NOT EXISTS task_promotions_active_idx ON task_promotion_attestations(starts_at,ends_at) WHERE revoked_at IS NULL;
+      CREATE INDEX IF NOT EXISTS paid_capacity_entitlements_review_idx ON paid_capacity_entitlements(definition_review_id,kind) WHERE consumed_at IS NULL;
       `);
       await client.query("COMMIT");
       migrated = true;
@@ -360,6 +419,84 @@ export async function activeTaskPromotionAttestations(now = new Date()) {
   return result.rows;
 }
 
+export interface VerifiedPrioritySchedulingEntitlement {
+  entitlement: PrioritySchedulingEntitlement;
+  signature: `0x${string}`;
+  attestationHash: `0x${string}`;
+  signingMessage: string;
+  taskRegistry: `0x${string}`;
+}
+
+export async function storeVerifiedPrioritySchedulingEntitlement(input: VerifiedPrioritySchedulingEntitlement) {
+  await migratePostgres();
+  const client = await databasePool().connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`paid-capacity:${input.entitlement.definitionReviewId}`]);
+    const review = await client.query<{ id: string; publisher: string }>(
+      `SELECT id,publisher FROM task_definition_reviews
+       WHERE id=$1 AND publisher=$2 AND consumed_at IS NULL AND expires_at>NOW() FOR UPDATE`,
+      [input.entitlement.definitionReviewId, input.entitlement.publisher.toLowerCase()],
+    );
+    if (!review.rows[0]) throw new Error("PAID_CAPACITY_REVIEW_NOT_IMPORTABLE");
+    authorizePriorityScheduling({
+      entitlement: input.entitlement,
+      review: {
+        id: review.rows[0].id,
+        publisher: review.rows[0].publisher,
+        chainId: 97,
+        taskRegistry: input.taskRegistry,
+        specHash: input.entitlement.specHash,
+        publishedTaskId: null,
+      },
+    });
+    const existing = await client.query<{
+      entitlementId: string; attestationHash: string; receiptProcessor: string; receiptId: string; receiptHash: string; signature: string;
+    }>(
+      `SELECT entitlement_id::text AS "entitlementId",attestation_hash AS "attestationHash",receipt_processor AS "receiptProcessor",
+              receipt_id AS "receiptId",receipt_hash AS "receiptHash",signature
+       FROM paid_capacity_entitlements
+       WHERE entitlement_id=$1 OR attestation_hash=$2 OR receipt_hash=$3
+          OR (receipt_processor=$4 AND receipt_id=$5) OR (definition_review_id=$6 AND kind='PRIORITY_SCHEDULING')
+       FOR UPDATE`,
+      [input.entitlement.entitlementId, input.attestationHash.toLowerCase(), input.entitlement.receipt.receiptHash.toLowerCase(),
+        input.entitlement.receipt.processor, input.entitlement.receipt.receiptId, input.entitlement.definitionReviewId],
+    );
+    if (existing.rows.length) {
+      const exact = existing.rows.length === 1
+        && existing.rows[0].entitlementId === input.entitlement.entitlementId
+        && existing.rows[0].attestationHash === input.attestationHash.toLowerCase()
+        && existing.rows[0].receiptProcessor === input.entitlement.receipt.processor
+        && existing.rows[0].receiptId === input.entitlement.receipt.receiptId
+        && existing.rows[0].receiptHash === input.entitlement.receipt.receiptHash.toLowerCase()
+        && existing.rows[0].signature.toLowerCase() === input.signature.toLowerCase();
+      if (!exact) throw new Error("PAID_CAPACITY_RECEIPT_ALREADY_USED");
+      await client.query("COMMIT");
+      return { stored: false as const, entitlementId: input.entitlement.entitlementId, attestationHash: input.attestationHash };
+    }
+    await client.query(
+      `INSERT INTO paid_capacity_entitlements(
+         entitlement_id,kind,effect,definition_review_id,publisher,spec_hash,issuer,attestation_hash,
+         receipt_processor,receipt_id,receipt_hash,priority_slots,paid_at,issued_at,starts_at,expires_at,
+         isolation,attestation,signature,signing_version,signing_message
+       ) VALUES($1,'PRIORITY_SCHEDULING','EXECUTOR_GENERAL_QUEUE_ORDER_ONLY',$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15::jsonb,$16::jsonb,$17,$18,$19)`,
+      [input.entitlement.entitlementId, input.entitlement.definitionReviewId, input.entitlement.publisher.toLowerCase(),
+        input.entitlement.specHash.toLowerCase(), input.entitlement.issuer.toLowerCase(), input.attestationHash.toLowerCase(),
+        input.entitlement.receipt.processor, input.entitlement.receipt.receiptId, input.entitlement.receipt.receiptHash.toLowerCase(),
+        input.entitlement.prioritySlots, input.entitlement.receipt.paidAt, input.entitlement.issuedAt, input.entitlement.startsAt,
+        input.entitlement.expiresAt, JSON.stringify(input.entitlement.isolation), JSON.stringify(input.entitlement), input.signature,
+        paidCapacityEntitlementSigningVersion, input.signingMessage],
+    );
+    await client.query("COMMIT");
+    return { stored: true as const, entitlementId: input.entitlement.entitlementId, attestationHash: input.attestationHash };
+  } catch (error) {
+    await rollback(client);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 export interface TaskCommitmentInput {
   id: string;
   publisher: string;
@@ -410,8 +547,8 @@ export async function createTaskCommitment(input: TaskCommitmentInput) {
   const client = await databasePool().connect();
   try {
     await client.query("BEGIN");
-    const review = await client.query<{ reviewedTaskHash: string }>(
-      `SELECT reviewed_task_hash AS "reviewedTaskHash" FROM task_definition_reviews
+    const review = await client.query<{ id: string; publisher: string; reviewedTaskHash: string }>(
+      `SELECT id,publisher,reviewed_task_hash AS "reviewedTaskHash" FROM task_definition_reviews
        WHERE id=$1 AND publisher=$2 AND consumed_at IS NULL AND expires_at>NOW() FOR UPDATE`,
       [definitionReviewId, input.publisher.toLowerCase()],
     );
@@ -424,11 +561,45 @@ export async function createTaskCommitment(input: TaskCommitmentInput) {
     );
     if (!hidden.rows[0]) throw new Error("HIDDEN_TEST_MANIFEST_NOT_READY");
     if (hidden.rows[0].plaintextSha256.toLowerCase() !== hiddenTestHash) throw new Error("HIDDEN_TEST_COMMITMENT_MISMATCH");
-    const result = await client.query(
-      `INSERT INTO task_commitments(id,publisher,spec_hash,spec) VALUES($1,$2,$3,$4::jsonb)
-       RETURNING id,publisher,spec_hash AS "specHash",status,created_at AS "createdAt"`,
-      [input.id, input.publisher.toLowerCase(), input.specHash, JSON.stringify(input.spec)],
+    const paidCapacity = await client.query<{ attestationHash: string; prioritySlots: number; entitlement: PrioritySchedulingEntitlement }>(
+      `SELECT attestation_hash AS "attestationHash",priority_slots AS "prioritySlots",attestation AS entitlement
+       FROM paid_capacity_entitlements
+       WHERE definition_review_id=$1 AND kind='PRIORITY_SCHEDULING' FOR UPDATE`,
+      [definitionReviewId],
     );
+    let prioritySchedulingAttestationHash: string | null = null;
+    let prioritySlots: number | null = null;
+    if (paidCapacity.rows[0]) {
+      const authorized = authorizePriorityScheduling({
+        entitlement: paidCapacity.rows[0].entitlement,
+        review: {
+          id: review.rows[0].id,
+          publisher: review.rows[0].publisher,
+          chainId: 97,
+          taskRegistry: chainContractAddresses().taskRegistry,
+          specHash: input.specHash,
+          publishedTaskId: null,
+        },
+      });
+      const maxExecutors = Number(rawSpec.maxExecutors);
+      assertPrioritySlotsFitTask(authorized.prioritySlots, maxExecutors);
+      prioritySchedulingAttestationHash = paidCapacity.rows[0].attestationHash;
+      prioritySlots = authorized.prioritySlots;
+    }
+    const result = await client.query(
+      `INSERT INTO task_commitments(id,publisher,spec_hash,spec,priority_scheduling_attestation_hash,priority_slots)
+       VALUES($1,$2,$3,$4::jsonb,$5,$6)
+       RETURNING id,publisher,spec_hash AS "specHash",status,created_at AS "createdAt"`,
+      [input.id, input.publisher.toLowerCase(), input.specHash.toLowerCase(), JSON.stringify(input.spec), prioritySchedulingAttestationHash, prioritySlots],
+    );
+    if (prioritySchedulingAttestationHash) {
+      const consumed = await client.query(
+        `UPDATE paid_capacity_entitlements SET consumed_commitment_id=$2,consumed_at=NOW()
+         WHERE attestation_hash=$1 AND consumed_commitment_id IS NULL AND consumed_at IS NULL`,
+        [prioritySchedulingAttestationHash, input.id],
+      );
+      if (consumed.rowCount !== 1) throw new Error("PAID_CAPACITY_ALREADY_CONSUMED");
+    }
     await client.query("UPDATE hidden_test_manifests SET status='BOUND',commitment_id=$2 WHERE id=$1", [hiddenTestId, input.id]);
     await client.query("UPDATE task_definition_reviews SET consumed_at=NOW(),commitment_id=$2 WHERE id=$1", [definitionReviewId, input.id]);
     await client.query("COMMIT");
@@ -621,11 +792,33 @@ export async function persistChainBatch(name: string, fromBlock: bigint, nextBlo
         );
       }
       if (event.eventName === "TaskCreated" && event.eventArgs?.specHash) {
-        const candidate = await client.query<{ id: string; spec: Record<string, unknown> }>(
-          `SELECT id,spec FROM task_commitments WHERE spec_hash=$1 AND publisher=$2 AND status IN ('APPROVED','ORPHANED') FOR UPDATE`,
+        const candidate = await client.query<{
+          id: string; publisher: string; specHash: string; spec: Record<string, unknown>; prioritySlots: number | null;
+          schedulingAttestationHash: string | null; consumedEntitlementHash: string | null;
+          entitlementKind: string | null; entitlementPublisher: string | null; entitlementSpecHash: string | null;
+        }>(
+          `SELECT c.id,c.publisher,c.spec_hash AS "specHash",c.spec,c.priority_slots AS "prioritySlots",
+                  c.priority_scheduling_attestation_hash AS "schedulingAttestationHash",
+                  e.attestation_hash AS "consumedEntitlementHash",e.kind AS "entitlementKind",
+                  e.publisher AS "entitlementPublisher",e.spec_hash AS "entitlementSpecHash"
+           FROM task_commitments c
+           LEFT JOIN paid_capacity_entitlements e
+             ON e.attestation_hash=c.priority_scheduling_attestation_hash AND e.consumed_commitment_id=c.id
+           WHERE c.spec_hash=$1 AND c.publisher=$2 AND c.status IN ('APPROVED','ORPHANED') FOR UPDATE OF c`,
           [String(event.eventArgs.specHash), String(event.eventArgs.publisher).toLowerCase()],
         );
         if (candidate.rowCount !== 1) throw new Error("APPROVED_TASK_COMMITMENT_NOT_FOUND_OR_AMBIGUOUS");
+        if ((candidate.rows[0].schedulingAttestationHash === null) !== (candidate.rows[0].prioritySlots === null)) throw new Error("PAID_CAPACITY_FROZEN_BINDING_INVALID");
+        if (candidate.rows[0].schedulingAttestationHash !== null
+          && candidate.rows[0].schedulingAttestationHash !== candidate.rows[0].consumedEntitlementHash) throw new Error("PAID_CAPACITY_CONSUMPTION_MISMATCH");
+        if (candidate.rows[0].schedulingAttestationHash !== null
+          && (candidate.rows[0].entitlementKind !== "PRIORITY_SCHEDULING"
+            || candidate.rows[0].entitlementPublisher !== candidate.rows[0].publisher
+            || candidate.rows[0].entitlementSpecHash !== candidate.rows[0].specHash
+            || candidate.rows[0].publisher !== String(event.eventArgs.publisher).toLowerCase()
+            || candidate.rows[0].specHash !== String(event.eventArgs.specHash).toLowerCase())) {
+          throw new Error("PAID_CAPACITY_ENTITLEMENT_BINDING_MISMATCH");
+        }
         const expectedTesterCapabilities = committedTesterCapabilityMask(candidate.rows[0].spec);
         const recordedCapabilities = await client.query<{ requiredCapabilities: string }>(
           `SELECT event_args->>'requiredCapabilities' AS "requiredCapabilities" FROM chain_events
@@ -645,11 +838,16 @@ export async function persistChainBatch(name: string, fromBlock: bigint, nextBlo
           [String(event.eventArgs.taskId), event.transactionHash, candidate.rows[0].id],
         );
         const executorSlots = confirmed.rows[0].executorSlots;
+        const prioritySlots = candidate.rows[0].prioritySlots ?? 0;
+        if (prioritySlots > executorSlots) throw new Error("PAID_CAPACITY_PRIORITY_SLOTS_EXCEED_TASK");
         for (let slot = 1; slot <= executorSlots; slot += 1) {
           const id = `${event.chainId}:${event.transactionHash}:${event.logIndex}:EXECUTE_TASK:${slot}`;
+          const priority = slot <= prioritySlots;
           await client.query(
-            `INSERT INTO job_outbox(id,role,kind,payload) VALUES($1,'EXECUTOR','EXECUTE_TASK',$2::jsonb) ON CONFLICT(id) DO NOTHING`,
-            [id, JSON.stringify(chainJobPayload(event, { slot, executorSlots }))],
+            `INSERT INTO job_outbox(id,role,kind,payload,scheduling_class,scheduling_attestation_hash)
+             VALUES($1,'EXECUTOR','EXECUTE_TASK',$2::jsonb,$3,$4) ON CONFLICT(id) DO NOTHING`,
+            [id, JSON.stringify(chainJobPayload(event, { slot, executorSlots })),
+              priority ? "PRIORITY_SCHEDULING" : "STANDARD", priority ? candidate.rows[0].schedulingAttestationHash : null],
           );
         }
       }
@@ -1295,13 +1493,22 @@ export async function latestSignedTestEvidence() {
   return result.rows;
 }
 
-export interface JobOutboxRow { id: string; role: "EXECUTOR" | "TESTER" | "EVALUATOR" | "COORDINATOR"; kind: string; payload: Record<string, unknown>; createdAt: string }
+export interface JobOutboxRow {
+  id: string;
+  role: "EXECUTOR" | "TESTER" | "EVALUATOR" | "COORDINATOR";
+  kind: string;
+  payload: Record<string, unknown>;
+  schedulingClass: "STANDARD" | "PRIORITY_SCHEDULING";
+  schedulingAttestationHash: string | null;
+  createdAt: string;
+}
 
 export async function pendingJobOutbox(limit = 100) {
   await migratePostgres();
   const result = await databasePool().query<JobOutboxRow>(
-    `SELECT id,role,kind,payload,created_at::text AS "createdAt" FROM job_outbox
-     WHERE dispatched_at IS NULL ORDER BY created_at LIMIT $1`,
+    `SELECT id,role,kind,payload,scheduling_class AS "schedulingClass",
+            scheduling_attestation_hash AS "schedulingAttestationHash",created_at::text AS "createdAt"
+     FROM job_outbox WHERE dispatched_at IS NULL ORDER BY created_at,id LIMIT $1`,
     [limit],
   );
   return result.rows;
@@ -1323,8 +1530,24 @@ export async function expiredTaskEvaluations(limit = 100) {
   return result.rows;
 }
 
-export async function markJobOutboxDispatched(id: string) {
-  await databasePool().query("UPDATE job_outbox SET dispatched_at=NOW() WHERE id=$1 AND dispatched_at IS NULL", [id]);
+export async function markJobOutboxDispatched(
+  id: string,
+  schedulingClass: JobOutboxRow["schedulingClass"],
+  schedulingAttestationHash: string | null,
+) {
+  const result = await databasePool().query(
+    `UPDATE job_outbox SET dispatched_at=NOW()
+     WHERE id=$1 AND dispatched_at IS NULL AND scheduling_class=$2
+       AND scheduling_attestation_hash IS NOT DISTINCT FROM $3`,
+    [id, schedulingClass, schedulingAttestationHash],
+  );
+  if (result.rowCount === 1) return true;
+  const identical = await databasePool().query(
+    `SELECT 1 FROM job_outbox WHERE id=$1 AND dispatched_at IS NOT NULL AND scheduling_class=$2
+       AND scheduling_attestation_hash IS NOT DISTINCT FROM $3`,
+    [id, schedulingClass, schedulingAttestationHash],
+  );
+  return identical.rowCount === 1;
 }
 
 export async function operationalDatabaseMetrics() {
