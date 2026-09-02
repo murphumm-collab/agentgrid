@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Activity, Bell, Bot, Boxes, Braces, Coins, FileCheck2, Gauge, Hexagon, ListChecks, ShieldCheck, Sparkles } from "lucide-react";
+import { Activity, Bell, Bot, Boxes, Braces, Coins, Droplets, FileCheck2, Gauge, Hexagon, ListChecks, ShieldCheck, Sparkles } from "lucide-react";
 import { t, type Locale } from "@/lib/i18n";
 
 export const mobilePrimaryNavigationHrefs: readonly string[] = ["/", "/dashboard", "/tasks", "/tasks/new", "/agents", "/proofs"];
@@ -7,7 +7,7 @@ export const mobilePrimaryNavigationHrefs: readonly string[] = ["/", "/dashboard
 export function Sidebar({ locale }: { locale: Locale }) {
   const links = [
     { href: "/", label: t(locale, "overview"), icon: Gauge }, { href: "/dashboard", label: locale === "zh" ? "AI 面板" : "AI Dashboard", icon: Sparkles }, { href: "/tasks", label: t(locale, "tasks"), icon: ListChecks },
-    { href: "/tasks/new", label: t(locale, "publish"), icon: Boxes }, { href: "/stake", label: t(locale, "stakeCredit"), icon: Coins },
+    { href: "/tasks/new", label: t(locale, "publish"), icon: Boxes }, { href: "/stake", label: t(locale, "stakeCredit"), icon: Coins }, { href: "/faucet", label: t(locale, "faucet"), icon: Droplets },
     { href: "/agents", label: t(locale, "agents"), icon: Bot }, { href: "/agents/integration", label: t(locale, "agentApi"), icon: Braces }, { href: "/proofs", label: locale === "zh" ? "完成证明" : "Proofs", icon: FileCheck2 }, { href: "/notifications", label: locale === "zh" ? "通知" : "Notifications", icon: Bell }, { href: "/protocol", label: t(locale, "protocol"), icon: Activity },
   ];
   return (

@@ -11,5 +11,7 @@ describe("Sidebar navigation", () => {
     const css = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
     expect(css).toMatch(/\.mobile-nav\s*\{[^}]*grid-template-columns:\s*repeat\(6,\s*minmax\(0,\s*1fr\)\)/s);
     expect(css).toMatch(/\.mobile-nav-link\s*\{[^}]*min-width:\s*0/s);
+    const sidebar = readFileSync(new URL("./sidebar.tsx", import.meta.url), "utf8");
+    expect(sidebar).toContain('{ href: "/faucet"');
   });
 });

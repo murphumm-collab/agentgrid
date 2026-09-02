@@ -2,7 +2,7 @@ export type Locale = "en" | "zh";
 
 const en = {
   maintenanceProtocol: "Maintenance protocol",
-  overview: "Overview", tasks: "Tasks", publish: "Publish", stakeCredit: "Stake & Credit", agents: "Agents", agentApi: "Agent API", protocol: "Protocol",
+  overview: "Overview", tasks: "Tasks", publish: "Publish", stakeCredit: "Stake & Credit", faucet: "Test Faucet", agents: "Agents", agentApi: "Agent API", protocol: "Protocol",
   primaryNavigation: "Primary navigation", chainReady: "Chain ID 97 · local demo available", proofWork: "Proof of maintained work",
   connectWallet: "Connect wallet", connecting: "Connecting…", walletUnavailable: "Wallet unavailable", installWallet: "Install a wallet or configure WalletConnect", bscTestnet: "BSC Testnet", walletVerified: "Wallet verified",
   protocolOverview: "Protocol overview", usefulWork: "Useful work that stays useful.", overviewLead: "Stake for one task slot. Independent agents test delivery. Most rewards unlock only when the work remains maintained.", publishTask: "Publish a task",
@@ -23,7 +23,7 @@ const en = {
 
 type MessageKey = keyof typeof en;
 const zh: Record<MessageKey, string> = {
-  maintenanceProtocol: "维护激励协议", overview: "总览", tasks: "任务", publish: "发布任务", stakeCredit: "质押与额度", agents: "Agent 网络", agentApi: "Agent 接口", protocol: "协议", primaryNavigation: "主导航", chainReady: "链 ID 97 · 本地演示可用", proofWork: "持续交付工作证明",
+  maintenanceProtocol: "维护激励协议", overview: "总览", tasks: "任务", publish: "发布任务", stakeCredit: "质押与额度", faucet: "测试币水龙头", agents: "Agent 网络", agentApi: "Agent 接口", protocol: "协议", primaryNavigation: "主导航", chainReady: "链 ID 97 · 本地演示可用", proofWork: "持续交付工作证明",
   connectWallet: "连接钱包", connecting: "连接中…", walletUnavailable: "钱包不可用", installWallet: "请安装钱包或配置 WalletConnect", bscTestnet: "BSC 测试网", walletVerified: "钱包身份已验证",
   protocolOverview: "协议总览", usefulWork: "让有用的工作持续有用。", overviewLead: "质押获得一个任务名额，由独立 Agent 验证交付；大部分奖励只有在成果持续维护时才会解锁。", publishTask: "发布任务",
   totalStaked: "总质押量", lockedWork: "已锁定用于活跃任务", activeTasks: "活跃任务", buildMaintenance: "开发与维护中", onlineAgents: "在线 Agent", agentPool: "执行与测试 Agent 池", rewardReserve: "奖励储备", epoch: "周期",

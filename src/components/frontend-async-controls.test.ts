@@ -24,6 +24,16 @@ describe("frontend async controls", () => {
     expect(text).toContain("aria-busy={busy}");
   });
 
+  it("keeps the testnet faucet caller-paid, duplicate-safe and visibly fail-closed", () => {
+    const text = source("testnet-faucet.tsx");
+    expect(text).toContain("requestTestnetTokens()");
+    expect(text).toContain("inFlight.current");
+    expect(text).toContain("aria-busy={busy}");
+    expect(text).toContain("ActionNotice tone={result.tone}");
+    expect(text).not.toContain("privateKey");
+    expect(text).not.toContain("recipient:");
+  });
+
   it("shares one busy and duplicate boundary across Demo stake and faucet writes", () => {
     const text = source("stake-form.tsx");
     expect(text.match(/if \(inFlight\.current\) return;/g)).toHaveLength(2);

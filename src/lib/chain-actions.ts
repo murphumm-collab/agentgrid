@@ -6,6 +6,7 @@ import { agentRegistryAbi, rewardVaultAbi, stakeManagerAbi, taskRegistryAbi, tok
 import { loadBrowserChainConfig } from "./browser-chain-config";
 import { browserWalletProvider } from "./browser-wallet";
 import { agentRegistrationRequiresTransaction, assertWalletSessionAccount } from "./agent-management";
+import { testnetFaucetEligibility } from "./testnet-faucet";
 
 declare global { interface Window { ethereum?: EIP1193Provider } }
 
@@ -77,6 +78,24 @@ async function confirmed(hash: Hash, publicClient: Awaited<ReturnType<typeof cli
   const receipt = await publicClient.waitForTransactionReceipt({ hash, confirmations });
   if (receipt.status !== "success") throw new Error("TRANSACTION_REVERTED");
   return receipt;
+}
+
+export async function requestTestnetTokens() {
+  const { account, wallet, publicClient, contracts, confirmations } = await clients();
+  const [amount, cooldown, lastClaimAt, balanceBefore, block] = await Promise.all([
+    publicClient.readContract({ address: contracts.token, abi: tokenAbi, functionName: "FAUCET_AMOUNT" }),
+    publicClient.readContract({ address: contracts.token, abi: tokenAbi, functionName: "FAUCET_COOLDOWN" }),
+    publicClient.readContract({ address: contracts.token, abi: tokenAbi, functionName: "lastFaucetAt", args: [account] }),
+    publicClient.readContract({ address: contracts.token, abi: tokenAbi, functionName: "balanceOf", args: [account] }),
+    publicClient.getBlock({ blockTag: "latest" }),
+  ]);
+  const eligibility = testnetFaucetEligibility(lastClaimAt, cooldown, block.timestamp);
+  if (!eligibility.eligible) throw new Error(`FAUCET_COOLDOWN_ACTIVE:${eligibility.nextClaimAt}`);
+  const hash = await wallet.writeContract({ account, address: contracts.token, abi: tokenAbi, functionName: "faucet" });
+  await confirmed(hash, publicClient, confirmations);
+  const balanceAfter = await publicClient.readContract({ address: contracts.token, abi: tokenAbi, functionName: "balanceOf", args: [account] });
+  if (balanceAfter - balanceBefore !== amount) throw new Error("FAUCET_AMOUNT_MISMATCH");
+  return { account, hash, amount, balanceAfter, nextClaimAt: block.timestamp + cooldown };
 }
 
 export async function createStakeAndCredit(amount: string) {

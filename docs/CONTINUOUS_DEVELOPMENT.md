@@ -98,8 +98,8 @@ still required. Priority scheduling binds the same pre-publication scope and
 declares only `EXECUTOR_GENERAL_QUEUE_ORDER_ONLY` plus a required 3:1 fair
 application queue. Neither kind may alter criteria, deadlines, evaluator /
 validator / arbitrator selection, quality, challenge rules or the reward pool.
-The current application regression passes 363/363 tests across 95 files and the
-uninterrupted contract regression passes 38/38 across eight files. Compilation
+The current application regression passes 367/367 tests across 96 files and the
+uninterrupted contract regression passes 41/41 across nine files. Compilation
 produces 21 deployable contracts; the feature-dense TaskRegistry is 24,575 bytes,
 one byte below EIP-170, so any later Solidity edit must re-run the size gate. A standalone EIP-712
 `CompetitionSlotPassRegistry` now restricts settlement assets to USDT/USDC/BNB,
@@ -120,6 +120,29 @@ strict SDK response and the bilingual Dashboard keep the product visibly
 `DOMAIN_MODEL_ONLY`, `available:false`, `participantPurchaseAction:false` with
 no purchase endpoint. The final runtime manifest, complete current-source gates,
 fixed 22-command QA and candidate binding were then frozen at commit `ee184be`.
+
+Governed application development then resumed to expose the already inventoried
+`TestToken.faucet()` action through a dedicated bilingual `/faucet` page. The
+BSC Testnet path reads the contract's exact 10,000-tAGT amount, 24-hour cooldown,
+last-claim time and caller balance, submits only the connected caller's direct
+transaction, waits for governed confirmations, verifies the exact balance delta
+and renders its BscScan proof plus next eligible time. It never accepts a
+recipient, key or server relay and clearly states that independent tBNB is still
+needed for gas. Demo mode is explicitly an off-chain capped ledger and cannot be
+mistaken for tAGT. The focused page/eligibility checks, 367-test application
+suite, 41-test contract suite, typecheck, lint, compile and production build pass;
+the new fixed 22-command QA then passed uninterrupted from
+`2026-09-02T04:35:35.214Z` through `2026-09-02T04:58:45.161Z`. Its mode-0600
+report at
+`/Users/mac/.agentgrid-release-evidence/agentgrid-qa-faucet/application-qa.json`
+binds source SHA-256
+`sha256:d02d3a73716f392c0f4c51a058b8f01fbce32367d7b44ececa87405631cb93ce`
+to unactivated candidate `4Ed2vOYZnFcUrIFnAVCwn`, payload SHA-256
+`sha256:4878832ad09299c3771326e30e9e9a341a9c3ee1e47cfa225024fa4bb086a15e`
+and manifest SHA-256
+`sha256:72a670fe26babc597c3c964852b9ec7d295598cf7f6ac05a46a67c823bf09b88`.
+This closes the local-delivery definition again for the faucet-enabled source;
+public deployment gates remain external.
 One uninterrupted run passed all 22 commands from
 `2026-09-02T01:37:35.625Z` through `2026-09-02T02:01:06.187Z`; its mode-0600
 report binds source SHA-256
@@ -128,9 +151,11 @@ to unactivated candidate `Pb3ElgGhqtgYphGdsAF35`, payload SHA-256
 `sha256:decc4b55d84290a3df2e2a7ba74222a0bb006fb704661f6403871d12f8a0e609`
 and manifest SHA-256
 `sha256:c97c673f3c4d5573542adbfb08ba16eb82fc53327cc90574ac14a7a35799d155`.
-This closes the repository's local-delivery definition for the frozen source;
-it does not authorize a public deployment or satisfy the external production
-launch gates.
+This closed the repository's local-delivery definition for that frozen source.
+Governed development later resumed for a dedicated caller-paid BSC Testnet
+faucet page, so the report and candidate are now historical until the changed
+source completes a new uninterrupted fixed QA. Neither candidate authorizes a
+public deployment or satisfies the external production launch gates.
 
 Public production also remains blocked by the external-authority items in
 `docs/EXTERNAL_COLLABORATION.md`: repository-owner merge approval, funded/separated

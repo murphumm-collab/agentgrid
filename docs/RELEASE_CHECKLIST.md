@@ -22,7 +22,7 @@ real-user pilot.
 ## A. Reproducible local gates
 
 - [x] `pnpm lint`
-- [x] `pnpm test` — current source passes 363 tests across 95 files. The displayed 100% coverage applies
+- [x] `pnpm test` — current source passes 367 tests across 96 files. The displayed 100% coverage applies
   only to `src/lib/protocol.ts`; it is not evidence of full Worker/API coverage.
 - [x] `pnpm audit --prod --audit-level high --json` — the current production
   graph reports zero info/low/moderate/high/critical advisories; this live audit
@@ -34,7 +34,7 @@ real-user pilot.
 - [x] `pnpm contracts:compile` — current source compiles 21 deployable artifacts,
   including `ProtocolEconomics` and the standalone `CompetitionSlotPassRegistry`.
 - [x] `pnpm contracts:test` — the uninterrupted current-source full run passed
-  38/38 cases across eight files across protocol lifecycle, role quality,
+  41/41 cases across nine files across protocol lifecycle, role quality,
   economics, Court arbitration and paid competition-slot integration. This is
   current focused/full evidence; it does not by itself close the fixed
   22-command QA row below.
@@ -170,7 +170,17 @@ real-user pilot.
   catch transport and decode failures, expose accessible structural results and
   busy state, and reject duplicate in-flight actions. A failed locale write
   cannot refresh the page as though the preference had been persisted.
-- [x] The current `ee184be` governed source completed all 22 fixed commands
+- [x] `/faucet` exposes the existing BSC Testnet-only `TestToken.faucet()` as a
+  direct caller-paid wallet transaction: exact on-chain amount/cooldown getters
+  are read before submission, the confirmed balance delta must equal 10,000
+  tAGT, duplicate clicks are suppressed, cooldown failures are visible and the
+  BscScan transaction plus next claim time are shown. It accepts no recipient
+  override, private key or server relay. Demo mode is visibly separate, writes
+  only capped local credits and never claims to be on-chain tAGT. Focused
+  eligibility/UI tests pass, the production build contains the route, and the
+  uninterrupted full contract run proves fixed caller-only minting, cooldown
+  rejection, independent wallets and post-cooldown recovery in 3/3 new cases.
+- [x] The historical `ee184be` governed source completed all 22 fixed commands
   uninterrupted from `2026-09-02T01:37:35.625Z` through
   `2026-09-02T02:01:06.187Z`. The mode-0600 report at
   `/Users/mac/.agentgrid-release-evidence/agentgrid-qa-ee184be/application-qa.json`
@@ -183,6 +193,22 @@ real-user pilot.
   `sha256:c97c673f3c4d5573542adbfb08ba16eb82fc53327cc90574ac14a7a35799d155`
   and server SHA-256
   `82adb99683348f2e8a036d12e953fd5b011a4925125e2487d318e2ab5337f0ae`.
+  This report became historical when governed source development resumed for
+  the dedicated BSC Testnet faucet surface; it cannot qualify the new source.
+- [x] The current faucet-enabled governed source completed all 22 fixed commands
+  uninterrupted from `2026-09-02T04:35:35.214Z` through
+  `2026-09-02T04:58:45.161Z`. The mode-0600 report at
+  `/Users/mac/.agentgrid-release-evidence/agentgrid-qa-faucet/application-qa.json`
+  binds source SHA-256
+  `sha256:d02d3a73716f392c0f4c51a058b8f01fbce32367d7b44ececa87405631cb93ce`
+  to unactivated candidate `4Ed2vOYZnFcUrIFnAVCwn`, 2,586 payload entries /
+  69,742,979 bytes, payload SHA-256
+  `sha256:4878832ad09299c3771326e30e9e9a341a9c3ee1e47cfa225024fa4bb086a15e`,
+  manifest SHA-256
+  `sha256:72a670fe26babc597c3c964852b9ec7d295598cf7f6ac05a46a67c823bf09b88`
+  and server SHA-256
+  `82adb99683348f2e8a036d12e953fd5b011a4925125e2487d318e2ab5337f0ae`.
+  The prior `Pb3ElgGhqtgYphGdsAF35` candidate remains unactivated history.
   The previous `1764c30` report/candidate remains historical evidence only.
 
 ## B. BSC Testnet gates

@@ -84,6 +84,14 @@ pnpm dev
 
 Open <http://localhost:3000>. Demo mode uses seeded local identities and must never be exposed as a production environment.
 
+The dedicated `/faucet` page keeps the two funding surfaces explicit. Demo mode
+adds at most 50,000 non-transferable local ledger credits per seeded identity.
+A configured BSC Testnet deployment instead asks the connected wallet to call
+`TestToken.faucet()` directly, mints exactly 10,000 valueless tAGT to that caller,
+enforces the contract's 24-hour cooldown and links the confirmed transaction to
+BscScan. AgentGrid never asks for a private key or relays the claim; the caller
+must obtain a small amount of tBNB independently to pay gas.
+
 ## Agent worker
 
 Production registration is wallet-bound and returns a one-time API key. A worker then leases only jobs matching its registered role:

@@ -20,11 +20,12 @@ evidence.
   and the authenticated trusted proxy, set `AUTH_ORIGIN` to that exact HTTPS
   origin, run the external edge verifier, and bind
   its report to the candidate and BSC deployment manifest.
-- Current state: the frontend and AI-friendly Dashboard exist locally. Current
-  immutable candidate `Pb3ElgGhqtgYphGdsAF35` is bound to source
-  `sha256:13cc42019c00dcb662298d8812f7b517276285caabb0d331bc3be355736eff58`
+- Current state: the frontend, AI-friendly Dashboard and dedicated test-token
+  faucet exist locally. Current immutable candidate `4Ed2vOYZnFcUrIFnAVCwn` is
+  bound to source
+  `sha256:d02d3a73716f392c0f4c51a058b8f01fbce32367d7b44ececa87405631cb93ce`
   by the uninterrupted 22-command QA at
-  `/Users/mac/.agentgrid-release-evidence/agentgrid-qa-ee184be/application-qa.json`
+  `/Users/mac/.agentgrid-release-evidence/agentgrid-qa-faucet/application-qa.json`
   and remains unactivated. Its discovery schema 1.1, OpenAPI 0.8.16, Dashboard
   schema 2.6, ten-contract runtime manifest and local production bundle are
   verified for that exact source. No public URL has been deployed or represented
@@ -36,6 +37,9 @@ evidence.
 
 - Fund the testnet-only deployer with at least `0.1 tBNB` and retain funding
   transaction evidence.
+- Faucet users need their own small tBNB balance for gas. The AgentGrid faucet
+  distributes only valueless tAGT to its direct caller and must not custody a
+  wallet, relay a claim or represent itself as a BNB faucet.
 - Supply distinct owner multisig/timelock, Coordinator, reserve, DAO treasury,
   security reserve, CompetitionSlotPass issuer and at least three arbitrator
   addresses with the configured quorum. The two public paid-capacity signer
