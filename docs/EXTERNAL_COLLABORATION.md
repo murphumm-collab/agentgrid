@@ -37,10 +37,18 @@ evidence.
 
 - Fund the testnet-only deployer with at least `0.1 tBNB` and retain funding
   transaction evidence.
-- Supply distinct owner multisig/timelock, Coordinator, reserve and at least
-  three arbitrator addresses with the configured quorum.
+- Supply distinct owner multisig/timelock, Coordinator, reserve, DAO treasury,
+  security reserve, CompetitionSlotPass issuer and at least three arbitrator
+  addresses with the configured quorum. The two public paid-capacity signer
+  addresses are configuration inputs only; their private keys must remain in
+  an external controlled signing workflow.
 - Authorize the explicit testnet broadcast only after the preflight returns
   `broadcastReady:true`.
+- Current read-only chain-97 preflight compiles all ten contracts but returns
+  `broadcastReady:false` for the missing three arbitrators/quorum, deployer key,
+  owner, Coordinator, CompetitionSlotPass issuer, DAO treasury and security
+  reserve. These values require external custody decisions and must not be
+  synthesized locally.
 - Provision explicitly separated publisher, three evaluator, executor, three
   validator, three staked arbitration and coordinator wallets; do not compress
   this requirement into a fragile participant count.
