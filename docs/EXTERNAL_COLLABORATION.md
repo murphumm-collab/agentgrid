@@ -20,16 +20,16 @@ evidence.
   and the authenticated trusted proxy, set `AUTH_ORIGIN` to that exact HTTPS
   origin, run the external edge verifier, and bind
   its report to the candidate and BSC deployment manifest.
-- Current state: the frontend, AI-friendly Dashboard and dedicated test-token
-  faucet exist locally. Candidate `4Ed2vOYZnFcUrIFnAVCwn` is historical because
-  governed development resumed to remove the unintended executor stake requirement. It was
-  bound to source
-  `sha256:d02d3a73716f392c0f4c51a058b8f01fbce32367d7b44ececa87405631cb93ce`
+- Current state: the frontend, AI-friendly Dashboard, dedicated test-token
+  faucet and zero-stake executor access exist locally. Current immutable candidate
+  `lf1SmMsTfSnnlit2yh8Gv` is bound to source
+  `sha256:ff9c0ed750cd62e5ebc99b1f04b7ecaa2602f15095174dce44f83cda0c333e85`
   by the uninterrupted 22-command QA at
-  `/Users/mac/.agentgrid-release-evidence/agentgrid-qa-faucet/application-qa.json`
-  and remains unactivated. Its discovery schema 1.1, OpenAPI 0.8.16, Dashboard
-  schema 2.6, ten-contract runtime manifest and local production bundle are
-  verified for that exact source. No public URL has been deployed or represented
+  `/Users/mac/.agentgrid-release-evidence/agentgrid-qa-zero-stake/application-qa.json`
+  and remains unactivated. Discovery schema 1.2, OpenAPI 0.8.17, Dashboard
+  schema 2.7, the ten-contract runtime manifest and local production bundle are
+  verified for that exact source. Candidate `4Ed2vOYZnFcUrIFnAVCwn` is historical.
+  No public URL has been deployed or represented
   as production;
   deployment still requires the product owner's hosting/domain authorization
   and the external edge evidence above.

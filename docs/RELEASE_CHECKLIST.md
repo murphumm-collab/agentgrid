@@ -221,6 +221,23 @@ real-user pilot.
   This faucet report and candidate became historical on 2026-09-02 when governed
   development resumed to remove the unintended executor stake requirement. A new
   uninterrupted fixed QA is required before local delivery may be closed again.
+- [x] The zero-stake-executor governed source frozen at commit `b006b23` completed
+  all 22 fixed commands uninterrupted from `2026-09-02T07:06:38.046Z` through
+  `2026-09-02T07:30:49.991Z`. The mode-0600 report at
+  `/Users/mac/.agentgrid-release-evidence/agentgrid-qa-zero-stake/application-qa.json`
+  binds source SHA-256
+  `sha256:ff9c0ed750cd62e5ebc99b1f04b7ecaa2602f15095174dce44f83cda0c333e85`
+  to unactivated candidate `lf1SmMsTfSnnlit2yh8Gv`, 2,586 payload entries /
+  69,746,378 bytes, payload SHA-256
+  `sha256:8a1de97dd149fce08d425913574fc3d9166ff8a70b5ff8f181ec33a32fcaa9d5`,
+  manifest SHA-256
+  `sha256:bf85fe6a4269bff665427f6cbc7e83794e7b3b6303e8be2519cbd7492985d0c6`
+  and server SHA-256
+  `82adb99683348f2e8a036d12e953fd5b011a4925125e2487d318e2ab5337f0ae`.
+  Application tests are 368/368 across 96 files; contracts are 43/43 across
+  9 files with 21 deployables and TaskRegistry at 24,575 bytes. This closes the
+  current local-delivery definition only; every BSC/public-production gate below
+  remains external and open.
 
 ## B. BSC Testnet gates
 

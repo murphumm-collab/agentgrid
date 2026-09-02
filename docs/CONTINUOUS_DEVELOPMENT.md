@@ -160,6 +160,31 @@ faucet page, so the report and candidate are now historical until the changed
 source completes a new uninterrupted fixed QA. Neither candidate authorizes a
 public deployment or satisfies the external production launch gates.
 
+Governed development then removed the unintended executor stake dependency.
+Pure executors now register capability `1` with position `0`, lease and claim
+without AGT stake, but remain wallet-bound and subject to active state, quality
+cooldown and bans. Position `0` cannot acquire evaluator, validator or combined
+capabilities and cannot enlarge or advance their append-only selection pool; a
+later valid stake-backed upgrade joins that pool once. Production authentication,
+OpenAPI 0.8.17, discovery 1.2, Dashboard 2.7, the bilingual UI and direct
+TaskRegistry eligibility use the same rule. A court-staked zero-position executor
+may still use the evidence-bound rehabilitation path without creating a main
+Agent stake requirement.
+
+Application tests pass 368/368 across 96 files and contracts pass 43/43 across
+9 files. The fixed 22-command QA for frozen governed source commit `b006b23`
+passed uninterrupted from `2026-09-02T07:06:38.046Z` through
+`2026-09-02T07:30:49.991Z`. Its mode-0600 report at
+`/Users/mac/.agentgrid-release-evidence/agentgrid-qa-zero-stake/application-qa.json`
+binds source SHA-256
+`sha256:ff9c0ed750cd62e5ebc99b1f04b7ecaa2602f15095174dce44f83cda0c333e85`
+to unactivated candidate `lf1SmMsTfSnnlit2yh8Gv`, payload SHA-256
+`sha256:8a1de97dd149fce08d425913574fc3d9166ff8a70b5ff8f181ec33a32fcaa9d5`
+and manifest SHA-256
+`sha256:bf85fe6a4269bff665427f6cbc7e83794e7b3b6303e8be2519cbd7492985d0c6`.
+The local-delivery definition is closed again for that exact source; public
+production remains blocked by the external-authority gates below.
+
 Public production also remains blocked by the external-authority items in
 `docs/EXTERNAL_COLLABORATION.md`: repository-owner merge approval, funded/separated
 BSC roles, hosting/domain/TLS/WAF, production KMS and off-site recovery, real
