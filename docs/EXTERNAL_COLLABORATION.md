@@ -7,13 +7,12 @@ evidence.
 
 ## Frontend and production edge
 
-- **GitHub handoff needed:** the current local branch is
-  `codex/verification-arbitration` and carries commits not present on
-  `origin/main`. HTTPS
-  push currently fails because this machine has no readable GitHub credential.
-  The product owner must authenticate Git for
-  `https://github.com/murphumm-collab/agentgrid.git` or provide an approved SSH
-  remote; no token may be committed or pasted into ordinary project files.
+- **GitHub branch handoff complete:** local branch
+  `codex/verification-arbitration` is synchronized with the same branch at
+  `https://github.com/murphumm-collab/agentgrid.git`, currently at commit
+  `fdbe6e1c09bac488079a2c72f9247aa7b2fde2e0`. It remains intentionally separate
+  from `origin/main` until an accountable repository owner reviews and merges
+  the pull request. No credential or token is stored in the repository.
 
 - **Needed from product owner:** choose Vercel, Cloudflare or an owned server;
   authorize the account/project and identify the production or preview domain.

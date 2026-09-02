@@ -133,8 +133,8 @@ it does not authorize a public deployment or satisfy the external production
 launch gates.
 
 Public production also remains blocked by the external-authority items in
-`docs/EXTERNAL_COLLABORATION.md`: GitHub authentication, funded/separated BSC
-roles, hosting/domain/TLS/WAF, production KMS and off-site recovery, real
+`docs/EXTERNAL_COLLABORATION.md`: repository-owner merge approval, funded/separated
+BSC roles, hosting/domain/TLS/WAF, production KMS and off-site recovery, real
 independent pilot participants, independent audits and accountable signatures.
 No local fixture substitutes for those gates.
 
@@ -176,9 +176,9 @@ slashes rejected appeals by 5/15/30%, and expires no-quorum cases after three
 days without restoration or penalty; its focused four-case Court suite passes.
 Common-control resistance remains an external attestation gate; the frozen-
 source packaged evidence is closed by candidate `nShHeijb9O7TsJrsHaT6w`.
-GitHub push also remains an external credential handoff: the local
-branch carries unpushed commits and HTTPS authentication is unavailable on this
-machine.
+The GitHub branch handoff is now synchronized at commit
+`fdbe6e1c09bac488079a2c72f9247aa7b2fde2e0`; merging it into `origin/main`
+remains an accountable repository-owner decision.
 
 Maintenance checkpoints now clear the acceptance assignment and enter the same
 current-registry, future-block, quality-weighted three-validator selection used

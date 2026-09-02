@@ -194,10 +194,12 @@ real-user pilot.
 - [ ] Record distinct owner multisig/timelock, coordinator and three arbitrator
   addresses.
 - [ ] `pnpm contracts:deploy:check` returns `broadcastReady:true` with no blocker.
-  The prior live preflight for the eleven-contract deployment returned only
-  `DEPLOYER_TBNB_UNDERFUNDED`; minimum balance is `0.1` tBNB. Current source also
-  has an unintegrated Competition Slot Pass Registry, so deployment wiring and a
-  fresh preflight are local prerequisites before external funding can close this row.
+  The current chain-97 preflight compiles all ten contracts and includes the
+  Competition Slot Pass Registry wiring, but remains `broadcastReady:false` for
+  the missing three arbitrators/quorum, deployer key, owner, Coordinator,
+  Competition Slot Pass issuer, DAO treasury and security reserve. The deployer
+  must also hold at least `0.1` tBNB. These are external custody, role-separation
+  and funding inputs rather than local implementation gaps.
 - [x] The deployment preflight returns exit code 2 for `broadcastReady:false`,
   and the broadcaster requires an explicit BSC Testnet acknowledgement, minimum
   deployer balance, separated roles and a non-existing final deployment manifest.
