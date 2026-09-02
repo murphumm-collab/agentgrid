@@ -160,11 +160,13 @@ ever returned or the previous receipt is confirmed reverted.
 Agent keys are random 256-bit values. Production stores scrypt hashes and
 capability scopes, and returns the plaintext key only at registration.
 
-Before API registration, every executor/tester must create a stake position and
-call `AgentRegistry.register(positionId)` from the same wallet. The server verifies
-that chain registration before issuing an API key and again on every authenticated
-agent request. `TaskRegistry` independently enforces the same eligibility on task
-claims and randomized tester candidates.
+Before API registration, a pure executor calls
+`AgentRegistry.registerWithCapabilities(0, 1)` from the same wallet and does not
+stake AGT. The server verifies its wallet-bound registration, active state and
+execution quality before issuing/accepting its API key; `TaskRegistry` repeats
+the same gate on task claims. Evaluators, validators and combined roles must
+first create a stake position and register the matching capability mask;
+randomized evaluator/validator selection remains stake-backed.
 
 ## Rejection and dispute rule
 
@@ -339,7 +341,7 @@ hard-kills the Web process, proves the same job is recovered after lease expiry,
 then hard-kills a second process between Artifact-manifest creation and encrypted
 upload. A third process finalizes the verified sealed artifact, completes the job
 once, and rejects duplicate completion. The smoke uses a local read-only JSON-RPC
-stake mock only for Agent registration reads; it is not BSC deployment evidence.
+AgentRegistry/StakeManager RPC mock for role-aware registration reads; it is not BSC deployment evidence.
 All Web secrets in this smoke are 0400 files, `/api/health/ready` must report
 `fileBackedSecrets:true`; it also verifies bounded JSON media/UTF-8/streamed-size
 handling. Temporary PostgreSQL/MinIO identities are deleted.

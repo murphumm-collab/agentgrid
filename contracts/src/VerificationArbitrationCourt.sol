@@ -8,6 +8,8 @@ import {VerificationPanel} from "./VerificationPanel.sol";
 
 interface IArbitrationAgentRegistry {
     function isEligible(address agent) external view returns (bool);
+    function agentActive(address agent) external view returns (bool);
+    function agentCapabilities(address agent) external view returns (uint8);
     function agentPosition(address agent) external view returns (uint256);
     function stakeManager() external view returns (address);
     function qualityOf(address agent, uint8 role) external view returns (
@@ -214,7 +216,10 @@ contract VerificationArbitrationCourt is ReentrancyGuard {
     }
 
     function openRehabilitationAppeal(uint8 role, bytes32 evidenceHash) external {
-        if ((role != 1 && role != 2 && role != 4) || evidenceHash == bytes32(0) || isArbitrator[msg.sender] || !agentRegistry.isEligible(msg.sender)) {
+        bool roleRegistrationValid = role == 1
+            ? agentRegistry.agentActive(msg.sender) && (agentRegistry.agentCapabilities(msg.sender) & 1) != 0
+            : agentRegistry.isEligible(msg.sender);
+        if ((role != 1 && role != 2 && role != 4) || evidenceHash == bytes32(0) || isArbitrator[msg.sender] || !roleRegistrationValid) {
             revert InvalidChallenge();
         }
         (,,, uint64 cooldownUntil, bool banned) = agentRegistry.qualityOf(msg.sender, role);

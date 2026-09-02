@@ -187,9 +187,15 @@ describe("VerificationArbitrationCourt penalty and recovery", () => {
   });
 
   it("slashes a rejected rehabilitation appeal and expires a later no-quorum appeal without another penalty", async () => {
+    await write(owner, registry, "ArbitrationRegistryHarness", "setEligible", [challenger.account!.address, false]);
     await write(owner, registry, "ArbitrationRegistryHarness", "setQuality", [challenger.account!.address, 1, 1, false]);
+    const firstEvidence = keccak256(stringToHex("unsupported-rehabilitation-claim"));
+    await expect(write(challenger, court, "VerificationArbitrationCourt", "openRehabilitationAppeal", [1, firstEvidence])).rejects.toThrow();
+    await write(owner, registry, "ArbitrationRegistryHarness", "setRegistration", [challenger.account!.address, true, 2]);
+    await expect(write(challenger, court, "VerificationArbitrationCourt", "openRehabilitationAppeal", [1, firstEvidence])).rejects.toThrow();
+    await write(owner, registry, "ArbitrationRegistryHarness", "setRegistration", [challenger.account!.address, true, 1]);
     await write(challenger, court, "VerificationArbitrationCourt", "openRehabilitationAppeal", [
-      1, keccak256(stringToHex("unsupported-rehabilitation-claim")),
+      1, firstEvidence,
     ]);
     const rejectedResolution = keccak256(stringToHex("claim-does-not-prove-rehabilitation"));
     await write(arbitrators[0], court, "VerificationArbitrationCourt", "voteRehabilitationAppeal", [challenger.account!.address, 1, false, rejectedResolution]);

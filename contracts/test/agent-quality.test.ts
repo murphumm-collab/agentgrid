@@ -86,6 +86,42 @@ describe("AgentRegistry role quality", () => {
 
   const publisher = (index: number) => mnemonicToAccount(mnemonic, { addressIndex: index + 10 }).address;
 
+  it("allows only pure executors to register without stake and keeps quality gates enforceable", async () => {
+    await expect(write(outsider, agentRegistry, "AgentRegistry", "registerWithCapabilities", [0n, 2])).rejects.toThrow();
+    await expect(write(outsider, agentRegistry, "AgentRegistry", "registerWithCapabilities", [0n, 4])).rejects.toThrow();
+    await expect(write(outsider, agentRegistry, "AgentRegistry", "registerWithCapabilities", [0n, 7])).rejects.toThrow();
+
+    const selectionVersionBefore = await read("AgentRegistry", "registryVersion");
+    const selectionCountBefore = await read("AgentRegistry", "agentCount");
+    await write(outsider, agentRegistry, "AgentRegistry", "registerWithCapabilities", [0n, 1]);
+    expect(await read("AgentRegistry", "agentPosition", [outsider.account!.address])).toBe(0n);
+    expect(await read("AgentRegistry", "isEligible", [outsider.account!.address])).toBe(false);
+    expect(await read("AgentRegistry", "isEligibleFor", [outsider.account!.address, 1])).toBe(true);
+    expect(await read("AgentRegistry", "isEligibleFor", [outsider.account!.address, 2])).toBe(false);
+    expect(await read("AgentRegistry", "registryVersion")).toBe(selectionVersionBefore);
+    expect(await read("AgentRegistry", "agentCount")).toBe(selectionCountBefore);
+    const version = await read("AgentRegistry", "registryVersion");
+    await write(outsider, agentRegistry, "AgentRegistry", "registerWithCapabilities", [0n, 1]);
+    expect(await read("AgentRegistry", "registryVersion")).toBe(version);
+
+    await write(outsider, agentRegistry, "AgentRegistry", "setActive", [false]);
+    expect(await read("AgentRegistry", "isEligibleFor", [outsider.account!.address, 1])).toBe(false);
+    await write(outsider, agentRegistry, "AgentRegistry", "setActive", [true]);
+    for (let index = 0; index < 6; index += 1) await write(owner, qualityReporter, "QualityReporterHarness", "record", [
+      outsider.account!.address, 1, keccak256(stringToHex(`executor-failure-${index}`)),
+      keccak256(stringToHex("EXECUTION_FAILED")), false, false,
+      keccak256(stringToHex(`executor-failure-evidence-${index}`)),
+    ]);
+    expect(await read("AgentRegistry", "isEligibleFor", [outsider.account!.address, 1])).toBe(false);
+
+    await write(outsider, token, "TestToken", "faucet");
+    await write(outsider, token, "TestToken", "approve", [stakeManager, parseEther("1000")]);
+    await write(outsider, stakeManager, "StakeCreditManager", "createPosition", [parseEther("1000")]);
+    await write(outsider, agentRegistry, "AgentRegistry", "registerWithCapabilities", [2n, 7]);
+    expect(await read("AgentRegistry", "agentCount")).toBe((selectionCountBefore as bigint) + 1n);
+    expect(await read("AgentRegistry", "isEligibleFor", [outsider.account!.address, 2])).toBe(true);
+  });
+
   it("starts neutral, rewards proven outcomes and keeps role scores isolated", async () => {
     const initial = await read("AgentRegistry", "qualityOf", [agent.account!.address, 2]) as { scoreBps: number; outcomeCount: number };
     expect(initial.scoreBps).toBe(5_000);

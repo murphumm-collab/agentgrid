@@ -65,7 +65,7 @@ export const aiDashboardActionContracts: readonly ActionContract[] = [
   { id: "inspect-business-adoption", operationId: "getBusinessAdoption", phase: "PUBLISHING", role: "PUBLISHER", method: "GET", endpoint: "/api/tasks/{taskId}/business-adoption", authentication: walletSession, effect: "reads an immutable adoption attestation or the exact accepted artifact release to sign" },
   { id: "submit-business-adoption", operationId: "submitBusinessAdoption", phase: "PUBLISHING", role: "PUBLISHER", method: "POST", endpoint: "/api/tasks/{taskId}/business-adoption", authentication: walletSession, effect: "stores one wallet-signed real-workflow adoption hash; existing evidence cannot be overwritten" },
 
-  { id: "register-agent", operationId: "registerAgent", phase: "AGENT_OPERATIONS", role: "AGENT_OWNER", method: "POST", endpoint: "/api/agents", authentication: "connected wallet must match the wallet session + eligible on-chain stake", effect: "creates one Agent identity and returns its API key once; an exact active same-metadata retry retains the Agent ID, atomically replaces the lost key and broadcasts no duplicate transaction" },
+  { id: "register-agent", operationId: "registerAgent", phase: "AGENT_OPERATIONS", role: "AGENT_OWNER", method: "POST", endpoint: "/api/agents", authentication: "connected wallet must match the wallet session; pure executors use position 0, while evaluator, validator and combined roles require eligible on-chain stake", effect: "creates one Agent identity and returns its API key once; an exact active same-metadata retry retains the Agent ID, atomically replaces the lost key and broadcasts no duplicate transaction" },
   { id: "rotate-agent-credential", operationId: "rotateAgentCredential", phase: "AGENT_OPERATIONS", role: "AGENT_OWNER", method: "POST", endpoint: "/api/agents/{agentId}/credentials", authentication: "connected wallet and wallet session must match the Agent owner + AgentRegistry active confirmation", effect: "invalidates the old API key and returns one replacement key once; a revoked Agent must first confirm setActive(true)" },
   { id: "revoke-agent-credential", operationId: "revokeAgentCredential", phase: "AGENT_OPERATIONS", role: "AGENT_OWNER", method: "DELETE", endpoint: "/api/agents/{agentId}/credentials", authentication: "connected wallet and wallet session must match the Agent owner + prior AgentRegistry setActive(false) confirmation", effect: "revokes the API key and erases its stored verifier after on-chain selection eligibility is disabled" },
   { id: "lease-job", operationId: "leaseAgentJob", phase: "AGENT_OPERATIONS", role: "EXECUTOR_OR_TESTER_OR_EVALUATOR", method: "POST", endpoint: "/api/agent/jobs/lease", authentication: agentCredential, effect: "leases one role-matched job" },
@@ -90,7 +90,7 @@ export function buildAiDashboard(source: AiDashboardSource, now = new Date(), mo
   const rewards = new Map(source.rewards.map((reward) => [reward.taskId, reward]));
 
   return {
-    schemaVersion: "2.6",
+    schemaVersion: "2.7",
     generatedAt: now.toISOString(),
     mode,
     network: { name: "BSC Testnet", chainId: 97, confirmations: 5 },

@@ -13,7 +13,8 @@ async function main() {
   ]);
   console.log(JSON.stringify({ manifest, statistics, completed }, null, 2));
 
-  // Work leasing requires the one-time key received after wallet + stake
+  // Work leasing requires the one-time key received after wallet registration.
+  // Pure executors use position 0 without AGT stake; evaluator/validator roles remain staked.
   // registration. Never put these values in a GitHub issue or commit.
   if (!process.env.AGENT_ID || !process.env.AGENT_API_KEY) return;
   const worker = new AgentProtocolClient({

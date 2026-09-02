@@ -7,8 +7,8 @@ interface IAgentSelectionConflicts {
     function isAgentSelectionConflict(uint256 taskId, address candidate, bool evaluatorPanel) external view returns (bool);
 }
 
-/// @notice Binds one agent wallet to one live, on-chain stake position.
-/// A withdrawal request immediately removes eligibility, before funds leave.
+/// @notice Binds one Agent identity to a wallet. Pure executors may register
+/// without stake; evaluator and validator eligibility remains stake-backed.
 contract AgentRegistry {
     uint8 public constant CAPABILITY_EXECUTE = 1;
     uint8 public constant CAPABILITY_TEST = 2;
@@ -79,6 +79,8 @@ contract AgentRegistry {
     mapping(uint256 => address) public positionAgent;
     mapping(address => uint8) public agentCapabilities;
     mapping(address => bool) public agentActive;
+    mapping(address => bool) private registeredAgent;
+    mapping(address => bool) private selectionListed;
     mapping(address => mapping(uint8 => RoleQuality)) private roleQuality;
     mapping(address => uint8) public outcomeReporterRoles;
     mapping(bytes32 => bool) public consumedOutcome;
@@ -184,23 +186,36 @@ contract AgentRegistry {
 
     function _register(uint256 positionId, uint8 capabilities) private {
         if ((capabilities & BASE_CAPABILITIES) == 0) revert Unauthorized();
-        if (stakeManager.ownerOf(positionId) != msg.sender) revert Unauthorized();
-        if (positionAgent[positionId] != address(0) && positionAgent[positionId] != msg.sender) revert PositionAlreadyBound();
+        bool stakeFreeExecutor = positionId == 0 && capabilities == CAPABILITY_EXECUTE;
+        if (!stakeFreeExecutor) {
+            if (stakeManager.ownerOf(positionId) != msg.sender) revert Unauthorized();
+            if (positionAgent[positionId] != address(0) && positionAgent[positionId] != msg.sender) revert PositionAlreadyBound();
+        }
         uint256 previous = agentPosition[msg.sender];
         if (previous != 0 && previous != positionId) {
             if (isEligible(msg.sender)) revert ExistingRegistrationActive();
             positionAgent[previous] = address(0);
         }
-        (address owner, uint256 amount, , , uint256 withdrawalRequestedAt) = stakeManager.positions(positionId);
-        if (owner != msg.sender || amount < stakeManager.MINIMUM_STAKE() || withdrawalRequestedAt != 0) revert Unauthorized();
+        uint256 amount;
+        if (!stakeFreeExecutor) {
+            (address owner, uint256 stakedAmount, , , uint256 withdrawalRequestedAt) = stakeManager.positions(positionId);
+            if (owner != msg.sender || stakedAmount < stakeManager.MINIMUM_STAKE() || withdrawalRequestedAt != 0) revert Unauthorized();
+            amount = stakedAmount;
+        }
         if (previous == positionId && agentCapabilities[msg.sender] == capabilities && agentActive[msg.sender]) return;
         agentPosition[msg.sender] = positionId;
-        positionAgent[positionId] = msg.sender;
+        if (positionId != 0) positionAgent[positionId] = msg.sender;
         agentCapabilities[msg.sender] = capabilities;
         agentActive[msg.sender] = true;
-        if (previous == 0) registeredAgents.push(msg.sender);
-        _advanceRegistry(keccak256(abi.encode("REGISTER", msg.sender, positionId, capabilities)));
-        _writeStateCheckpoint(msg.sender);
+        registeredAgent[msg.sender] = true;
+        if (positionId != 0 && !selectionListed[msg.sender]) {
+            selectionListed[msg.sender] = true;
+            registeredAgents.push(msg.sender);
+        }
+        if (positionId != 0) {
+            _advanceRegistry(keccak256(abi.encode("REGISTER", msg.sender, positionId, capabilities)));
+            _writeStateCheckpoint(msg.sender);
+        }
         emit AgentRegistered(msg.sender, positionId, amount);
         emit AgentCapabilitiesUpdated(msg.sender, capabilities);
         emit AgentStatusUpdated(msg.sender, true);
@@ -211,15 +226,19 @@ contract AgentRegistry {
     /// Repeated writes are idempotent and do not perturb the registry snapshot.
     function setActive(bool active) external {
         uint256 positionId = agentPosition[msg.sender];
-        if (positionId == 0) revert Unauthorized();
-        if (active) {
+        if (!registeredAgent[msg.sender]) revert Unauthorized();
+        if (active && positionId != 0) {
             (address owner, uint256 amount, , , uint256 withdrawalRequestedAt) = stakeManager.positions(positionId);
             if (owner != msg.sender || amount < stakeManager.MINIMUM_STAKE() || withdrawalRequestedAt != 0) revert Unauthorized();
+        } else if (active && agentCapabilities[msg.sender] != CAPABILITY_EXECUTE) {
+            revert Unauthorized();
         }
         if (agentActive[msg.sender] == active) return;
         agentActive[msg.sender] = active;
-        _advanceRegistry(keccak256(abi.encode("ACTIVE", msg.sender, positionId, active)));
-        _writeStateCheckpoint(msg.sender);
+        if (positionId != 0) {
+            _advanceRegistry(keccak256(abi.encode("ACTIVE", msg.sender, positionId, active)));
+            _writeStateCheckpoint(msg.sender);
+        }
         emit AgentStatusUpdated(msg.sender, active);
     }
 
@@ -240,7 +259,11 @@ contract AgentRegistry {
     }
 
     function isEligibleFor(address agent, uint8 capability) public view returns (bool) {
-        if (capability == 0 || (agentCapabilities[agent] & capability) != capability || !isEligible(agent)) return false;
+        if (
+            capability == 0 || (agentCapabilities[agent] & capability) != capability ||
+            !agentActive[agent] || !registeredAgent[agent]
+        ) return false;
+        if (capability != CAPABILITY_EXECUTE && !isEligible(agent)) return false;
         uint8 role = _roleForCapability(capability);
         RoleQuality memory quality = roleQuality[agent][role];
         uint16 score = quality.scoreBps == 0 ? INITIAL_QUALITY_BPS : quality.scoreBps;
@@ -273,7 +296,7 @@ contract AgentRegistry {
     ) private {
         if (!_validRole(role)) revert InvalidRole();
         if ((outcomeReporterRoles[msg.sender] & role) == 0) revert Unauthorized();
-        if (agentPosition[agent] == 0 || contextId == bytes32(0) || outcomeType == bytes32(0) || evidenceHash == bytes32(0) || (success && severe)) revert InvalidOutcome();
+        if (!registeredAgent[agent] || contextId == bytes32(0) || outcomeType == bytes32(0) || evidenceHash == bytes32(0) || (success && severe)) revert InvalidOutcome();
         bytes32 outcomeId = keccak256(abi.encode(block.chainid, address(this), agent, role, contextId, outcomeType));
         if (consumedOutcome[outcomeId]) revert OutcomeAlreadyConsumed();
         consumedOutcome[outcomeId] = true;
@@ -353,7 +376,7 @@ contract AgentRegistry {
         RoleQuality storage quality = roleQuality[agent][role];
         bytes32 rehabilitationId = keccak256(abi.encode(block.chainid, address(this), agent, role, evidenceHash, "REHABILITATION"));
         if (consumedRehabilitation[rehabilitationId]) revert OutcomeAlreadyConsumed();
-        if (agentPosition[agent] == 0 || evidenceHash == bytes32(0) || (!quality.banned && quality.cooldownUntil == 0)) revert InvalidOutcome();
+        if (!registeredAgent[agent] || evidenceHash == bytes32(0) || (!quality.banned && quality.cooldownUntil == 0)) revert InvalidOutcome();
         consumedRehabilitation[rehabilitationId] = true;
         quality.scoreBps = PAID_POOL_MINIMUM_QUALITY_BPS;
         quality.cooldownUntil = 0;

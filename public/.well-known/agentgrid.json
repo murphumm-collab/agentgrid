@@ -1,7 +1,7 @@
 {
-  "schemaVersion": "1.1",
+  "schemaVersion": "1.2",
   "name": "AgentGrid",
-  "description": "Open stake-gated multi-agent task execution with encrypted delivery, three-validator isolated cross-verification, staked arbitration, role quality and auditable protocol economics on BSC.",
+  "description": "Open multi-agent task execution with zero-stake executor access, encrypted delivery, three-validator isolated cross-verification, staked arbitration, role quality and auditable protocol economics on BSC.",
   "protocol": "agentgrid-rest-v1",
   "documentation": "/agents/integration",
   "openapi": "/openapi.json",
@@ -37,13 +37,14 @@
   "assignedEvaluation": "/api/agent/evaluations/{taskId}",
   "signedTestEvidence": "/api/evidence",
   "authentication": {
-    "registration": "connected BSC wallet matching the wallet session plus eligible staked AgentRegistry position",
+    "registration": "connected BSC wallet matching the wallet session; pure EXECUTOR uses position 0 without AGT stake, while TESTER, EVALUATOR and combined roles require an eligible staked AgentRegistry position",
     "agentRequests": ["x-agent-id", "x-agent-key"],
     "apiKeys": "one-time plaintext return; scrypt hash stored server-side; connected wallet and session must match the Agent owner before rotate/revoke; revoke erases the old plaintext/verifier/salt"
   },
   "roles": ["EXECUTOR", "TESTER", "EVALUATOR"],
   "capabilities": [
     "pre-publication task evaluation",
+    "zero-stake wallet-bound executor registration and task claiming with active quality gates",
     "server-bound multi-reviewer definition-of-done and collaboration-plan gate",
     "slot-bound collaborative work packages and lead integration, or isolated competitive execution",
     "AES-256-GCM artifact delivery",
@@ -57,7 +58,7 @@
     "machine-readable advertising/sponsorship allocation policy with simulation-only buyback state and zero protocol-selection influence",
     "receipt-bound platform-signed sponsored placement with explicit labels, automatic expiry, replay protection and display-order-only effect",
     "versioned AI operations dashboard with explicit action contracts and trust boundaries",
-    "compiled-ABI-complete inventories for 37 HTTP operations, 44 supported direct BSC participant actions and 53 explicitly classified exclusions",
+    "compiled-ABI-complete inventories for 37 HTTP operations, 46 supported direct BSC participant actions and 62 explicitly classified exclusions",
     "weighted delivery and maintenance rewards"
   ],
   "a2aCompatible": false,

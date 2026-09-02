@@ -39,7 +39,7 @@
     },
     "agentRegistry": {
       "name": "AgentRegistry",
-      "normalizedRuntimeBytecodeHash": "0x8e197319c3937e1314122ef2549ae7008e85a902ef32231ef919738939c35f19",
+      "normalizedRuntimeBytecodeHash": "0xf24dafa1c44225d331fbdd090d0e98c7c9790467d78e887c0bca28e2be1400ee",
       "immutableReferences": [
         {
           "length": 32,
@@ -51,23 +51,31 @@
         },
         {
           "length": 32,
-          "start": 7188
+          "start": 7192
         },
         {
           "length": 32,
-          "start": 9072
+          "start": 9076
         },
         {
           "length": 32,
-          "start": 10036
+          "start": 9990
         },
         {
           "length": 32,
-          "start": 11480
+          "start": 12141
         },
         {
           "length": 32,
-          "start": 12402
+          "start": 12504
+        },
+        {
+          "length": 32,
+          "start": 13257
+        },
+        {
+          "length": 32,
+          "start": 13605
         }
       ]
     },
@@ -119,7 +127,7 @@
     },
     "taskRegistry": {
       "name": "TaskRegistry",
-      "normalizedRuntimeBytecodeHash": "0xef1888991f68630145c624696758332e3904a8e30c94ab629c51646dc78a3246",
+      "normalizedRuntimeBytecodeHash": "0x7130339b3075be2621a7922d5f0c277fafaa6e464c4a077a5efd75ee72c8fe37",
       "immutableReferences": [
         {
           "length": 32,
@@ -417,7 +425,7 @@
     },
     "verificationArbitrationCourt": {
       "name": "VerificationArbitrationCourt",
-      "normalizedRuntimeBytecodeHash": "0x8afc8b0e6f1935f3d64e1f6206c886d7c1be4e12ffd32128d935fa04ea067e3e",
+      "normalizedRuntimeBytecodeHash": "0x29aac31fc530a49d4ff9578bb09d40ffa2a8cad8219c8cf76b6dee8a4e998712",
       "immutableReferences": [
         {
           "length": 32,
@@ -425,91 +433,95 @@
         },
         {
           "length": 32,
-          "start": 2874
+          "start": 3195
         },
         {
           "length": 32,
-          "start": 3912
+          "start": 4233
         },
         {
           "length": 32,
-          "start": 5316
+          "start": 5637
         },
         {
           "length": 32,
-          "start": 9098
+          "start": 9408
         },
         {
           "length": 32,
-          "start": 9714
+          "start": 10024
         },
         {
           "length": 32,
-          "start": 2913
+          "start": 3234
         },
         {
           "length": 32,
-          "start": 4292
+          "start": 4613
         },
         {
           "length": 32,
-          "start": 4772
+          "start": 5093
         },
         {
           "length": 32,
-          "start": 6135
+          "start": 6456
         },
         {
           "length": 32,
-          "start": 10031
+          "start": 10341
         },
         {
           "length": 32,
-          "start": 576
+          "start": 531
         },
         {
           "length": 32,
-          "start": 1656
+          "start": 678
         },
         {
           "length": 32,
-          "start": 3267
+          "start": 2029
         },
         {
           "length": 32,
-          "start": 7245
+          "start": 3588
         },
         {
           "length": 32,
-          "start": 8651
+          "start": 7566
         },
         {
           "length": 32,
-          "start": 10155
+          "start": 8961
         },
         {
           "length": 32,
-          "start": 3338
+          "start": 10465
         },
         {
           "length": 32,
-          "start": 5760
+          "start": 3659
         },
         {
           "length": 32,
-          "start": 2841
+          "start": 6081
         },
         {
           "length": 32,
-          "start": 3879
+          "start": 3162
         },
         {
           "length": 32,
-          "start": 5033
+          "start": 4200
         },
         {
           "length": 32,
-          "start": 9065
+          "start": 5354
+        },
+        {
+          "length": 32,
+          "start": 9375
         }
       ]
     },

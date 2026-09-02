@@ -104,6 +104,29 @@ describe("backend protocol workflow", () => {
     expect(disputed.task.state).toBe("DISPUTED");
   });
 
+  it("registers and claims with a zero-stake executor identity", async () => {
+    await expect(registerAgent({
+      owner: `0x${"8".repeat(40)}`, name: "Invalid Validator", role: "TESTER",
+      capabilities: ["AUTOMATED_TEST"], endpoint: "https://validator.example/jobs",
+      stake: 0, stakePositionId: "0",
+    })).rejects.toThrow();
+    const registration = await registerAgent({
+      owner: `0x${"9".repeat(40)}`, name: "Open Executor", role: "EXECUTOR",
+      capabilities: ["typescript"], endpoint: "https://executor.example/jobs",
+      stake: 0, stakePositionId: "0",
+    });
+    expect(registration.agent).toMatchObject({ role: "EXECUTOR", stake: 0, stakePositionId: "0" });
+    const task = await claimTask("task-demo-001", registration.agent.id);
+    expect(task.executorIds).toContain(registration.agent.id);
+    const recovered = await registerAgent({
+      owner: `0x${"9".repeat(40)}`, name: "Open Executor", role: "EXECUTOR",
+      capabilities: ["typescript"], endpoint: "https://executor.example/jobs",
+      stake: 0, stakePositionId: "0",
+    });
+    expect(recovered.recovered).toBe(true);
+    expect(recovered.agent.id).toBe(registration.agent.id);
+  });
+
   it("recovers an exact active registration atomically without creating a second identity", async () => {
     const input = {
       owner: `0x${"1".repeat(40)}`, name: "Recovery Agent", role: "EXECUTOR" as const,

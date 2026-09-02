@@ -88,6 +88,7 @@ describe("public Agent directory", () => {
       { ...valid, owner: "not-a-wallet" },
       missingStakePosition,
       { ...valid, scopes: ["tasks:claim", "tasks:claim"] },
+      { ...valid, role: "TESTER", stake: 0, stakePositionId: "0" },
     ]) {
       const response = await POST(new NextRequest("http://localhost:3000/api/agents", {
         method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
@@ -99,17 +100,19 @@ describe("public Agent directory", () => {
     expect(payload.agents.some((agent) => agent.name === valid.name)).toBe(false);
   });
 
-  it("binds the strict runtime registration boundary to OpenAPI 0.8.16", () => {
+  it("binds the strict runtime registration boundary to OpenAPI 0.8.17", () => {
     const openapi = JSON.parse(readFileSync(new URL("../../../../public/openapi.json", import.meta.url), "utf8")) as {
       info: { version: string };
       paths: Record<string, { post?: { responses?: Record<string, unknown> } }>;
-      components: { schemas: { AgentRegistration: Record<string, unknown> & { properties: Record<string, Record<string, unknown>> } } };
+      components: { schemas: { AgentRegistration: Record<string, unknown> & { allOf: unknown[]; properties: Record<string, Record<string, unknown>> } } };
     };
     const schema = openapi.components.schemas.AgentRegistration;
-    expect(openapi.info.version).toBe("0.8.16");
+    expect(openapi.info.version).toBe("0.8.17");
     expect(schema.additionalProperties).toBe(false);
+    expect(schema.allOf).toHaveLength(1);
     expect(schema.required).toContain("stakePositionId");
     expect(schema.properties.owner.pattern).toBe("^0x[0-9a-fA-F]{40}$");
+    expect(schema.properties.stakePositionId.description).toContain("Use 0 only for a pure EXECUTOR");
     expect(schema.properties.scopes).toMatchObject({ maxItems: 5, uniqueItems: true });
     expect(Object.keys(openapi.paths["/api/agents"].post?.responses ?? {}).sort()).toEqual([
       "200", "201", "400", "401", "403", "409", "413", "415", "429", "500",

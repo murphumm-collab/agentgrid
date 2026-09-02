@@ -52,7 +52,7 @@ const contractAddresses = {
 } as const;
 const contractAddress = contractAddresses.taskRegistry;
 const taskId = "42";
-const positionId = "1";
+const positionId = "0";
 let mockAgentActive = true;
 const smokeSuffix = randomBytes(8).toString("hex");
 const schema = `agent_delivery_smoke_${smokeSuffix}`;
@@ -82,11 +82,11 @@ function jsonRpcResult(request: { id?: string | number | null; method?: string; 
   if (request.method !== "eth_call") throw new Error(`UNSUPPORTED_RPC_METHOD_${request.method}`);
   const call = request.params?.[0] as { data?: string } | undefined;
   const selector = call?.data?.slice(0, 10);
-  if (selector === toFunctionSelector("agentPosition(address)")) return quantity(1n);
+  if (selector === toFunctionSelector("agentPosition(address)")) return quantity(0n);
   if (selector === toFunctionSelector("agentActive(address)")) return quantity(mockAgentActive ? 1n : 0n);
-  if (selector === toFunctionSelector("isEligible(address)")) return quantity(1n);
+  if (selector === toFunctionSelector("isEligibleFor(address,uint8)")) return quantity(mockAgentActive ? 1n : 0n);
   if (selector === toFunctionSelector("agentCapabilities(address)")) return quantity(1n);
-  if (selector === toFunctionSelector("stakeOf(uint256)")) return quantity(1_500n * 10n ** 18n);
+  if (selector === toFunctionSelector("stakeOf(uint256)")) return quantity(0n);
   throw new Error(`UNSUPPORTED_ETH_CALL_${selector}`);
 }
 
@@ -250,7 +250,7 @@ async function verifyPackagedAiFrontend(baseUrl: string, secretValues: Record<st
   notificationsResponseSchema.parse(await notificationResponse.json());
 
   const dashboard = publicDashboardResponseSchema.parse(JSON.parse(bodies["/api/public/dashboard"]));
-  if (dashboard.schemaVersion !== "2.6" || dashboard.mode !== "production"
+  if (dashboard.schemaVersion !== "2.7" || dashboard.mode !== "production"
     || dashboard.discovery?.a2aCompatible !== false
     || dashboard.discovery.manifest !== "/.well-known/agentgrid.json"
     || dashboard.discovery.openapi !== "/openapi.json"
@@ -285,7 +285,7 @@ async function verifyPackagedAiFrontend(baseUrl: string, secretValues: Record<st
     };
   };
   const requiredPaths = ["/api/public/dashboard", "/api/tasks", "/api/artifacts/uploads", "/api/hidden-tests/uploads", "/api/tasks/{taskId}/business-adoption", "/api/notifications", "/api/notifications/{notificationId}/read"];
-  if (openapi.info?.version !== "0.8.16" || requiredPaths.some((route) => !openapi.paths?.[route])
+  if (openapi.info?.version !== "0.8.17" || requiredPaths.some((route) => !openapi.paths?.[route])
     || !openapi.paths?.["/api/agents"]?.get || !openapi.paths?.["/api/agents"]?.post) {
     throw new Error("DELIVERY_SMOKE_OPENAPI_CONTRACT_INVALID");
   }
@@ -371,7 +371,7 @@ async function verifyPackagedAiFrontend(baseUrl: string, secretValues: Record<st
   if (errorResponseContracts !== 185) throw new Error("DELIVERY_SMOKE_OPENAPI_ERROR_RESPONSE_COUNT_INVALID");
 
   const discovery = discoveryResponseSchema.parse(JSON.parse(bodies["/.well-known/agentgrid.json"]));
-  if (discovery.schemaVersion !== "1.1" || discovery.a2aCompatible !== false
+  if (discovery.schemaVersion !== "1.2" || discovery.a2aCompatible !== false
     || discovery.publicAiDashboard !== "/api/public/dashboard" || discovery.openapi !== "/openapi.json"
     || discovery.businessAdoption !== "/api/tasks/{taskId}/business-adoption"
     || discovery.walletNotifications !== "/api/notifications"
@@ -614,7 +614,7 @@ async function main() {
     await updateDatabase((database) => {
       database.agents.push({
         id: agentId, name: "Delivery integration executor", owner, role: "EXECUTOR",
-        capabilities: ["typescript", "testing"], endpoint: baseUrl, stake: 1_500,
+        capabilities: ["typescript", "testing"], endpoint: baseUrl, stake: 0,
         stakePositionId: positionId, scopes: ["tasks:claim", "tasks:submit", "heartbeat:write"],
         apiKeyHash: scryptSync(apiKey, salt, 32).toString("hex"), apiKeySalt: salt,
         revokedAt: null, reputation: 80, completedTasks: 0, online: true,

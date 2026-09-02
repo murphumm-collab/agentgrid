@@ -72,7 +72,11 @@ export const registerAgentSchema = z.object({
   scopes: z.array(z.enum(AGENT_SCOPES)).max(AGENT_SCOPES.length)
     .refine((scopes) => new Set(scopes).size === scopes.length, "AGENT_SCOPES_DUPLICATE")
     .optional(),
-}).strict();
+}).strict().superRefine((agent, context) => {
+  if (agent.role !== "EXECUTOR" && agent.stakePositionId === "0") {
+    context.addIssue({ code: "custom", path: ["stakePositionId"], message: "STAKED_ROLE_POSITION_REQUIRED" });
+  }
+});
 
 export const softwareEvidenceSchema = z.object({
   testsPassed: z.boolean(),
@@ -348,7 +352,7 @@ export async function registerAgent(input: z.infer<typeof registerAgentSchema>) 
   if (isProductionMode()) {
     const amount = await productionAgentStake(parsed.owner, parsed.stakePositionId, parsed.role);
     const database = await readDatabase();
-    if (amount < database.config.minAgentStake) throw new Error("INSUFFICIENT_AGENT_STAKE");
+    if (parsed.role !== "EXECUTOR" && amount < database.config.minAgentStake) throw new Error("INSUFFICIENT_AGENT_STAKE");
     parsed.stake = amount;
   }
   const apiKey = `amp_${randomBytes(32).toString("base64url")}`;
@@ -356,9 +360,9 @@ export async function registerAgent(input: z.infer<typeof registerAgentSchema>) 
   const hash = (await scrypt(apiKey, salt, 32) as Buffer).toString("hex");
   return updateDatabase((database) => {
     const scopes = parsed.scopes ?? [...AGENT_ROLE_DEFAULT_SCOPES[parsed.role]];
-    const existing = parsed.stakePositionId
-      ? database.agents.find((agent) => agent.stakePositionId === parsed.stakePositionId)
-      : undefined;
+    const existing = parsed.stakePositionId === "0"
+      ? database.agents.find((agent) => agent.owner.toLowerCase() === parsed.owner.toLowerCase() && agent.role === "EXECUTOR")
+      : database.agents.find((agent) => agent.stakePositionId === parsed.stakePositionId);
     if (existing) {
       if (existing.owner.toLowerCase() !== parsed.owner.toLowerCase()) throw new Error("AGENT_STAKE_POSITION_ALREADY_BOUND");
       if (existing.revokedAt || !existing.online) throw new Error("AGENT_REGISTRATION_RECOVERY_INACTIVE");
@@ -408,7 +412,7 @@ export async function assertAgentCredentialChainStatus(agentId: string, owner: s
   if (!agent) throw new Error("AGENT_NOT_FOUND");
   if (agent.owner.toLowerCase() !== owner.toLowerCase()) throw new Error("AGENT_CREDENTIAL_OWNER_DENIED");
   if (!isProductionMode()) return;
-  if (!agent.stakePositionId) throw new Error("AGENT_STAKE_POSITION_REQUIRED");
+  if (!agent.stakePositionId) throw new Error("AGENT_POSITION_ID_REQUIRED");
   const config = runtimeConfig();
   const addresses = chainContractAddresses();
   const client = createPublicClient({ chain: bscTestnet, transport: bscRpcTransport(config.BSC_TESTNET_RPC_URL) });
@@ -467,9 +471,9 @@ export async function authenticateAgent(agentId: string, apiKey: string | null, 
   if (requiredScope && !(agent.scopes ?? []).includes(requiredScope) && isProductionMode()) throw new Error("AGENT_SCOPE_DENIED");
   if (!agent.online) throw new Error("AGENT_OFFLINE");
   if (isProductionMode()) {
-    if (!agent.stakePositionId) throw new Error("AGENT_STAKE_POSITION_REQUIRED");
+    if (!agent.stakePositionId) throw new Error("AGENT_POSITION_ID_REQUIRED");
     const amount = await productionAgentStake(agent.owner, agent.stakePositionId, agent.role);
-    if (amount < database.config.minAgentStake) throw new Error("INSUFFICIENT_AGENT_STAKE");
+    if (agent.role !== "EXECUTOR" && amount < database.config.minAgentStake) throw new Error("INSUFFICIENT_AGENT_STAKE");
   }
   return agent;
 }
@@ -479,14 +483,14 @@ async function productionAgentStake(owner: string, positionId: string, role?: Ag
   const addresses = chainContractAddresses();
   const client = createPublicClient({ chain: bscTestnet, transport: bscRpcTransport(config.BSC_TESTNET_RPC_URL) });
   const address = getAddress(owner);
+  const requiredCapabilities = role ? AGENT_ROLE_CAPABILITY_MASK[role] : 0;
   const [registeredPosition, eligible, capabilities, amount] = await Promise.all([
     client.readContract({ address: addresses.agentRegistry, abi: agentRegistryAbi, functionName: "agentPosition", args: [address] }),
-    client.readContract({ address: addresses.agentRegistry, abi: agentRegistryAbi, functionName: "isEligible", args: [address] }),
+    client.readContract({ address: addresses.agentRegistry, abi: agentRegistryAbi, functionName: "isEligibleFor", args: [address, requiredCapabilities] }),
     client.readContract({ address: addresses.agentRegistry, abi: agentRegistryAbi, functionName: "agentCapabilities", args: [address] }),
     client.readContract({ address: addresses.stakeManager, abi: stakeManagerAbi, functionName: "stakeOf", args: [BigInt(positionId)] }),
   ]);
   if (!eligible || registeredPosition !== BigInt(positionId)) throw new Error("AGENT_ONCHAIN_REGISTRATION_INVALID");
-  const requiredCapabilities = role ? AGENT_ROLE_CAPABILITY_MASK[role] : 0;
   if (requiredCapabilities && (Number(capabilities) & requiredCapabilities) !== requiredCapabilities) throw new Error("AGENT_ONCHAIN_CAPABILITIES_MISMATCH");
   return Number(formatEther(amount));
 }
@@ -500,7 +504,6 @@ export async function claimTask(taskId: string, agentId: string) {
     if (task.state !== "OPEN" && task.state !== "CLAIMED") throw new Error("TASK_NOT_CLAIMABLE");
     if (agent.role !== "EXECUTOR" && agent.role !== "BOTH") throw new Error("AGENT_CANNOT_EXECUTE");
     if (agent.owner === task.publisher) throw new Error("PUBLISHER_CANNOT_EXECUTE");
-    if (agent.stake < database.config.minAgentStake) throw new Error("INSUFFICIENT_AGENT_STAKE");
     if (task.executorIds.includes(agentId)) return task;
     if (task.executorIds.length >= task.maxExecutors) throw new Error("EXECUTOR_LIMIT_REACHED");
     task.executorIds.push(agentId);

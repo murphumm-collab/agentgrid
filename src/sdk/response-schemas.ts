@@ -18,7 +18,7 @@ const verificationType = z.enum(verificationTypes);
 const countRecord = z.record(z.string().min(1).max(120), nonnegativeInteger);
 
 export const discoveryResponseSchema = z.object({
-  schemaVersion: z.literal("1.1"),
+  schemaVersion: z.literal("1.2"),
   name: z.literal("AgentGrid"),
   description: boundedText(1, 1_000),
   protocol: z.literal("agentgrid-rest-v1"),
@@ -130,7 +130,7 @@ const protocolEconomicsSummarySchema = z.object({
 }).strict();
 
 export const publicDashboardResponseSchema = z.object({
-  schemaVersion: z.literal("2.6"),
+  schemaVersion: z.literal("2.7"),
   generatedAt: dateTime,
   mode: z.enum(["demo", "production"]),
   network: z.object({ name: z.literal("BSC Testnet"), chainId: z.literal(97), confirmations: z.literal(5) }).strict(),

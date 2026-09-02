@@ -141,9 +141,11 @@ to unactivated candidate `4Ed2vOYZnFcUrIFnAVCwn`, payload SHA-256
 `sha256:4878832ad09299c3771326e30e9e9a341a9c3ee1e47cfa225024fa4bb086a15e`
 and manifest SHA-256
 `sha256:72a670fe26babc597c3c964852b9ec7d295598cf7f6ac05a46a67c823bf09b88`.
-This closes the local-delivery definition again for faucet-enabled governed
-source commit `d631cb1`;
-public deployment gates remain external.
+This closed the local-delivery definition for faucet-enabled governed source
+commit `d631cb1`. Governed development resumed on 2026-09-02 after confirming
+that executor registration and task claiming were still incorrectly stake-gated.
+The report and candidate are therefore historical until the zero-stake executor
+boundary completes a new uninterrupted fixed QA; public deployment gates remain external.
 One uninterrupted run passed all 22 commands from
 `2026-09-02T01:37:35.625Z` through `2026-09-02T02:01:06.187Z`; its mode-0600
 report binds source SHA-256

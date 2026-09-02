@@ -485,6 +485,27 @@ describe("AgentGrid Solidity protocol", () => {
     expect(await read(addresses.token, "TestToken", "balanceOf", [evaluators[2].account!.address])).toBe(parseEther("9000"));
   });
 
+  it("lets a registered zero-stake executor claim while rejecting an unregistered wallet", async () => {
+    const { evaluators } = await createEvaluatingTask("zero-stake-executor");
+    for (let index = 0; index < 6; index += 1) await provider.request({ method: "evm_mine", params: [] });
+    await finalizeEvaluationSelection(1n);
+    for (let index = 0; index < evaluators.length; index += 1) await write(evaluators[index], addresses.taskRegistry, "TaskRegistry", "submitEvaluation", [
+      1n, keccak256(stringToHex("development")), 5_000, 12, 8_000, parseEther("1000"), true,
+      keccak256(stringToHex(`zero-stake-evaluation-${index}`)),
+    ]);
+    await write(owner, addresses.taskRegistry, "TaskRegistry", "finalizeTaskEvaluation", [1n]);
+
+    await expect(write(executor, addresses.taskRegistry, "TaskRegistry", "claimTask", [1n])).rejects.toThrow();
+    await write(executor, addresses.agentRegistry, "AgentRegistry", "registerWithCapabilities", [0n, 1]);
+    expect(await read(addresses.agentRegistry, "AgentRegistry", "isEligible", [executor.account!.address])).toBe(false);
+    expect(await read(addresses.agentRegistry, "AgentRegistry", "isEligibleFor", [executor.account!.address, 1])).toBe(true);
+    await write(executor, addresses.agentRegistry, "AgentRegistry", "setActive", [false]);
+    await expect(write(executor, addresses.taskRegistry, "TaskRegistry", "claimTask", [1n])).rejects.toThrow();
+    await write(executor, addresses.agentRegistry, "AgentRegistry", "setActive", [true]);
+    await write(executor, addresses.taskRegistry, "TaskRegistry", "claimTask", [1n]);
+    expect(await read(addresses.taskRegistry, "TaskRegistry", "getTaskExecutors", [1n])).toEqual([executor.account!.address]);
+  });
+
   it("executes stake, task, random tester, acceptance, capped grant, and delivery payout", async () => {
     const source = mnemonicToAccount(mnemonic, { addressIndex: 14 });
     const sourceId = keccak256(stringToHex("independent-task-source"));

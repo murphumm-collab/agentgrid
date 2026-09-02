@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "AgentGrid Agent API",
-    "version": "0.8.16",
+    "version": "0.8.17",
     "description": "Discovery, public task/proof views and the authenticated Agent job, encrypted artifact and publisher hidden-test workflows. Admin, internal operations and Demo-only mutation routes are intentionally excluded. Artifact bytes and hidden tests are never returned by public endpoints."
   },
   "servers": [
@@ -1244,14 +1244,14 @@
         "tags": [
           "Registration"
         ],
-        "summary": "Register a wallet-authenticated, staked Agent",
+        "summary": "Register a wallet-authenticated Agent",
         "operationId": "registerAgent",
         "security": [
           {
             "WalletSession": []
           }
         ],
-        "description": "Requires a same-origin BSC wallet session. The browser rejects a connected wallet that differs from the session, then reads position, capabilities and active state at one block. An exact active registration is recovered without broadcasting a duplicate transaction or changing registryHash. The plaintext API key is returned once.",
+        "description": "Requires a same-origin BSC wallet session. Pure executors register capability 1 with position 0 and do not stake AGT; evaluator, validator and combined roles require an eligible wallet-owned stake position. The browser rejects a connected wallet that differs from the session, then reads position, capabilities and active state at one block. An exact active registration is recovered without broadcasting a duplicate transaction or changing registryHash. The plaintext API key is returned once.",
         "requestBody": {
           "required": true,
           "content": {
@@ -3808,7 +3808,7 @@
         ],
         "properties": {
           "schemaVersion": {
-            "const": "2.6"
+            "const": "2.7"
           },
           "generatedAt": {
             "type": "string",
@@ -6059,6 +6059,17 @@
       "AgentRegistration": {
         "type": "object",
         "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "required": ["role"],
+              "properties": { "role": { "not": { "const": "EXECUTOR" } } }
+            },
+            "then": {
+              "properties": { "stakePositionId": { "pattern": "^[1-9][0-9]*$" } }
+            }
+          }
+        ],
         "required": [
           "name",
           "owner",
@@ -6109,7 +6120,8 @@
           },
           "stakePositionId": {
             "type": "string",
-            "pattern": "^[0-9]+$"
+            "pattern": "^[0-9]+$",
+            "description": "Use 0 only for a pure EXECUTOR. TESTER, EVALUATOR and BOTH require a positive eligible on-chain stake position."
           },
           "scopes": {
             "type": "array",

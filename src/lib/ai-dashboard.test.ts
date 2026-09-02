@@ -28,7 +28,7 @@ describe("AI dashboard", () => {
   it("publishes deterministic action metadata without private task states", () => {
     const dashboard = buildAiDashboard(source(), new Date("2026-08-31T00:00:00.000Z"));
     const serialized = JSON.stringify(dashboard);
-    expect(dashboard.schemaVersion).toBe("2.6");
+    expect(dashboard.schemaVersion).toBe("2.7");
     expect(dashboard.selectionPolicy).toMatchObject({
       positiveChangesAfterRequest: "IGNORED_FOR_FROZEN_DRAW",
       mainnetRequirement: "VRF_REQUIRED",
@@ -180,7 +180,7 @@ describe("AI dashboard", () => {
     expect(dashboard.actionContracts.map(({ endpoint, method, operationId }) => ({ endpoint, method, operationId })).sort(byOperationId))
       .toEqual(documentedOperations.sort(byOperationId));
     const manifest = JSON.parse(readFileSync(new URL("../../public/.well-known/agentgrid.json", import.meta.url), "utf8")) as Record<string, unknown>;
-    expect(manifest.schemaVersion).toBe("1.1");
+    expect(manifest.schemaVersion).toBe("1.2");
     for (const endpoint of Object.values(manifest).filter((value): value is string => typeof value === "string" && value.startsWith("/api/"))) {
       expect(openapi.paths[endpoint], `${endpoint} must be described by OpenAPI`).toBeTruthy();
     }

@@ -73,13 +73,23 @@ contract ArbitrationRegistryHarness {
     }
 
     mapping(address => bool) public isEligible;
+    mapping(address => bool) public agentActive;
+    mapping(address => uint8) public agentCapabilities;
     mapping(address => uint256) public agentPosition;
     mapping(uint256 => uint256) public stakeOf;
     mapping(address => mapping(uint8 => RoleQuality)) private qualities;
     mapping(address => mapping(uint8 => bytes32)) public rehabilitationEvidence;
 
     function stakeManager() external view returns (address) { return address(this); }
-    function setEligible(address agent, bool eligible) external { isEligible[agent] = eligible; }
+    function setEligible(address agent, bool eligible) external {
+        isEligible[agent] = eligible;
+        agentActive[agent] = eligible;
+        agentCapabilities[agent] = eligible ? 7 : 0;
+    }
+    function setRegistration(address agent, bool active, uint8 capabilities) external {
+        agentActive[agent] = active;
+        agentCapabilities[agent] = capabilities;
+    }
     function setQuality(address agent, uint8 role, uint64 cooldownUntil, bool banned) external {
         qualities[agent][role] = RoleQuality(500, 3, banned ? 3 : 1, cooldownUntil, banned);
     }

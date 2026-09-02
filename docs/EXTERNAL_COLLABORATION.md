@@ -21,7 +21,8 @@ evidence.
   origin, run the external edge verifier, and bind
   its report to the candidate and BSC deployment manifest.
 - Current state: the frontend, AI-friendly Dashboard and dedicated test-token
-  faucet exist locally. Current immutable candidate `4Ed2vOYZnFcUrIFnAVCwn` is
+  faucet exist locally. Candidate `4Ed2vOYZnFcUrIFnAVCwn` is historical because
+  governed development resumed to remove the unintended executor stake requirement. It was
   bound to source
   `sha256:d02d3a73716f392c0f4c51a058b8f01fbce32367d7b44ececa87405631cb93ce`
   by the uninterrupted 22-command QA at
