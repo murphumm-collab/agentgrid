@@ -85,7 +85,7 @@ competition slots and paid scheduling capacity. Those two products must remain
 visibly sponsored and may change only the frozen pre-publication executor-slot
 limit or fair queue order; they may not alter evaluator, validator or arbitrator
 selection, quality ranking, completion rules, deadlines or challenge windows.
-The current governed source therefore requires a new fixed run and candidate
+At that milestone the governed source therefore required a new fixed run and candidate
 after the two commercial products are fully integrated and frozen.
 
 The next cycle has started with `AgentGrid Paid Capacity Entitlement V1`. Its
@@ -141,7 +141,8 @@ to unactivated candidate `4Ed2vOYZnFcUrIFnAVCwn`, payload SHA-256
 `sha256:4878832ad09299c3771326e30e9e9a341a9c3ee1e47cfa225024fa4bb086a15e`
 and manifest SHA-256
 `sha256:72a670fe26babc597c3c964852b9ec7d295598cf7f6ac05a46a67c823bf09b88`.
-This closes the local-delivery definition again for the faucet-enabled source;
+This closes the local-delivery definition again for faucet-enabled governed
+source commit `d631cb1`;
 public deployment gates remain external.
 One uninterrupted run passed all 22 commands from
 `2026-09-02T01:37:35.625Z` through `2026-09-02T02:01:06.187Z`; its mode-0600
@@ -201,9 +202,9 @@ slashes rejected appeals by 5/15/30%, and expires no-quorum cases after three
 days without restoration or penalty; its focused four-case Court suite passes.
 Common-control resistance remains an external attestation gate; the frozen-
 source packaged evidence is closed by candidate `nShHeijb9O7TsJrsHaT6w`.
-The GitHub branch handoff is now synchronized at commit
-`fdbe6e1c09bac488079a2c72f9247aa7b2fde2e0`; merging it into `origin/main`
-remains an accountable repository-owner decision.
+The GitHub branch handoff is synchronized through Pull Request #1; merging the
+current reviewed branch head into `origin/main` remains an accountable
+repository-owner decision.
 
 Maintenance checkpoints now clear the acceptance assignment and enter the same
 current-registry, future-block, quality-weighted three-validator selection used

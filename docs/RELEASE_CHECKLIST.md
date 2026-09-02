@@ -195,7 +195,7 @@ real-user pilot.
   `82adb99683348f2e8a036d12e953fd5b011a4925125e2487d318e2ab5337f0ae`.
   This report became historical when governed source development resumed for
   the dedicated BSC Testnet faucet surface; it cannot qualify the new source.
-- [x] The current faucet-enabled governed source completed all 22 fixed commands
+- [x] The faucet-enabled governed source frozen at commit `d631cb1` completed all 22 fixed commands
   uninterrupted from `2026-09-02T04:35:35.214Z` through
   `2026-09-02T04:58:45.161Z`. The mode-0600 report at
   `/Users/mac/.agentgrid-release-evidence/agentgrid-qa-faucet/application-qa.json`

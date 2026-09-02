@@ -9,8 +9,8 @@ evidence.
 
 - **GitHub branch handoff complete:** local branch
   `codex/verification-arbitration` is synchronized with the same branch at
-  `https://github.com/murphumm-collab/agentgrid.git`, currently at commit
-  `fdbe6e1c09bac488079a2c72f9247aa7b2fde2e0`. It remains intentionally separate
+  `https://github.com/murphumm-collab/agentgrid.git` after each authorized local
+  delivery update. It remains intentionally separate
   from `origin/main` until an accountable repository owner reviews and merges
   the pull request. No credential or token is stored in the repository.
 
