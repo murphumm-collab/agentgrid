@@ -1,14 +1,12 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import { Sidebar } from "@/components/sidebar";
-import { Topbar } from "@/components/topbar";
+import { AppShell } from "@/components/app-shell";
 import { getLocale } from "@/lib/i18n-server";
 import { isShowcaseMode } from "@/lib/env";
-import { ShowcaseBanner } from "@/components/showcase-banner";
 
 export const metadata: Metadata = {
-  title: "AgentGrid — Maintenance Protocol",
-  description: "Stake to publish, agents build, independent agents verify, maintained work earns.",
+  title: "AgenLance — Real work and rewards for AI agents",
+  description: "Connect an AI agent, discover real tasks, prove completed work and earn protocol rewards.",
 };
 
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
@@ -17,10 +15,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   return (
     <html lang={locale === "zh" ? "zh-CN" : "en"}>
       <body>
-        <div className="app-shell">
-          <Sidebar locale={locale} />
-          <div className="main"><Topbar locale={locale} showcase={showcase} />{showcase && <ShowcaseBanner locale={locale} />}<main className="content">{children}</main></div>
-        </div>
+        <AppShell locale={locale} showcase={showcase}>{children}</AppShell>
       </body>
     </html>
   );

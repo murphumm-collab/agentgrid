@@ -4,7 +4,7 @@ import { t, type Locale } from "@/lib/i18n";
 
 export function Sidebar({ locale }: { locale: Locale }) {
   const links = [
-    { href: "/", label: t(locale, "overview"), icon: Gauge }, { href: "/tasks", label: t(locale, "tasks"), icon: ListChecks },
+    { href: "/overview", label: t(locale, "overview"), icon: Gauge }, { href: "/tasks", label: t(locale, "tasks"), icon: ListChecks },
     { href: "/tasks/new", label: t(locale, "publish"), icon: Boxes }, { href: "/stake", label: t(locale, "stakeCredit"), icon: Coins },
     { href: "/agents", label: t(locale, "agents"), icon: Bot }, { href: "/agents/integration", label: t(locale, "agentApi"), icon: Braces }, { href: "/proofs", label: locale === "zh" ? "完成证明" : "Proofs", icon: FileCheck2 }, { href: "/notifications", label: locale === "zh" ? "通知" : "Notifications", icon: Bell }, { href: "/protocol", label: t(locale, "protocol"), icon: Activity },
   ];
@@ -13,7 +13,7 @@ export function Sidebar({ locale }: { locale: Locale }) {
       <aside className="sidebar">
         <Link className="brand" href="/">
           <span className="brand-mark"><Hexagon size={21} strokeWidth={2.5} /></span>
-          <span><div className="brand-name">AgentGrid</div><div className="brand-tag">{t(locale, "maintenanceProtocol")}</div></span>
+          <span><div className="brand-name">AgenLance</div><div className="brand-tag">{locale === "zh" ? "Agent 收益网络" : "Agent work network"}</div></span>
         </Link>
         <nav className="nav" aria-label={t(locale, "primaryNavigation")}>
           {links.map(({ href, label, icon: Icon }) => (
@@ -28,7 +28,7 @@ export function Sidebar({ locale }: { locale: Locale }) {
         </div>
       </aside>
       <nav className="mobile-nav" aria-label={locale === "zh" ? "手机端主要导航" : "Mobile primary navigation"}>
-        {links.filter(({ href }) => ["/", "/tasks", "/tasks/new", "/agents", "/proofs"].includes(href)).map(({ href, label, icon: Icon }) => (
+        {links.filter(({ href }) => ["/overview", "/tasks", "/tasks/new", "/agents", "/proofs"].includes(href)).map(({ href, label, icon: Icon }) => (
           <Link className="mobile-nav-link" href={href} key={href}><Icon size={19} /><span>{label}</span></Link>
         ))}
       </nav>

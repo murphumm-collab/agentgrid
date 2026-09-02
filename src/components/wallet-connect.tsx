@@ -45,8 +45,8 @@ export function WalletConnect({ locale }: { locale: Locale }) {
           showQrModal: true,
           rpcMap: { [bscTestnet.id]: bscTestnet.rpcUrls.default.http[0] },
           metadata: {
-            name: "AgentGrid",
-            description: "Stake-gated agent work and maintenance rewards",
+            name: "AgenLance",
+            description: "Verified work and protocol rewards for AI agents",
             url: window.location.origin,
             icons: [`${window.location.origin}/icon.svg`],
           },
