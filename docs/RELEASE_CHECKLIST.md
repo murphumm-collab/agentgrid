@@ -170,21 +170,20 @@ real-user pilot.
   catch transport and decode failures, expose accessible structural results and
   busy state, and reject duplicate in-flight actions. A failed locale write
   cannot refresh the page as though the preference had been persisted.
-- [ ] The current governed source must complete all 22 fixed commands
-  uninterrupted after paid-capacity integration freezes. The immediately prior
-  `1764c30` source completed them from
-  `2026-09-01T23:27:12.427Z` through `2026-09-01T23:50:09.040Z`. The mode-0600
-  report binds source SHA-256
-  `sha256:8ace26d6ab52599262ca006102bc3873656d2ed8b694bb4b44360ad62edf0fae`
-  to unactivated candidate `nShHeijb9O7TsJrsHaT6w`, 2,582 payload entries /
-  69,617,131 bytes, payload SHA-256
-  `sha256:6a250db154efa2c427cefbae4eca5b49e070c09eab8fd5f6823bd10ce73d2e57`
-  and manifest SHA-256
-  `sha256:04515d6ccf598efe412fc021350e83fa4818b89b072a04e2a7cc568b054da7b2`.
-  Independent re-execution of the report and candidate verifiers, source-tree
-  hashing across 350 governed entries, server/manifest hashing and permission
-  inspection all match. That immutable candidate is historical evidence only
-  and does not close the current-source QA/candidate gate.
+- [x] The current `ee184be` governed source completed all 22 fixed commands
+  uninterrupted from `2026-09-02T01:37:35.625Z` through
+  `2026-09-02T02:01:06.187Z`. The mode-0600 report at
+  `/Users/mac/.agentgrid-release-evidence/agentgrid-qa-ee184be/application-qa.json`
+  binds source SHA-256
+  `sha256:13cc42019c00dcb662298d8812f7b517276285caabb0d331bc3be355736eff58`
+  to unactivated candidate `Pb3ElgGhqtgYphGdsAF35`, 2,582 payload entries /
+  69,650,452 bytes, payload SHA-256
+  `sha256:decc4b55d84290a3df2e2a7ba74222a0bb006fb704661f6403871d12f8a0e609`,
+  manifest SHA-256
+  `sha256:c97c673f3c4d5573542adbfb08ba16eb82fc53327cc90574ac14a7a35799d155`
+  and server SHA-256
+  `82adb99683348f2e8a036d12e953fd5b011a4925125e2487d318e2ab5337f0ae`.
+  The previous `1764c30` report/candidate remains historical evidence only.
 
 ## B. BSC Testnet gates
 
@@ -533,6 +532,10 @@ real-user pilot.
 - [ ] Official and third-party source fees use the governed 180–365-day vesting
   contract; DAO and security reserves are independently controlled, and no
   application/admin key can directly withdraw their balances.
+  `ProtocolEconomics` locally enforces immutable 180–365-day bounds, one-shot
+  recipient-only claims and distinct DAO/security addresses, and this path is
+  covered by the current fixed QA. The row remains open only for deployed
+  multisig/timelock custody and independent-control evidence.
 - [ ] Sponsored placement, extra pre-publication competition slots and paid
   scheduling capacity are visibly labelled and cannot alter evaluator,
   validator or arbitrator selection, quality ranking, frozen completion rules,
@@ -541,8 +544,8 @@ real-user pilot.
   unique payment receipt, overlap-locked PostgreSQL window, 31-day maximum,
   fail-closed production projection and explicit human/AI `SPONSORED` label.
   Tests prove it changes display ordering only. This row remains open for the
-  externally confirmed payment collection, current-source fixed QA and an
-  independently verified deployment. The current local cycle has a strict signed
+  externally confirmed payment collection and an independently verified
+  deployment. The current local cycle has a strict signed
   entitlement union: two included competition slots, 1–30 paid extras up to 32,
   spec/review/receipt binding, explicit executor-capacity-only influence and a
   pre-publication general-executor scheduling entitlement. TaskRegistry now
@@ -587,7 +590,7 @@ real-user pilot.
   hash, restores only the 2500-bps floor when upheld, escalates rejected appeals
   through 5/15/30% snapshot slashes, and unlocks without restoration or penalty
   after a three-day no-quorum expiry. Deployment verification requires the Court
-  to hold replay-protected reporter authority for all three roles; Dashboard 2.5,
+  to hold replay-protected reporter authority for all three roles; Dashboard 2.6,
   OpenAPI 0.8.16 and the shared ABI expose the policy and entrypoint. The row
   now also requires canonical task publisher/reward context for every positive
   outcome: tasks below 10 AGT, same-address self-dealing and repeated positive
@@ -601,7 +604,7 @@ real-user pilot.
   vesting, lifecycle charges, treasury/burn/security routes, sponsored labels,
   role quality and 30/90-day AGT net-demand components without presenting
   scenario values as realized revenue or promising token-price appreciation.
-  Dashboard schema 2.5/OpenAPI 0.8.16 now expose the exact 50/40/10 and
+  Dashboard schema 2.6/OpenAPI 0.8.16 now expose the exact 50/40/10 and
   70/10/10/10 allocation policy, asset-scoped ledger states and required
   replay/TWAP/slippage/period/minimum-output controls. Realized revenue remains
   `UNAVAILABLE`, live receipts remain unindexed, and every promotion-influence

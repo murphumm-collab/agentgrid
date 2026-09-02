@@ -119,8 +119,18 @@ partitioned into 46 participant actions and 62 exclusions. OpenAPI 0.8.16, the
 strict SDK response and the bilingual Dashboard keep the product visibly
 `DOMAIN_MODEL_ONLY`, `available:false`, `participantPurchaseAction:false` with
 no purchase endpoint. The final runtime manifest, complete current-source gates,
-fixed 22-command QA and candidate binding remain open, so this is not yet a
-completed product.
+fixed 22-command QA and candidate binding were then frozen at commit `ee184be`.
+One uninterrupted run passed all 22 commands from
+`2026-09-02T01:37:35.625Z` through `2026-09-02T02:01:06.187Z`; its mode-0600
+report binds source SHA-256
+`sha256:13cc42019c00dcb662298d8812f7b517276285caabb0d331bc3be355736eff58`
+to unactivated candidate `Pb3ElgGhqtgYphGdsAF35`, payload SHA-256
+`sha256:decc4b55d84290a3df2e2a7ba74222a0bb006fb704661f6403871d12f8a0e609`
+and manifest SHA-256
+`sha256:c97c673f3c4d5573542adbfb08ba16eb82fc53327cc90574ac14a7a35799d155`.
+This closes the repository's local-delivery definition for the frozen source;
+it does not authorize a public deployment or satisfy the external production
+launch gates.
 
 Public production also remains blocked by the external-authority items in
 `docs/EXTERNAL_COLLABORATION.md`: GitHub authentication, funded/separated BSC

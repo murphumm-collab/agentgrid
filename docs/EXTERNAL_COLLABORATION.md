@@ -21,16 +21,15 @@ evidence.
   and the authenticated trusted proxy, set `AUTH_ORIGIN` to that exact HTTPS
   origin, run the external edge verifier, and bind
   its report to the candidate and BSC deployment manifest.
-- Current state: the frontend exists locally. Historical immutable candidate
-  `unFAJP0q6TybW71fBjdHx` is bound to source
-  `sha256:e2c88e37870b5bcf909b299d90239151cbb3f627005e330a82cecad8e7d30cac`
-  by its uninterrupted 22-command QA and remains unactivated. Development has
-  resumed, so it is not the current-source release candidate. Its discovery
-  schema 1.1 / OpenAPI 0.6.9 machine contract and local production bundle are
-  verified for its exact source, including the restored mobile AI Dashboard
-  navigation, structured accessible action-result semantics and visible,
-  duplicate-safe wallet-notification, language, clipboard and Demo writes. No
-  public URL has been deployed or represented as production;
+- Current state: the frontend and AI-friendly Dashboard exist locally. Current
+  immutable candidate `Pb3ElgGhqtgYphGdsAF35` is bound to source
+  `sha256:13cc42019c00dcb662298d8812f7b517276285caabb0d331bc3be355736eff58`
+  by the uninterrupted 22-command QA at
+  `/Users/mac/.agentgrid-release-evidence/agentgrid-qa-ee184be/application-qa.json`
+  and remains unactivated. Its discovery schema 1.1, OpenAPI 0.8.16, Dashboard
+  schema 2.6, ten-contract runtime manifest and local production bundle are
+  verified for that exact source. No public URL has been deployed or represented
+  as production;
   deployment still requires the product owner's hosting/domain authorization
   and the external edge evidence above.
 
