@@ -62,11 +62,51 @@ automation run must never relabel a local candidate as a public deployment.
 
 ## Current development status
 
-Development resumed after candidate `unFAJP0q6TybW71fBjdHx` to add a frozen,
-validator-checked multi-Agent collaboration plan, three-way isolated validation,
-commit-order weighting and token-staked verification arbitration. Its QA evidence is therefore
-historical and does not close the current-source release gate. A new fixed
-22-command QA and candidate binding are required after this source freezes.
+The source frozen at commit `1764c30` has a complete, immutable local
+QA/candidate milestone. It became historical when the next governed development
+cycle added the paid-capacity entitlement model. One uninterrupted fixed
+22-command QA passed for that milestone from
+`2026-09-01T23:27:12.427Z` through `2026-09-01T23:50:09.040Z` and binds source
+SHA-256 `sha256:8ace26d6ab52599262ca006102bc3873656d2ed8b694bb4b44360ad62edf0fae`
+to unactivated candidate `nShHeijb9O7TsJrsHaT6w`. Its 2,582 payload entries /
+69,617,131 bytes, payload SHA-256
+`sha256:6a250db154efa2c427cefbae4eca5b49e070c09eab8fd5f6823bd10ce73d2e57`,
+manifest SHA-256
+`sha256:04515d6ccf598efe412fc021350e83fa4818b89b072a04e2a7cc568b054da7b2`
+and server SHA-256
+`82adb99683348f2e8a036d12e953fd5b011a4925125e2487d318e2ab5337f0ae`
+were independently rechecked. The report is mode 0600, the candidate root is
+0555 and its manifest is 0444; only the manifest-declared `.next/cache` remains
+mutable. The candidate has `activationRequired:true` and has not been deployed.
+
+This milestone does **not** yet satisfy the repository definition of “local
+delivery complete”: the first-phase commercial scope still lacks paid extra
+competition slots and paid scheduling capacity. Those two products must remain
+visibly sponsored and may change only the frozen pre-publication executor-slot
+limit or fair queue order; they may not alter evaluator, validator or arbitrator
+selection, quality ranking, completion rules, deadlines or challenge windows.
+The current governed source therefore requires a new fixed run and candidate
+after the two commercial products are fully integrated and frozen.
+
+The next cycle has started with `AgentGrid Paid Capacity Entitlement V1`. Its
+strict signed union binds chain 97, TaskRegistry, publisher, issuer, definition
+review, final spec hash, unique payment receipt, amount, currency and validity
+window. Competition includes two slots and permits 1–30 paid extras up to 32;
+the entitlement accurately declares `EXECUTOR_CAPACITY_ONLY`, that recipient
+weights may change inside the fixed pool, and that an on-chain pass registry is
+still required. Priority scheduling binds the same pre-publication scope and
+declares only `EXECUTOR_GENERAL_QUEUE_ORDER_ONLY` plus a required 3:1 fair
+application queue. Neither kind may alter criteria, deadlines, evaluator /
+validator / arbitrator selection, quality, challenge rules or the reward pool.
+The complete application regression now passes 355/355 tests across 93 files;
+TypeScript and ESLint pass. Persistence, on-chain consumption, fair Redis lanes,
+machine surfaces and UI remain open, so this is not yet a completed product.
+
+Public production also remains blocked by the external-authority items in
+`docs/EXTERNAL_COLLABORATION.md`: GitHub authentication, funded/separated BSC
+roles, hosting/domain/TLS/WAF, production KMS and off-site recovery, real
+independent pilot participants, independent audits and accountable signatures.
+No local fixture substitutes for those gates.
 
 The current source also adds `ProtocolEconomics` and is migrating the legacy
 fixed evaluation/publication fees to immutable source attribution, 95/3/2 gross
@@ -85,13 +125,13 @@ the first-member aliases deprecated. Canonical task quality gains now reject
 sub-10-AGT, same-address and repeated publisher-Agent-role relationship farming,
 require three distinct credited publisher relationships for priority status,
 and never suppress failures. Dashboard 2.5/OpenAPI 0.8.14 publish this boundary.
-Wallet-level common-control still requires external Sybil attestation;
-deployment verification and final QA remain open. The current-source full
+Wallet-level common-control still requires external Sybil attestation and
+deployment verification remains external. The current-source full
 contract run now passes all 31 cases across six files in one uninterrupted run,
 including the task-context relationship gate, exact quality-event selector and
-the four-case Court penalty/rehabilitation suite. This is current-source
-regression evidence, not
-the fixed release QA. Therefore previous QA reports are historical evidence only.
+the four-case Court penalty/rehabilitation suite. The `1764c30` fixed 22-command
+release QA and immutable candidate bind this regression evidence to that frozen source;
+only reports for earlier source revisions are historical.
 
 Quality-weighted evaluator and validator selection now binds a request-time
 registry version/timestamp checkpoint into the future-block proof. Subsequent
@@ -104,7 +144,8 @@ rehabilitation policies. The Agent-initiated Court path freezes at least 500 AGT
 requires an exact matching 2-of-3 resolution, restores only the 2500-bps floor,
 slashes rejected appeals by 5/15/30%, and expires no-quorum cases after three
 days without restoration or penalty; its focused four-case Court suite passes.
-Common-control resistance and final frozen-source packaged evidence remain open.
+Common-control resistance remains an external attestation gate; the frozen-
+source packaged evidence is closed by candidate `nShHeijb9O7TsJrsHaT6w`.
 GitHub push also remains an external credential handoff: the local
 branch carries unpushed commits and HTTPS authentication is unavailable on this
 machine.
@@ -117,7 +158,7 @@ an RPC or write failure can no longer silently replace validators. OpenAPI 0.8.1
 publishes the matching idempotent coordinator completion results. This is
 current-source regression scope and does not revive the historical fixed QA.
 
-The current application suite passes 348/348 tests across 92 files; typecheck,
+The prior frozen application suite passed 348/348 tests across 92 files; typecheck,
 lint, all 15 Worker/Ops bundles and the production Web build pass. The Demo and
 homepage participant split now matches RewardVault's post-network Agent pool:
 80% executors, 20% three-validator panel and only rounding dust to reserve. This
@@ -134,8 +175,9 @@ independent replay. The regenerated nine-contract runtime manifest matches the
 current bytecode and ABI; the uninterrupted current-source contract run passes
 31/31 cases across six files, including decoded event assertions and the
 bounded selection-pool exhaustion/no-resampling regression. The
-application suite includes nine fail-closed Pilot qualification cases.
-Fixed release QA remains historical and must run again only after source freeze.
+application suite includes nine fail-closed Pilot qualification cases. The
+`1764c30` fixed release QA remains authoritative only for that frozen milestone;
+it is historical for the current paid-capacity source.
 
 Dashboard schema 2.5/OpenAPI 0.8.14 now separate the complete 37-operation HTTP
 contract from the compiled chain surface. All 101 mutable signatures across the
@@ -146,10 +188,10 @@ precondition, effect and compatibility status; each exclusion publishes its
 classification and reason. Human rendering uses a separate chain lifecycle
 section, while the compiled-artifact inventory regression fails on omissions,
 duplicates, overlap or undocumented new mutations.
-The current-source application regression passes 348/348 tests across 92 files,
+The prior frozen-source application regression passed 348/348 tests across 92 files,
 TypeScript, ESLint, all 15 Worker bundles and the optimized Next.js production
-build. This does not replace the fixed 22-command release QA; all older fixed-QA
-reports remain historical until the final source is frozen and rerun.
+build. The fixed 22-command release QA reran after that source freeze and binds
+those results to historical candidate `nShHeijb9O7TsJrsHaT6w`.
 
 Objective task advancement no longer depends on the configured coordinator
 wallet. Inactive-executor eviction, validator-draw request/finalization and due
@@ -158,8 +200,8 @@ deadline, frozen-snapshot, conflict and future-block checks. The coordinator
 worker remains an optional idempotent automation operator and has no authority
 to submit or prune candidates. Dashboard schema 2.5/OpenAPI 0.8.14 publish the
 exact permissionless action set and `callerSelectionAuthority: NONE`; contract
-regression executes each changed path from a non-coordinator wallet. Previous
-fixed release QA remains historical after this governed Solidity change.
+regression executes each changed path from a non-coordinator wallet. The fixed
+release QA ran after this governed Solidity change and binds the final result.
 
 The local selection scalability gate is now closed at its governed boundary.
 `AgentRegistry` contains
@@ -182,8 +224,8 @@ paths follow the successor through the same event/Worker lifecycle. A test-only
 sparse-prefix harness now executes the exact production last 64-candidate page
 and 16-prune Fenwick path at the governed 65,536-Agent boundary; both remain
 below the shared 30,000,000-gas transaction budget. Dashboard 2.5/OpenAPI 0.8.14
-publish the passing local boundary. No fixed release QA is warranted while other
-governed source work remains open.
+publish the passing local boundary. The `1764c30` fixed release QA includes this
+boundary; the new paid-capacity development cycle is not frozen.
 
 Advertising and sponsorship accounting now has a deterministic, settlement-
 asset-scoped local reconciliation state machine. It separates unconfirmed
@@ -211,7 +253,7 @@ prove the frozen 1000-AGT stake basis is charged exactly 2/3/7/3 AGT at
 evaluation/publication/acceptance/maintenance and each amount splits
 35/20/20/15/10. A second self-referring source falls back to DAO and, while the
 task remains in evaluation, has consumed only the 0.2% evaluation stage. This
-is current-source regression evidence, not final frozen-source QA.
+is included in the historical `1764c30` frozen-source QA and candidate binding.
 
 The superseded application source froze after adding visible failure, busy state and duplicate-
 safe boundaries to language, clipboard and Demo mutations. Discovery
@@ -484,8 +526,8 @@ records no longer copy Artifact storage URLs or accept arbitrary extensions.
 
 Focused evidence passes: 299 unit tests across 79 files, typecheck, lint, Worker
 build, real Redis queue smoke, real PostgreSQL/Redis reorg smoke and packaged
-production-Web delivery smoke. The frozen source subsequently passed the fixed
-22-command QA and is bound to the current immutable candidate above.
+production-Web delivery smoke. That frozen source subsequently passed the fixed
+22-command QA and is bound to the historical `1764c30` candidate above.
 
 The first fixed-QA attempt exposed caller-environment contamination: the QA
 isolation list had drifted from the canonical runtime-secret inventory and did
@@ -493,7 +535,7 @@ not remove the trusted-proxy secret. The runner now derives all direct and
 `_FILE` names from that inventory, with a regression test. Two early attempts
 stopped at command one; a later attempt correctly reached command sixteen and
 rejected an unnecessary direct proxy secret supplied by the QA invocation. None
-produced a report or candidate. The current clean run supersedes all of them.
+produced a report or candidate. The successful `1764c30` run superseded all of them.
 Dashboard schema 2.5/OpenAPI 0.8.14 additionally expose receipt-bound signed
 task placements. Production imports use `promotion:import`, a unique settlement
 receipt hash, an overlap-locked PostgreSQL window and a configured

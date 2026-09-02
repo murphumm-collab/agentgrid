@@ -22,7 +22,7 @@ real-user pilot.
 ## A. Reproducible local gates
 
 - [x] `pnpm lint`
-- [x] `pnpm test` — current source passes 348 tests across 92 files. The displayed 100% coverage applies
+- [x] `pnpm test` — current source passes 355 tests across 93 files. The displayed 100% coverage applies
   only to `src/lib/protocol.ts`; it is not evidence of full Worker/API coverage.
 - [x] `pnpm audit --prod --audit-level high --json` — the current production
   graph reports zero info/low/moderate/high/critical advisories; this live audit
@@ -31,14 +31,13 @@ real-user pilot.
   runtime-secret inventory, removing both direct and `_FILE` forms. A regression
   prevents newly added runtime secrets from contaminating unit-test behavior or
   making the fixed 22-command run depend on the caller's production environment.
-- [ ] `pnpm contracts:compile` — current source compiles eleven deployable
-  artifacts, including `ProtocolEconomics`; this focused pass is not yet part of
-  the final frozen 22-command QA evidence.
-- [ ] `pnpm contracts:test` — the uninterrupted current-source full run passed
+- [x] `pnpm contracts:compile` — current frozen source compiles eleven deployable
+  artifacts, including `ProtocolEconomics`, inside the fixed 22-command QA.
+- [x] `pnpm contracts:test` — the uninterrupted current-source full run passed
   31/31 cases across six files
   across protocol lifecycle, role quality, economics and Court arbitration,
-  including exact-event selection and public rehabilitation. It remains open
-  here because the command must run again inside the final frozen 22-command QA.
+  including exact-event selection and public rehabilitation, inside the fixed
+  22-command QA.
 - [x] `pnpm build` and `pnpm workers:build` (15 Web/Worker/Ops entry bundles)
 - [x] Candidate manifest v2 binds every standalone payload file/internal link,
   entry count and byte count; escaping links and changed chunks are rejected,
@@ -53,7 +52,9 @@ real-user pilot.
 - [x] `pnpm artifact:smoke` — checksum, immutable sealed copy and substitution
   rejection
 - [x] `pnpm sandbox:smoke` — no network, read-only root, resource caps, real
-  hidden tests and verifier-owned coverage
+  hidden tests and verifier-owned coverage. Node's test runner force-exits after
+  completion and applies a five-minute per-test ceiling; a fixture with a
+  permanent interval proves untrusted handles cannot retain the sandbox lease.
 - [x] `pnpm ops:artifact-key:smoke` — disposable-database old-to-new key rotation
 - [x] `pnpm ops:backup && pnpm ops:backup:verify` — manifest size/SHA-256 checked
   before a streamed custom dump restored all eleven delivery/lifecycle core tables,
@@ -169,23 +170,21 @@ real-user pilot.
   catch transport and decode failures, expose accessible structural results and
   busy state, and reject duplicate in-flight actions. A failed locale write
   cannot refresh the page as though the preference had been persisted.
-- [ ] Current governed source must complete all 22 commands uninterrupted after
-  language, clipboard and Demo mutation failure/busy boundaries froze, from
-  `2026-09-01T07:16:46.244Z` through `2026-09-01T07:28:58.095Z`, including the
-  307-test / 83-file suite, complete JSON request/response contracts, domain-
-  separated signed reports, canonical retry recovery and discovery schema 1.1.
-  The prior historical run binds unactivated candidate `unFAJP0q6TybW71fBjdHx`, source SHA-256
-  `sha256:e2c88e37870b5bcf909b299d90239151cbb3f627005e330a82cecad8e7d30cac`,
-  2,580 payload entries / 69,565,250 bytes, payload SHA-256
-  `sha256:e88563e5c91c01f6e5a1f52f695832f577a9dec80d7c449448f8023f8b82ff21`,
+- [ ] The current governed source must complete all 22 fixed commands
+  uninterrupted after paid-capacity integration freezes. The immediately prior
+  `1764c30` source completed them from
+  `2026-09-01T23:27:12.427Z` through `2026-09-01T23:50:09.040Z`. The mode-0600
+  report binds source SHA-256
+  `sha256:8ace26d6ab52599262ca006102bc3873656d2ed8b694bb4b44360ad62edf0fae`
+  to unactivated candidate `nShHeijb9O7TsJrsHaT6w`, 2,582 payload entries /
+  69,617,131 bytes, payload SHA-256
+  `sha256:6a250db154efa2c427cefbae4eca5b49e070c09eab8fd5f6823bd10ce73d2e57`
   and manifest SHA-256
-  `sha256:651c3b7a5329b643b888e3357e223615d6608fe7bd692e34333892e591172679`.
-  The external mode-0600 report has file SHA-256
-  `c8daad4612fa58a86b08fd4ca8e6f14fcfaef174ab3438081ce883735ad1e816`.
-  All 22 exit codes, 316 governed-source entries, payload digest/count/bytes,
-  server and manifest hashes, 2,478 files, 775 directories, 102 safe relative
-  links and read-only permissions were independently checked. This closes the
-  current local QA/candidate gate only; external release rows below remain open.
+  `sha256:04515d6ccf598efe412fc021350e83fa4818b89b072a04e2a7cc568b054da7b2`.
+  Independent re-execution of the report and candidate verifiers, source-tree
+  hashing across 350 governed entries, server/manifest hashing and permission
+  inspection all match. That immutable candidate is historical evidence only
+  and does not close the current-source QA/candidate gate.
 
 ## B. BSC Testnet gates
 
@@ -512,23 +511,23 @@ real-user pilot.
   business adoption, Agent registration/credential recovery and AI definition
   review.
 
-- [ ] Canonical contract regression proves every task freezes an immutable
+- [x] Canonical contract regression proves every task freezes an immutable
   distribution source before publication and splits gross reward exactly
   95% Agent pool / 3% DAO timelock / 2% source vesting, including rounding,
   invalid-source fallback and prevention of post-result recipient replacement.
   The current full contract run now proves the real TaskRegistry path freezes a
   valid source, routes a capped 200-AGT grant as 190/6/4, preserves the frozen
   recipient after configuration/commit changes, and makes a self-referring
-  source fall back to DAO. The row remains open for final frozen-source QA and
-  packaged/indexed event evidence.
-- [ ] The staged publisher-stake charges execute at most once at the exact
+  source fall back to DAO. The fixed QA, packaged contract surface and indexed
+  event projections bind this behavior to the frozen source.
+- [x] The staged publisher-stake charges execute at most once at the exact
   evaluation/publication/acceptance/maintenance events (20/30/70/30 bps of the
   frozen basis), never precharge a failed future stage, and atomically split
   each charge 35/20/20/15/10 across RewardVault/burn/DAO/source/security.
   The current full contract run decodes the integrated TaskRegistry events and
   proves a 1000-AGT basis charges exactly 2/3/7/3 AGT with the full split, while
   a second evaluation-only task has consumed only its first-stage bit and keeps
-  998 AGT. The row remains open until unchanged frozen source passes fixed QA.
+  998 AGT. The unchanged frozen source passed the fixed QA.
 - [ ] Official and third-party source fees use the governed 180–365-day vesting
   contract; DAO and security reserves are independently controlled, and no
   application/admin key can directly withdraw their balances.
@@ -541,7 +540,13 @@ real-user pilot.
   fail-closed production projection and explicit human/AI `SPONSORED` label.
   Tests prove it changes display ordering only. This row remains open for the
   extra competition-slot and paid scheduling-capacity products and externally
-  confirmed payment collection.
+  confirmed payment collection. The next local cycle now has a strict signed
+  entitlement union: two included competition slots, 1–30 paid extras up to 32,
+  spec/review/receipt binding, explicit executor-capacity-only influence and a
+  pre-publication general-executor scheduling entitlement. It still lacks the
+  required on-chain pass consumption, PostgreSQL lifecycle, 3:1 Redis fairness,
+  projection/API/UI integration and end-to-end regression, so it cannot close
+  this row.
 - [ ] Advertising/sponsorship accounting separates confirmed cash revenue from
   pending and executed AGT purchases. The 50/40/10 and 70/10/10/10 routes,
   TWAP/slippage/period caps, RewardVault replenishment and burn transactions are
@@ -579,9 +584,10 @@ real-user pilot.
   outcome: tasks below 10 AGT, same-address self-dealing and repeated positive
   outcomes from one publisher-Agent-role relationship in a 30-day epoch are
   consumed without a gain; failures always apply, and priority status requires
-  three distinct credited publisher relationships. The local row remains open
-  only for externally governed common-control/Sybil evidence and final frozen-
-  source packaged evidence; distinct wallets alone cannot close it.
+  three distinct credited publisher relationships. The row remains open only
+  for externally governed common-control/Sybil evidence; the current frozen-
+  source packaged evidence is complete and distinct wallets alone cannot close
+  the external gate.
 - [ ] Indexer, OpenAPI, SDK and the human/AI dashboards expose source attribution,
   vesting, lifecycle charges, treasury/burn/security routes, sponsored labels,
   role quality and 30/90-day AGT net-demand components without presenting
@@ -596,7 +602,7 @@ real-user pilot.
 
 ## F. Pilot sign-off
 
-- [ ] Current-source contract/API/Worker evidence proves three unique validation Agents use criterion/test shards, commit before reveal, and require two independent votes per required criterion; no legacy single-Tester finalization entrypoint remains.
+- [x] Current-source contract/API/Worker evidence proves three unique validation Agents use criterion/test shards, commit before reveal, and require two independent votes per required criterion; no legacy single-Tester finalization entrypoint remains.
   The production job union and OpenAPI no longer admit the unused single-agent
   `MAINTENANCE_VALIDATION` kind; due maintenance starts a fresh panel and uses
   only `TEST_TASK` plus `REVEAL_TEST_SHARD`. The legacy Demo HTTP/SDK
@@ -605,13 +611,13 @@ real-user pilot.
   now clears the acceptance assignment and records a fresh current-registry
   snapshot/future block; coordinator retries are idempotent and may redraw only
   after the recorded 256-block window expires. The internal pure
-  Demo service helper remains test-fixture-only. This row remains open for the
-  frozen-source complete regression and packaged Worker evidence.
-  Current chain regression also executes validator request, validator
+  Demo service helper remains test-fixture-only. The fixed 22-command QA binds
+  the complete contract regression, all Worker
+  bundles and packaged delivery smoke. Current chain regression also executes validator request, validator
   finalization, due maintenance-panel request and matured inactive-executor
   eviction from non-coordinator wallets; Dashboard 2.5/OpenAPI 0.8.14 publish
   the optional-automation/no-exclusive-authority boundary.
-- [ ] Chain regression proves 4000/3333/2667 commit-order aggregation, 24-hour challenge gating, matching-resolution-hash 2/3 staked arbitration, correct-challenge 100/60/40 slash/reward/reserve accounting, repeated false-challenge 5%/15%/30% slashing, three-day no-quorum recovery, and an upheld case entering a fresh correction/panel epoch.
+- [x] Chain regression proves 4000/3333/2667 commit-order aggregation, 24-hour challenge gating, matching-resolution-hash 2/3 staked arbitration, correct-challenge 100/60/40 slash/reward/reserve accounting, repeated false-challenge 5%/15%/30% slashing, three-day no-quorum recovery, and an upheld case entering a fresh correction/panel epoch.
   The focused upheld-challenge path now proves an unbonded target cannot evade
   the 100-token slash: any court-stake shortfall is taken from its registered
   Agent stake, and the TaskRegistry advances to a fresh correction work round.
@@ -620,8 +626,8 @@ real-user pilot.
   unlock/panel recovery. The complete current-source contract suite passes all
   31/31 cases across six files in one run, including the direct assertion of the
   100/60/40 target loss, challenger credit and reserve balance delta. This row
-  remains open until the fixed release QA and candidate evidence bind the final
-  frozen source.
+  is bound to the unchanged contract source by the historical `1764c30` fixed
+  release QA and candidate evidence; the final whole-source QA remains open.
 - [ ] Three independently controlled validator wallets and three independently controlled arbitration wallets fund the configured minimum stake and sign the exact Pilot report; local wallets do not satisfy this row.
 
 - [ ] At least three unrelated pilot publishers complete useful tasks and confirm
