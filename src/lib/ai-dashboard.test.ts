@@ -74,10 +74,21 @@ describe("AI dashboard", () => {
       protocolInfluence: { evaluatorSelection: "NONE", validatorSelection: "NONE", qualityRanking: "NONE" },
     });
     expect(dashboard.promotionPolicy).toMatchObject({ signingVersion: "AgentGrid Task Promotion V1", rankingEffect: "DISPLAY_ORDER_ONLY", protocolInfluence: "NONE" });
+    expect(dashboard.paidCapacityPolicy).toMatchObject({
+      implementationStatus: "DOMAIN_MODEL_ONLY", available: false, purchaseEndpoint: null, activation: "PRE_PUBLICATION_ONLY",
+      entitlements: {
+        extraCompetitionSlots: { includedCompetitionSlots: 2, maximumPaidExtraSlots: 30, maximumResultingExecutors: 32, effect: "EXECUTOR_CAPACITY_ONLY", executorRecipientWeightsMayChange: true, rewardPoolAffected: false, requiredEnforcement: "ONCHAIN_COMPETITION_SLOT_PASS_REGISTRY" },
+        priorityScheduling: { maximumPrioritySlots: 32, eligibleJobKinds: ["EXECUTE_TASK"], effect: "EXECUTOR_GENERAL_QUEUE_ORDER_ONLY", fairnessEnforcement: "APPLICATION_FAIR_QUEUE_3_TO_1", paidToOrganicDispatchRatio: "3:1", rewardPoolAffected: false },
+      },
+      unaffected: { evaluationJobs: "NONE", verificationJobs: "NONE", arbitrationJobs: "NONE", deadlineAndTimeoutJobs: "NONE", evaluatorSelection: "NONE", validatorSelection: "NONE", arbitratorSelection: "NONE", qualityGates: "NONE", challengeRightsAndWindows: "NONE", acceptanceCriteriaAndDeadlines: "NONE" },
+    });
     const dashboardPage = readFileSync(new URL("../app/dashboard/page.tsx", import.meta.url), "utf8");
     expect(dashboardPage).toContain("dashboard.promotionPolicy");
     expect(dashboardPage).toContain("task.promotion");
     expect(dashboardPage).toContain("sponsored-badge");
+    expect(dashboardPage).toContain("dashboard.paidCapacityPolicy");
+    expect(dashboardPage).toContain("DOMAIN_MODEL_ONLY");
+    expect(dashboardPage).not.toContain("purchasePaidCapacity");
     expect(dashboard.onChainActions).toHaveLength(46);
     for (const id of ["evict-inactive-executor", "request-validator-draw", "finalize-validator-draw", "request-maintenance-panel"]) {
       expect(dashboard.onChainActions.find((action) => action.id === id)?.role).toBe("ANYONE");
@@ -100,6 +111,14 @@ describe("AI dashboard", () => {
         required: string[];
         properties: {
           revenuePolicy: { properties: { realizedRevenueStatus: { const: string }; protocolInfluence: { properties: Record<string, { const: string }> } } };
+          paidCapacityPolicy: { properties: {
+            implementationStatus: { const: string }; available: { const: boolean };
+            entitlements: { properties: {
+              extraCompetitionSlots: { properties: { includedCompetitionSlots: { const: number }; maximumPaidExtraSlots: { const: number }; effect: { const: string }; rewardPoolAffected: { const: boolean } } };
+              priorityScheduling: { properties: { eligibleJobKinds: { prefixItems: Array<{ const: string }> }; fairnessEnforcement: { const: string }; effect: { const: string } } };
+            } };
+            unaffected: { properties: Record<string, { const: string }> };
+          } };
           selectionPolicy: { required: string[]; properties: {
             scalability: { properties: { status: { const: string }; randomWindowAccepted: { const: boolean } } };
             liveness: { properties: { coordinator: { const: string }; callerSelectionAuthority: { const: string }; permissionlessActions: { minItems: number; maxItems: number } } };
@@ -111,6 +130,15 @@ describe("AI dashboard", () => {
       } } };
     };
     expect(openapi.components.schemas.AiDashboard.required).toContain("revenuePolicy");
+    expect(openapi.components.schemas.AiDashboard.required).toContain("paidCapacityPolicy");
+    expect(openapi.components.schemas.AiDashboard.properties.paidCapacityPolicy.properties).toMatchObject({
+      implementationStatus: { const: "DOMAIN_MODEL_ONLY" }, available: { const: false },
+      entitlements: { properties: {
+        extraCompetitionSlots: { properties: { includedCompetitionSlots: { const: 2 }, maximumPaidExtraSlots: { const: 30 }, effect: { const: "EXECUTOR_CAPACITY_ONLY" }, rewardPoolAffected: { const: false } } },
+        priorityScheduling: { properties: { eligibleJobKinds: { prefixItems: [{ const: "EXECUTE_TASK" }] }, fairnessEnforcement: { const: "APPLICATION_FAIR_QUEUE_3_TO_1" }, effect: { const: "EXECUTOR_GENERAL_QUEUE_ORDER_ONLY" } } },
+      } },
+    });
+    expect(new Set(Object.values(openapi.components.schemas.AiDashboard.properties.paidCapacityPolicy.properties.unaffected.properties).map((item) => item.const))).toEqual(new Set(["NONE"]));
     expect(openapi.components.schemas.AiDashboard.properties.selectionPolicy.required).toContain("liveness");
     expect(openapi.components.schemas.AiDashboard.properties.selectionPolicy.required).toContain("scalability");
     expect(openapi.components.schemas.AiDashboard.properties.selectionPolicy.properties.scalability.properties).toMatchObject({

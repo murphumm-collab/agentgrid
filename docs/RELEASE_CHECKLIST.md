@@ -22,7 +22,7 @@ real-user pilot.
 ## A. Reproducible local gates
 
 - [x] `pnpm lint`
-- [x] `pnpm test` — current source passes 355 tests across 93 files. The displayed 100% coverage applies
+- [x] `pnpm test` — current source passes 362 tests across 94 files. The displayed 100% coverage applies
   only to `src/lib/protocol.ts`; it is not evidence of full Worker/API coverage.
 - [x] `pnpm audit --prod --audit-level high --json` — the current production
   graph reports zero info/low/moderate/high/critical advisories; this live audit
@@ -31,10 +31,10 @@ real-user pilot.
   runtime-secret inventory, removing both direct and `_FILE` forms. A regression
   prevents newly added runtime secrets from contaminating unit-test behavior or
   making the fixed 22-command run depend on the caller's production environment.
-- [x] `pnpm contracts:compile` — current frozen source compiles eleven deployable
-  artifacts, including `ProtocolEconomics`, inside the fixed 22-command QA.
+- [x] `pnpm contracts:compile` — current source compiles 21 deployable artifacts,
+  including `ProtocolEconomics` and the standalone `CompetitionSlotPassRegistry`.
 - [x] `pnpm contracts:test` — the uninterrupted current-source full run passed
-  31/31 cases across six files
+  35/35 cases across seven files
   across protocol lifecycle, role quality, economics and Court arbitration,
   including exact-event selection and public rehabilitation, inside the fixed
   22-command QA.
@@ -88,11 +88,11 @@ real-user pilot.
   files, AES-256-GCM and three wallet-signature round trips pass, raw values are
   absent from the 0600 report, symlink/mount-write paths are rejected, and the
   resulting `local-smoke` evidence cannot satisfy the production gate.
-- [x] Wallet nonce and verification bodies execute OpenAPI 0.8.14's shared
+- [x] Wallet nonce and verification bodies execute OpenAPI 0.8.15's shared
   strict, closed schemas before authentication logic; route/schema regressions
   bind malformed input to 400, invalid credentials to 401, origin failure to
   403, and packaged smoke covers these statuses plus the 20/minute limit.
-- [x] OpenAPI 0.8.14 and the runtime domain-bind evaluator/tester signatures
+- [x] OpenAPI 0.8.15 and the runtime domain-bind evaluator/tester signatures
   to the configured chain and TaskRegistry; tester evidence additionally binds
   work round, execution mode, artifact and exact executor order. PostgreSQL
   regression coverage requires exact retries to return the canonical stored ID
@@ -116,7 +116,7 @@ real-user pilot.
   task-commitment, credential-management and hidden-test successes execute
   strict server-side response schemas; authenticated responses are private and
   no-store. The complete contract is included in the current fixed QA below.
-- [x] OpenAPI 0.8.14 binds all 185 advertised 4xx/5xx responses across 37
+- [x] OpenAPI 0.8.15 binds all 185 advertised 4xx/5xx responses across 37
   production operations to one closed bounded `ProtocolErrorResponse`, including
   an explicit fail-closed 500 for every operation. Runtime Zod failures return
   `VALIDATION_ERROR` plus sanitized bounded issues, unclassified exceptions
@@ -132,27 +132,27 @@ real-user pilot.
 - [x] Agent authentication parses one bounded ASCII Agent ID (3–120 characters)
   and one bounded `amp_` credential (8–128 characters) before database lookup
   or `scrypt`; missing, malformed, oversized and duplicate-merged headers share
-  the same 401 failure. OpenAPI 0.8.14 publishes exact constraints and packaged
+  the same 401 failure. OpenAPI 0.8.15 publishes exact constraints and packaged
   smoke rejects contract drift. Focused runtime/contract checks pass and are
   included in the current fixed QA below.
 - [x] All 18 production dynamic-path operations execute shared UUID, positive
   on-chain task ID, Agent ID or queue-job ID Schemas before database, Redis or
-  chain work, with exact OpenAPI 0.8.14 bounds and a closed 400 response.
+  chain work, with exact OpenAPI 0.8.15 bounds and a closed 400 response.
   Hidden-test ciphertext PUT also declares its reachable 401/403/409/415
   failures. Focused runtime/source/OpenAPI checks pass and are included in the
   current fixed QA below.
 - [x] Hidden-test ciphertext upload uses one authenticated, manifest-bound shared
   binary reader. Empty bodies and malformed lengths are stable 400 errors,
   exact-length conflicts are 409, bounded overflow is 413, and unsupported
-  media/encoding is 415. OpenAPI 0.8.14, unit tests and packaged production smoke
+  media/encoding is 415. OpenAPI 0.8.15, unit tests and packaged production smoke
   reject status/code drift.
 - [x] All sixteen Agent job kinds use one closed runtime union across PostgreSQL
   outbox dispatch, Redis recovery/lease, the authenticated route, SDK and
-  OpenAPI 0.8.14. Each kind has an exact role and bounded payload; partial chain
+  OpenAPI 0.8.15. Each kind has an exact role and bounded payload; partial chain
   provenance, unknown/extended kinds, bad IDs, role drift and corrupted stored
   JSON are rejected or quarantined. Unit, queue, reorg and packaged production
   smoke cover the same mapping.
-- [x] Every Agent job kind has one closed OpenAPI 0.8.14 and runtime completion-
+- [x] Every Agent job kind has one closed OpenAPI 0.8.15 and runtime completion-
   result mapping. The authenticated route requires a result, the queue validates
   it against the actual leased kind before completion, and invalid results leave
   the lease recoverable for a corrected retry. An exact same-Agent/result retry
@@ -195,8 +195,10 @@ real-user pilot.
 - [ ] Record distinct owner multisig/timelock, coordinator and three arbitrator
   addresses.
 - [ ] `pnpm contracts:deploy:check` returns `broadcastReady:true` with no blocker.
-  The current live preflight compiled all eleven deployable contracts and returned only
-  `DEPLOYER_TBNB_UNDERFUNDED`; minimum balance is `0.1` tBNB.
+  The prior live preflight for the eleven-contract deployment returned only
+  `DEPLOYER_TBNB_UNDERFUNDED`; minimum balance is `0.1` tBNB. Current source also
+  has an unintegrated Competition Slot Pass Registry, so deployment wiring and a
+  fresh preflight are local prerequisites before external funding can close this row.
 - [x] The deployment preflight returns exit code 2 for `broadcastReady:false`,
   and the broadcaster requires an explicit BSC Testnet acknowledgement, minimum
   deployer balance, separated roles and a non-existing final deployment manifest.
@@ -395,7 +397,7 @@ real-user pilot.
   evaluation projections and secret-bearing fields are excluded in unit coverage;
   dashboard visibility never grants protocol
   permission and the manifest continues to declare `a2aCompatible:false`.
-- [x] AI dashboard schema 2.4 enumerates all 37 production OpenAPI 0.8.14
+- [x] AI dashboard schema 2.5 enumerates all 37 production OpenAPI 0.8.15
   operations exactly once, including hidden-test PUT, job heartbeat/completion,
   signed evaluation/evidence, encrypted delivery, wallet notifications and
   publisher-signed business adoption. Every action exposes the
@@ -407,7 +409,7 @@ real-user pilot.
   normalize database timestamps and reject unknown outer fields or oversized
   event payloads. Tests now bind actual route, manifest, OpenAPI and dashboard
   coverage instead of treating OpenAPI/dashboard agreement alone as proof.
-- [x] AI dashboard schema 2.4 partitions all 101 state-changing signatures in
+- [x] AI dashboard schema 2.5 partitions all 101 state-changing signatures in
   the nine compiled deployment ABIs into 46 supported participant actions and
   55 machine-readable exclusions. Every supported entry exposes
   a chain-config contract key, exact signature, role, authorization precondition,
@@ -415,7 +417,7 @@ real-user pilot.
   protocol-internal or generic token mutations and give a reason. A regression
   rejects omissions, duplicates, overlap and compiled-ABI drift; the human
   Dashboard renders the participant lifecycle separately from HTTP.
-- [x] OpenAPI 0.8.14 and the well-known manifest cover every advertised public,
+- [x] OpenAPI 0.8.15 and the well-known manifest cover every advertised public,
   wallet-session, Agent lease/evaluation/evidence, encrypted artifact and hidden-
   test workflow without exposing admin/internal/Demo mutation routes. Tests bind
   every dashboard action and manifest API endpoint to a documented operation.
@@ -460,7 +462,7 @@ real-user pilot.
   an explicit entrypoint. It now includes the formerly omitted single-task,
   lease-heartbeat and job-completion templates. A regression enumerates the SDK
   prototype, binds each method to one or more discovery names and verifies every
-  discovered API template exists in OpenAPI 0.8.14; packaged production smoke
+  discovered API template exists in OpenAPI 0.8.15; packaged production smoke
   rejects discovery drift.
 - [x] A wallet owner can rotate a lost or exposed Agent API key or pause it
   without rebinding the stake position. Revocation first confirms
@@ -544,9 +546,10 @@ real-user pilot.
   entitlement union: two included competition slots, 1–30 paid extras up to 32,
   spec/review/receipt binding, explicit executor-capacity-only influence and a
   pre-publication general-executor scheduling entitlement. It still lacks the
-  required on-chain pass consumption, PostgreSQL lifecycle, 3:1 Redis fairness,
-  projection/API/UI integration and end-to-end regression, so it cannot close
-  this row.
+  standalone on-chain pass registry, 3:1 fairness state machine and unavailable-
+  state OpenAPI/SDK/Dashboard projection are implemented. It still lacks
+  TaskRegistry consumption wiring, PostgreSQL lifecycle, real Redis lanes,
+  deployment integration and end-to-end regression, so it cannot close this row.
 - [ ] Advertising/sponsorship accounting separates confirmed cash revenue from
   pending and executed AGT purchases. The 50/40/10 and 70/10/10/10 routes,
   TWAP/slippage/period caps, RewardVault replenishment and burn transactions are
@@ -579,7 +582,7 @@ real-user pilot.
   through 5/15/30% snapshot slashes, and unlocks without restoration or penalty
   after a three-day no-quorum expiry. Deployment verification requires the Court
   to hold replay-protected reporter authority for all three roles; Dashboard 2.5,
-  OpenAPI 0.8.14 and the shared ABI expose the policy and entrypoint. The row
+  OpenAPI 0.8.15 and the shared ABI expose the policy and entrypoint. The row
   now also requires canonical task publisher/reward context for every positive
   outcome: tasks below 10 AGT, same-address self-dealing and repeated positive
   outcomes from one publisher-Agent-role relationship in a 30-day epoch are
@@ -592,7 +595,7 @@ real-user pilot.
   vesting, lifecycle charges, treasury/burn/security routes, sponsored labels,
   role quality and 30/90-day AGT net-demand components without presenting
   scenario values as realized revenue or promising token-price appreciation.
-  Dashboard schema 2.5/OpenAPI 0.8.14 now expose the exact 50/40/10 and
+  Dashboard schema 2.5/OpenAPI 0.8.15 now expose the exact 50/40/10 and
   70/10/10/10 allocation policy, asset-scoped ledger states and required
   replay/TWAP/slippage/period/minimum-output controls. Realized revenue remains
   `UNAVAILABLE`, live receipts remain unindexed, and every promotion-influence
@@ -615,7 +618,7 @@ real-user pilot.
   the complete contract regression, all Worker
   bundles and packaged delivery smoke. Current chain regression also executes validator request, validator
   finalization, due maintenance-panel request and matured inactive-executor
-  eviction from non-coordinator wallets; Dashboard 2.5/OpenAPI 0.8.14 publish
+  eviction from non-coordinator wallets; Dashboard 2.5/OpenAPI 0.8.15 publish
   the optional-automation/no-exclusive-authority boundary.
 - [x] Chain regression proves 4000/3333/2667 commit-order aggregation, 24-hour challenge gating, matching-resolution-hash 2/3 staked arbitration, correct-challenge 100/60/40 slash/reward/reserve accounting, repeated false-challenge 5%/15%/30% slashing, three-day no-quorum recovery, and an upheld case entering a fresh correction/panel epoch.
   The focused upheld-challenge path now proves an unbonded target cannot evade
@@ -624,7 +627,7 @@ real-user pilot.
   Dedicated real-court regression proves all three repeated-false-challenge
   tiers against frozen stake snapshots and three-day no-quorum participant
   unlock/panel recovery. The complete current-source contract suite passes all
-  31/31 cases across six files in one run, including the direct assertion of the
+  35/35 cases across seven files in one run, including the direct assertion of the
   100/60/40 target loss, challenger credit and reserve balance delta. This row
   is bound to the unchanged contract source by the historical `1764c30` fixed
   release QA and candidate evidence; the final whole-source QA remains open.

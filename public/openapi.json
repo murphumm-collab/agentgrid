@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "AgentGrid Agent API",
-    "version": "0.8.14",
+    "version": "0.8.15",
     "description": "Discovery, public task/proof views and the authenticated Agent job, encrypted artifact and publisher hidden-test workflows. Admin, internal operations and Demo-only mutation routes are intentionally excluded. Artifact bytes and hidden tests are never returned by public endpoints."
   },
   "servers": [
@@ -3798,6 +3798,7 @@
           "economics",
           "revenuePolicy",
           "promotionPolicy",
+          "paidCapacityPolicy",
           "selectionPolicy",
           "workQueue",
           "actionContracts",
@@ -3807,7 +3808,7 @@
         ],
         "properties": {
           "schemaVersion": {
-            "const": "2.2"
+            "const": "2.5"
           },
           "generatedAt": {
             "type": "string",
@@ -4079,6 +4080,67 @@
               "invalidExpiredOrUnconfigured": { "const": "OMITTED_FAIL_CLOSED" },
               "rankingEffect": { "const": "DISPLAY_ORDER_ONLY" },
               "protocolInfluence": { "const": "NONE" }
+            }
+          },
+          "paidCapacityPolicy": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["implementationStatus", "available", "purchaseEndpoint", "activation", "receiptBinding", "entitlements", "unaffected"],
+            "properties": {
+              "implementationStatus": { "const": "DOMAIN_MODEL_ONLY" },
+              "available": { "const": false },
+              "purchaseEndpoint": { "type": "null" },
+              "activation": { "const": "PRE_PUBLICATION_ONLY" },
+              "receiptBinding": { "const": "PLATFORM_SIGNED_UNIQUE_PAYMENT_RECEIPT" },
+              "entitlements": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["extraCompetitionSlots", "priorityScheduling"],
+                "properties": {
+                  "extraCompetitionSlots": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["kind", "includedCompetitionSlots", "maximumPaidExtraSlots", "maximumResultingExecutors", "effect", "executorRecipientWeightsMayChange", "rewardPoolAffected", "requiredEnforcement"],
+                    "properties": {
+                      "kind": { "const": "EXTRA_COMPETITION_SLOTS" },
+                      "includedCompetitionSlots": { "const": 2 },
+                      "maximumPaidExtraSlots": { "const": 30 },
+                      "maximumResultingExecutors": { "const": 32 },
+                      "effect": { "const": "EXECUTOR_CAPACITY_ONLY" },
+                      "executorRecipientWeightsMayChange": { "const": true },
+                      "rewardPoolAffected": { "const": false },
+                      "requiredEnforcement": { "const": "ONCHAIN_COMPETITION_SLOT_PASS_REGISTRY" }
+                    }
+                  },
+                  "priorityScheduling": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["kind", "maximumPrioritySlots", "eligibleJobKinds", "effect", "fairnessEnforcement", "paidToOrganicDispatchRatio", "executorRecipientWeightsMayChange", "rewardPoolAffected"],
+                    "properties": {
+                      "kind": { "const": "PRIORITY_SCHEDULING" },
+                      "maximumPrioritySlots": { "const": 32 },
+                      "eligibleJobKinds": { "type": "array", "prefixItems": [{ "const": "EXECUTE_TASK" }], "minItems": 1, "maxItems": 1 },
+                      "effect": { "const": "EXECUTOR_GENERAL_QUEUE_ORDER_ONLY" },
+                      "fairnessEnforcement": { "const": "APPLICATION_FAIR_QUEUE_3_TO_1" },
+                      "paidToOrganicDispatchRatio": { "const": "3:1" },
+                      "executorRecipientWeightsMayChange": { "const": false },
+                      "rewardPoolAffected": { "const": false }
+                    }
+                  }
+                }
+              },
+              "unaffected": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["evaluationJobs", "verificationJobs", "arbitrationJobs", "deadlineAndTimeoutJobs", "evaluatorSelection", "validatorSelection", "arbitratorSelection", "qualityGates", "challengeRightsAndWindows", "acceptanceCriteriaAndDeadlines"],
+                "properties": {
+                  "evaluationJobs": { "const": "NONE" }, "verificationJobs": { "const": "NONE" },
+                  "arbitrationJobs": { "const": "NONE" }, "deadlineAndTimeoutJobs": { "const": "NONE" },
+                  "evaluatorSelection": { "const": "NONE" }, "validatorSelection": { "const": "NONE" },
+                  "arbitratorSelection": { "const": "NONE" }, "qualityGates": { "const": "NONE" },
+                  "challengeRightsAndWindows": { "const": "NONE" }, "acceptanceCriteriaAndDeadlines": { "const": "NONE" }
+                }
+              }
             }
           },
           "selectionPolicy": {

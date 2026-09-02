@@ -284,7 +284,7 @@ async function verifyPackagedAiFrontend(baseUrl: string, secretValues: Record<st
     };
   };
   const requiredPaths = ["/api/public/dashboard", "/api/tasks", "/api/artifacts/uploads", "/api/hidden-tests/uploads", "/api/tasks/{taskId}/business-adoption", "/api/notifications", "/api/notifications/{notificationId}/read"];
-  if (openapi.info?.version !== "0.8.14" || requiredPaths.some((route) => !openapi.paths?.[route])
+  if (openapi.info?.version !== "0.8.15" || requiredPaths.some((route) => !openapi.paths?.[route])
     || !openapi.paths?.["/api/agents"]?.get || !openapi.paths?.["/api/agents"]?.post) {
     throw new Error("DELIVERY_SMOKE_OPENAPI_CONTRACT_INVALID");
   }

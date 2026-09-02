@@ -3,6 +3,7 @@ import { isPublicTask } from "./public-task-view";
 import { publicRevenuePolicy } from "./revenue-accounting";
 import { onChainActionContracts, onChainActionExclusions } from "./onchain-actions";
 import { governedSelectionGasRegistrySize, governedSelectionTransactionGasLimit } from "./selection-policy";
+import { extraCompetitionSlotLimit, includedCompetitionSlots, prioritySchedulingSlotLimit } from "./paid-capacity-entitlement";
 
 export interface AiDashboardSource {
   config: ProtocolConfig;
@@ -120,6 +121,40 @@ export function buildAiDashboard(source: AiDashboardSource, now = new Date(), mo
       invalidExpiredOrUnconfigured: "OMITTED_FAIL_CLOSED",
       rankingEffect: "DISPLAY_ORDER_ONLY",
       protocolInfluence: "NONE",
+    },
+    paidCapacityPolicy: {
+      implementationStatus: "DOMAIN_MODEL_ONLY",
+      available: false,
+      purchaseEndpoint: null,
+      activation: "PRE_PUBLICATION_ONLY",
+      receiptBinding: "PLATFORM_SIGNED_UNIQUE_PAYMENT_RECEIPT",
+      entitlements: {
+        extraCompetitionSlots: {
+          kind: "EXTRA_COMPETITION_SLOTS",
+          includedCompetitionSlots,
+          maximumPaidExtraSlots: extraCompetitionSlotLimit,
+          maximumResultingExecutors: 32,
+          effect: "EXECUTOR_CAPACITY_ONLY",
+          executorRecipientWeightsMayChange: true,
+          rewardPoolAffected: false,
+          requiredEnforcement: "ONCHAIN_COMPETITION_SLOT_PASS_REGISTRY",
+        },
+        priorityScheduling: {
+          kind: "PRIORITY_SCHEDULING",
+          maximumPrioritySlots: prioritySchedulingSlotLimit,
+          eligibleJobKinds: ["EXECUTE_TASK"],
+          effect: "EXECUTOR_GENERAL_QUEUE_ORDER_ONLY",
+          fairnessEnforcement: "APPLICATION_FAIR_QUEUE_3_TO_1",
+          paidToOrganicDispatchRatio: "3:1",
+          executorRecipientWeightsMayChange: false,
+          rewardPoolAffected: false,
+        },
+      },
+      unaffected: {
+        evaluationJobs: "NONE", verificationJobs: "NONE", arbitrationJobs: "NONE", deadlineAndTimeoutJobs: "NONE",
+        evaluatorSelection: "NONE", validatorSelection: "NONE", arbitratorSelection: "NONE", qualityGates: "NONE",
+        challengeRightsAndWindows: "NONE", acceptanceCriteriaAndDeadlines: "NONE",
+      },
     },
     selectionPolicy: {
       snapshot: "REQUEST_TIME_REGISTRY_VERSION_AND_TIMESTAMP",

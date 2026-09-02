@@ -191,6 +191,33 @@ export const publicDashboardResponseSchema = z.object({
     rankingEffect: z.literal("DISPLAY_ORDER_ONLY"),
     protocolInfluence: z.literal("NONE"),
   }).strict(),
+  paidCapacityPolicy: z.object({
+    implementationStatus: z.literal("DOMAIN_MODEL_ONLY"),
+    available: z.literal(false),
+    purchaseEndpoint: z.null(),
+    activation: z.literal("PRE_PUBLICATION_ONLY"),
+    receiptBinding: z.literal("PLATFORM_SIGNED_UNIQUE_PAYMENT_RECEIPT"),
+    entitlements: z.object({
+      extraCompetitionSlots: z.object({
+        kind: z.literal("EXTRA_COMPETITION_SLOTS"), includedCompetitionSlots: z.literal(2), maximumPaidExtraSlots: z.literal(30),
+        maximumResultingExecutors: z.literal(32), effect: z.literal("EXECUTOR_CAPACITY_ONLY"),
+        executorRecipientWeightsMayChange: z.literal(true), rewardPoolAffected: z.literal(false),
+        requiredEnforcement: z.literal("ONCHAIN_COMPETITION_SLOT_PASS_REGISTRY"),
+      }).strict(),
+      priorityScheduling: z.object({
+        kind: z.literal("PRIORITY_SCHEDULING"), maximumPrioritySlots: z.literal(32),
+        eligibleJobKinds: z.tuple([z.literal("EXECUTE_TASK")]), effect: z.literal("EXECUTOR_GENERAL_QUEUE_ORDER_ONLY"),
+        fairnessEnforcement: z.literal("APPLICATION_FAIR_QUEUE_3_TO_1"), paidToOrganicDispatchRatio: z.literal("3:1"),
+        executorRecipientWeightsMayChange: z.literal(false), rewardPoolAffected: z.literal(false),
+      }).strict(),
+    }).strict(),
+    unaffected: z.object({
+      evaluationJobs: z.literal("NONE"), verificationJobs: z.literal("NONE"), arbitrationJobs: z.literal("NONE"),
+      deadlineAndTimeoutJobs: z.literal("NONE"), evaluatorSelection: z.literal("NONE"), validatorSelection: z.literal("NONE"),
+      arbitratorSelection: z.literal("NONE"), qualityGates: z.literal("NONE"), challengeRightsAndWindows: z.literal("NONE"),
+      acceptanceCriteriaAndDeadlines: z.literal("NONE"),
+    }).strict(),
+  }).strict(),
   selectionPolicy: z.object({
     snapshot: z.literal("REQUEST_TIME_REGISTRY_VERSION_AND_TIMESTAMP"),
     positiveChangesAfterRequest: z.literal("IGNORED_FOR_FROZEN_DRAW"),

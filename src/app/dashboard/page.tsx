@@ -80,6 +80,20 @@ export default async function AiDashboardPage() {
       </div>
     </section>
 
+    <section className="card card-pad" style={{ marginBottom: 22 }} aria-label={zh ? "付费容量安全政策" : "Paid capacity safety policy"}>
+      <div className="section-head"><div><div className="eyebrow">PAID CAPACITY POLICY</div><h2 className="section-title">{zh ? "仅有领域模型，当前不可购买" : "Domain model only; currently unavailable"}</h2></div><span className="badge">DOMAIN_MODEL_ONLY</span></div>
+      <div className="notice"><strong>{zh ? "未开放购买或激活" : "No purchase or activation path"}</strong><p>{zh
+        ? `available=${String(dashboard.paidCapacityPolicy.available)}；没有购买端点。两种权益都必须在任务发布前绑定 definition review、specHash、发布者、TaskRegistry、链和唯一支付回执。`
+        : `available=${String(dashboard.paidCapacityPolicy.available)}; no purchase endpoint exists. Both entitlements must bind the pre-publication definition review, specHash, publisher, TaskRegistry, chain and unique payment receipt.`}</p></div>
+      <div className="grid stats-grid" style={{ marginTop: 14 }}>
+        <article className="stat-card"><div className="stat-head"><span>EXTRA_COMPETITION_SLOTS</span></div><div className="stat-value">{dashboard.paidCapacityPolicy.entitlements.extraCompetitionSlots.includedCompetitionSlots} + {dashboard.paidCapacityPolicy.entitlements.extraCompetitionSlots.maximumPaidExtraSlots}</div><div className="stat-note">{zh ? "默认 2 席，最多付费增加 30 席，总数不超过 32" : "2 included, at most 30 paid additions, never above 32 total"}</div><p>{zh ? "作用仅为 EXECUTOR_CAPACITY_ONLY。执行者收款人权重可能随席位变化，但固定奖励池不变；必须由链上 Competition Slot Pass Registry 强制执行。" : "Effect: EXECUTOR_CAPACITY_ONLY. Executor-recipient weights may change with capacity, but the fixed reward pool does not; enforcement requires the on-chain Competition Slot Pass Registry."}</p></article>
+        <article className="stat-card"><div className="stat-head"><span>PRIORITY_SCHEDULING</span></div><div className="stat-value">3:1</div><div className="stat-note">{zh ? "仅普通 EXECUTE_TASK 队列；3 个付费后必须派发 1 个普通任务" : "General EXECUTE_TASK queue only; one organic dispatch after three paid"}</div><p>{zh ? "作用仅为 EXECUTOR_GENERAL_QUEUE_ORDER_ONLY，最多 32 个 priority slots。评估、验证、仲裁、期限与超时作业永不进入该队列。" : "Effect: EXECUTOR_GENERAL_QUEUE_ORDER_ONLY, with at most 32 priority slots. Evaluation, verification, arbitration, deadline and timeout jobs never enter this queue."}</p></article>
+      </div>
+      <div className="notice" style={{ marginTop: 14 }}><strong>{zh ? "不可购买协议影响力" : "Protocol influence is not for sale"}</strong><p>{zh
+        ? "两类权益均不影响评估者、验证者或仲裁者选择，不绕过质量门，不改变挑战权或挑战窗口，也不改变验收条件或任务期限。"
+        : "Neither entitlement affects evaluator, validator or arbitrator selection, bypasses quality gates, changes challenge rights or windows, or changes acceptance criteria or task deadlines."}</p></div>
+    </section>
+
     <div className="grid stats-grid">
       <div className="card stat-card"><div className="stat-head"><span>{zh ? "公开任务" : "Public tasks"}</span><span className="stat-icon"><Workflow size={17} /></span></div><div className="stat-value">{dashboard.summary.publicTasks}</div><div className="stat-note">{stateEntries.map(([state, count]) => `${state} ${count}`).join(" · ") || "—"}</div></div>
       <div className="card stat-card"><div className="stat-head"><span>{zh ? "在线 Agent" : "Online agents"}</span><span className="stat-icon"><Bot size={17} /></span></div><div className="stat-value">{dashboard.summary.onlineAgents}</div><div className="stat-note">EXEC {dashboard.summary.roleSupply.EXECUTOR} · TEST {dashboard.summary.roleSupply.TESTER} · EVAL {dashboard.summary.roleSupply.EVALUATOR}</div></div>
