@@ -58,3 +58,17 @@ Eliminating positive coalition ROI in a subsidized protocol with unverifiable id
 - [ ] Production domain/TLS/proxy boundaries, external KMS custody proof, off-host encrypted backup and actual restore, external alert/recovery acknowledgement, independent audit and accountable launch signoffs.
 
 Local Ganache tests deploy and execute protocol bytecode. Delivery smoke uses a mocked chain RPC and real local PostgreSQL/Redis/S3; neither is evidence of a real BSC pilot. KMS/alert smokes use local fixtures and cannot certify an external provider.
+
+## Recorded validation
+
+- Main baseline: 190 application tests and 13 contract tests passed.
+- Before-fix adversarial regression: 4 failed / 18 total (late tester, late publisher, late executor, cross-epoch insolvency); these are reproduced acceptance-of-invalid-operation failures.
+- Final application suite: 52 files, 197 tests passed. Expanded contract suite: 21 passed.
+- Full final-source application release QA: **22/22 commands passed**, exit 0, including compile, contracts, typecheck, lint, workers, build, real local PostgreSQL/Redis/S3 smokes, sandbox, reorg, delivery, secrets, local KMS/monitoring fixtures, backup/restore and immutable candidate snapshot.
+- QA source digest: `sha256:13eef8929300098e55421b892c4665aea56525446dc0198a962965f5bc8ba261`. Candidate build: `dhR-eOixt8erppGPAn1iG`.
+- Additional pilot typecheck and 16-way concurrent lease recovery/redrive checks passed.
+- BSC deployment preflight connected to chain 97 but blocked on missing deployer, owner/coordinator and arbitrator configuration. Real pilot, external KMS, public edge and off-host evidence preflights remain blocked.
+- Economic detector intentionally exits 2: coalition token profit persists. A green vulnerability reproduction is not economic-security acceptance. Public release remains blocked and the PR remains draft.
+- GitHub OAuth rejected workflow upload because `workflow` scope is absent. Source fixes are pushed; CI is a separate deliverable, not an installed/verified hosted check.
+
+Raw logs, machine-readable summary and the unsigned, hash-bound application QA report accompany the task deliverables. Coverage configuration still measures only `protocol.ts`.
