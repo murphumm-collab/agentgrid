@@ -6,7 +6,7 @@ import { completeAgentJob } from "../src/lib/agent-queue";
 import { readAgentProjectArchive } from "../src/lib/agent-artifact-builder";
 import { calculateContributionWeights, contributionFormulaVersion } from "../src/lib/contribution-weights";
 import { competitionScoreBps, competitionWeightsBps } from "../src/lib/competition-scoring";
-import { taskRegistryAbi } from "../src/lib/contracts";
+import { taskRegistryAbi, rewardVaultAbi } from "../src/lib/contracts";
 import { chainContractAddresses, runtimeConfig } from "../src/lib/env";
 import { decryptArtifactDownload, downloadAndRunSandbox } from "../src/lib/sandbox";
 import { evidenceMessage } from "../src/lib/signed-evidence";
@@ -31,6 +31,18 @@ async function main() {
   const wallet = createWalletClient({ account, chain: bscTestnet, transport });
   const publicClient = createPublicClient({ chain: bscTestnet, transport });
   const checkpoint = leased.job.kind === "MAINTENANCE_VALIDATION" ? Number(leased.job.payload.checkpoint) : undefined;
+  if (checkpoint) {
+    const addresses = chainContractAddresses();
+    const [current, grant] = await Promise.all([
+      publicClient.readContract({ address: addresses.taskRegistry, abi: taskRegistryAbi, functionName: "tasks", args: [BigInt(taskId)] }),
+      publicClient.readContract({ address: addresses.rewardVault, abi: rewardVaultAbi, functionName: "getGrant", args: [BigInt(taskId)] }),
+    ]);
+    if (checkpoint < 1 || checkpoint > 3 || current[19] !== 8 || current[2].toLowerCase() !== account.address.toLowerCase()
+      || grant.approved[checkpoint] || current[17] !== leased.job.payload.workRound || current[7] !== leased.job.payload.artifactHash) {
+      await completeAgentJob(leased.job.id, required("AGENT_ID"), { discarded: "STALE_MAINTENANCE_JOB" });
+      return;
+    }
+  }
   const executors = await publicClient.readContract({ address: chainContractAddresses().taskRegistry, abi: taskRegistryAbi, functionName: "getTaskExecutors", args: [BigInt(taskId)] });
   const competition = !checkpoint && task.executionMode === "COMPETITION";
   let artifact: Awaited<ReturnType<typeof protocol.getArtifactForTesting>>;

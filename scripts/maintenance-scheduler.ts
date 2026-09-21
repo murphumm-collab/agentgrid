@@ -1,7 +1,8 @@
 import { createPublicClient, http } from "viem";
 import { bscTestnet } from "viem/chains";
 import { enqueueAgentJob } from "../src/lib/agent-queue";
-import { rewardVaultAbi } from "../src/lib/contracts";
+import { maintenanceJob } from "../src/lib/maintenance-job";
+import { rewardVaultAbi, taskRegistryAbi } from "../src/lib/contracts";
 import { chainContractAddresses, runtimeConfig } from "../src/lib/env";
 import { protocolSnapshot } from "../src/lib/service";
 
@@ -14,17 +15,24 @@ async function schedule() {
   const client = createPublicClient({ chain: bscTestnet, transport: http(config.BSC_TESTNET_RPC_URL) });
   const snapshot = await protocolSnapshot();
   let queued = 0;
-  for (const task of snapshot.tasks.filter((item) => item.state === "MAINTENANCE" && item.executorIds[0] && item.testerId)) {
-    const grant = await client.readContract({ address: chainContractAddresses().rewardVault, abi: rewardVaultAbi, functionName: "getGrant", args: [BigInt(task.id)] });
-    for (const checkpoint of [1, 2, 3] as const) {
-      if (task.maintenanceHealthy[checkpoint - 1] || grant.approved[checkpoint]) continue;
-      const dueAt = await client.readContract({ address: chainContractAddresses().rewardVault, abi: rewardVaultAbi, functionName: "dueAt", args: [grant.startedAt, checkpoint] });
-      if (dueAt > BigInt(Math.floor(Date.now() / 1_000))) continue;
-      if (await enqueueAgentJob({
-        id: `maintenance:${task.id}:${checkpoint}:${Math.floor(Date.now() / 3_600_000)}`, role: "TESTER", kind: "MAINTENANCE_VALIDATION",
-        payload: { taskId: task.id, checkpoint, tester: task.testerId, dueAt: dueAt.toString() }, createdAt: new Date().toISOString(),
-      })) queued += 1;
-    }
+  const addresses = chainContractAddresses();
+  const head = await client.getBlockNumber();
+  const depth = BigInt(config.CHAIN_CONFIRMATIONS);
+  if (head < depth) return;
+  const blockNumber = head - depth;
+  const block = await client.getBlock({ blockNumber });
+  for (const task of snapshot.tasks) {
+    if (!/^\d+$/.test(task.id)) continue;
+    const [chainTask, grant] = await Promise.all([
+      client.readContract({ address: addresses.taskRegistry, abi: taskRegistryAbi, functionName: "tasks", args: [BigInt(task.id)], blockNumber }),
+      client.readContract({ address: addresses.rewardVault, abi: rewardVaultAbi, functionName: "getGrant", args: [BigInt(task.id)], blockNumber }),
+    ]);
+    const job = maintenanceJob({
+      chainId: bscTestnet.id, registry: addresses.taskRegistry, taskId: task.id,
+      state: chainTask[19], tester: chainTask[2], workRound: chainTask[17], artifactHash: chainTask[7],
+      startedAt: grant.startedAt, approved: grant.approved, now: block.timestamp,
+    });
+    if (job && await enqueueAgentJob(job, true)) queued += 1;
   }
   console.log(JSON.stringify({ time: new Date().toISOString(), queued }));
 }

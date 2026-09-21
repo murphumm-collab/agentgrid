@@ -119,6 +119,7 @@ contract AgentRegistry {
         uint256 positionId = taskPosition[taskId][participant];
         if (positionId == 0 || slashBps == 0 || slashBps > 10_000) revert Unauthorized();
         slashAmount = (stakeManager.stakeOf(positionId) * slashBps) / 10_000;
+        if (slashAmount > stakeManager.TASK_COLLATERAL()) slashAmount = stakeManager.TASK_COLLATERAL();
         if (slashAmount != 0) stakeManager.slashPosition(positionId, taskId, slashAmount, recipient);
     }
 }

@@ -85,7 +85,7 @@ export function selectRandomTester(
 
 export function validateSoftwareEvidence(evidence: SoftwareEvidence): { passed: boolean; failures: string[] } {
   const coverage = [evidence.lineCoverage, evidence.branchCoverage, evidence.criticalBranchCoverage];
-  if (coverage.some((value) => value < 0 || value > 1)) throw new Error("INVALID_COVERAGE");
+  if (coverage.some((value) => !Number.isFinite(value) || value < 0 || value > 1)) throw new Error("INVALID_COVERAGE");
   const failures: string[] = [];
   if (!evidence.testsPassed) failures.push("TESTS_FAILED");
   if (!evidence.hiddenTestsPassed) failures.push("HIDDEN_TESTS_FAILED");

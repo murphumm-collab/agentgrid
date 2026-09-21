@@ -108,6 +108,7 @@ contract TaskRegistry is Ownable {
     mapping(uint256 => EvaluationResult) public evaluationResults;
     struct RejectionDispute { bytes32 reasonHash; bytes32 responseHash; uint256 openedAt; }
     mapping(uint256 => RejectionDispute) public rejectionDisputes;
+    mapping(uint256 => bool) private rejectionResolved;
 
     error Unauthorized();
     error InvalidState();
@@ -547,6 +548,7 @@ contract TaskRegistry is Ownable {
         if (!isTaskExecutor[taskId][msg.sender]) revert Unauthorized();
         if ((task.state != State.Claimed && task.state != State.Correction) || hash == bytes32(0)) revert InvalidState();
         if (teamReadyRound[taskId] == task.workRound) revert InvalidState();
+        if (contributionRound[taskId][msg.sender] != task.workRound && block.timestamp >= executorClaimedAt[taskId][msg.sender] + EXECUTOR_INACTIVITY_WINDOW) revert InvalidState();
         if (contributionRound[taskId][msg.sender] != task.workRound) {
             contributionRound[taskId][msg.sender] = task.workRound;
             task.contributionCount += 1;
@@ -657,6 +659,7 @@ contract TaskRegistry is Ownable {
         Task storage task = tasks[taskId];
         if (msg.sender != task.tester) revert Unauthorized();
         if (task.state != State.Testing || taskExecutionMode[taskId] != ExecutionMode.Collaboration || evidenceHash == bytes32(0)) revert InvalidState();
+        if (block.timestamp >= testerDeadline[taskId]) revert InvalidState();
         testerDeadline[taskId] = 0;
         task.evidenceHash = evidenceHash;
         if (passed) {
@@ -680,6 +683,7 @@ contract TaskRegistry is Ownable {
         Task storage task = tasks[taskId];
         if (msg.sender != task.tester) revert Unauthorized();
         if (task.state != State.Testing || taskExecutionMode[taskId] != ExecutionMode.Competition || evidenceHash == bytes32(0)) revert InvalidState();
+        if (block.timestamp >= testerDeadline[taskId]) revert InvalidState();
         testerDeadline[taskId] = 0;
         task.evidenceHash = evidenceHash;
         if (passed) {
@@ -767,7 +771,7 @@ contract TaskRegistry is Ownable {
     function review(uint256 taskId, bool accepted, bytes32 reasonHash) external {
         Task storage task = tasks[taskId];
         if (msg.sender != task.publisher) revert Unauthorized();
-        if (task.state != State.UserReview) revert InvalidState();
+        if (task.state != State.UserReview || block.timestamp >= userReviewDeadline[taskId]) revert InvalidState();
         userReviewDeadline[taskId] = 0;
         if (!accepted) {
             if (reasonHash == bytes32(0)) revert InvalidState();
@@ -794,7 +798,7 @@ contract TaskRegistry is Ownable {
         RejectionDispute storage dispute = rejectionDisputes[taskId];
         address responder = taskExecutionMode[taskId] == ExecutionMode.Competition ? competitionWinner[taskId] : task.executor;
         if (msg.sender != responder) revert Unauthorized();
-        if (task.state != State.Rejected || responseHash == bytes32(0) || dispute.responseHash != bytes32(0)) revert InvalidState();
+        if (task.state != State.Rejected || rejectionResolved[taskId] || responseHash == bytes32(0) || dispute.responseHash != bytes32(0)) revert InvalidState();
         if (block.timestamp > dispute.openedAt + REJECTION_RESPONSE_WINDOW) revert InvalidState();
         dispute.responseHash = responseHash;
         emit RejectionResponded(taskId, msg.sender, responseHash);
@@ -803,15 +807,14 @@ contract TaskRegistry is Ownable {
     function resolveRejection(uint256 taskId, bool executorWins, bytes32 resolutionHash) external onlyDisputeResolver {
         Task storage task = tasks[taskId];
         RejectionDispute storage dispute = rejectionDisputes[taskId];
-        if (task.state != State.Rejected || resolutionHash == bytes32(0)) revert InvalidState();
+        if (task.state != State.Rejected || rejectionResolved[taskId] || resolutionHash == bytes32(0)) revert InvalidState();
         if (dispute.responseHash == bytes32(0) && block.timestamp <= dispute.openedAt + REJECTION_RESPONSE_WINDOW) revert InvalidState();
+        rejectionResolved[taskId] = true;
         uint256 publisherSlash;
         if (executorWins) {
-            bytes32 collaborationKey = _collaborationKey(task);
-            rewardVault.createGrant(taskId, taskExecutors[taskId], taskExecutorWeightsBps[taskId], task.tester, collaborationKey, task.requestedReward, publisherStakeBasis[taskId]);
+            _acceptTask(taskId, task);
             publisherSlash = (stakeManager.stakeOf(task.positionId) * ABUSIVE_REJECTION_SLASH_BPS) / BPS;
             if (publisherSlash != 0) stakeManager.slashPosition(task.positionId, taskId, publisherSlash, address(rewardVault));
-            task.state = State.Maintenance;
         } else {
             _unlockTaskParticipants(taskId, task);
             stakeManager.releasePosition(task.positionId, taskId);
