@@ -113,6 +113,7 @@ describe("tester selection and evidence", () => {
     const failed = validateSoftwareEvidence(evidence({ testsPassed: false, hiddenTestsPassed: false, lineCoverage: 0.84, branchCoverage: 0.79, criticalBranchCoverage: 0.94, artifactHash: "bad" }));
     expect(failed.passed).toBe(false);
     expect(failed.failures).toEqual(["TESTS_FAILED", "HIDDEN_TESTS_FAILED", "LINE_COVERAGE_LOW", "BRANCH_COVERAGE_LOW", "CRITICAL_COVERAGE_LOW", "INVALID_ARTIFACT_HASH"]);
+    expect(() => validateSoftwareEvidence(evidence({ lineCoverage: Number.NaN }))).toThrow("INVALID_COVERAGE");
     expect(() => validateSoftwareEvidence(evidence({ lineCoverage: 1.1 }))).toThrow("INVALID_COVERAGE");
     expect(() => validateSoftwareEvidence(evidence({ lineCoverage: -0.1 }))).toThrow("INVALID_COVERAGE");
   });

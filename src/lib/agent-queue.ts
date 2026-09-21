@@ -71,13 +71,20 @@ async function assertCanonicalLease(id: string, agentId: string) {
   throw new Error("JOB_SOURCE_REWOUND");
 }
 
-export async function enqueueAgentJob(job: AgentJob) {
+export async function enqueueAgentJob(job: AgentJob, retryCompleted = false) {
   const r = await redis();
   const target = (job.role === "TESTER" || job.role === "EVALUATOR") && typeof job.payload.tester === "string" ? job.payload.tester
     : job.role === "EXECUTOR" && typeof job.payload.executor === "string" ? job.payload.executor : undefined;
   const created = await r.eval(
-    "if redis.call('SET',KEYS[1],ARGV[1],'NX') then redis.call('LPUSH',KEYS[2],ARGV[2]); return 1 else return 0 end",
-    { keys: [jobKey(job.id), queueKey(job.role, target)], arguments: [JSON.stringify(job), job.id] },
+    [
+      // Only a scheduler that verified canonical, unapproved chain state may
+      // redrive a completed job (e.g. its transaction was subsequently reorged).
+      "if ARGV[3]=='1' and redis.call('EXISTS',KEYS[3])==1 and redis.call('EXISTS',KEYS[4])==0 then",
+      " redis.call('DEL',KEYS[1],KEYS[3])",
+      "end",
+      "if redis.call('SET',KEYS[1],ARGV[1],'NX') then redis.call('LPUSH',KEYS[2],ARGV[2]); return 1 else return 0 end",
+    ].join("\n"),
+    { keys: [jobKey(job.id), queueKey(job.role, target), doneKey(job.id), leaseKey(job.id)], arguments: [JSON.stringify(job), job.id, retryCompleted ? "1" : "0"] },
   );
   return Number(created) === 1;
 }
@@ -95,16 +102,27 @@ async function recoverExpiredLeases() {
   const r = await redis();
   const expired = await r.zRangeByScore(leasesKey, 0, Date.now(), { LIMIT: { offset: 0, count: 100 } });
   for (const id of expired) {
-    if (!await r.exists(leaseKey(id)) && !await r.exists(doneKey(id))) {
-      const raw = await r.get(jobKey(id));
-      if (raw) {
-        const job = JSON.parse(raw) as AgentJob;
-        const target = (job.role === "TESTER" || job.role === "EVALUATOR") && typeof job.payload.tester === "string" ? job.payload.tester
-          : job.role === "EXECUTOR" && typeof job.payload.executor === "string" ? job.payload.executor : undefined;
-        await r.lPush(queueKey(job.role, target), id);
-      }
-    }
-    await r.zRem(leasesKey, id);
+    // Recheck expiry, enqueue, and remove the recovery entry atomically.
+    // A concurrent heartbeat or new lease must never lose its recovery index.
+    await r.eval([
+      "local score=redis.call('ZSCORE',KEYS[1],ARGV[1])",
+      "if not score or tonumber(score)>tonumber(ARGV[2]) then return 0 end",
+      "if redis.call('EXISTS',KEYS[2])==1 then return 0 end",
+      "if redis.call('EXISTS',KEYS[3])==0 then",
+      " local raw=redis.call('GET',KEYS[4])",
+      " if raw then",
+      "  local job=cjson.decode(raw)",
+      "  local target=nil",
+      "  if job.role=='TESTER' or job.role=='EVALUATOR' then target=job.payload.tester end",
+      "  if job.role=='EXECUTOR' then target=job.payload.executor end",
+      "  local queue='agentgrid:queue:'..job.role",
+      "  if type(target)=='string' then queue=queue..':'..string.lower(target) end",
+      "  redis.call('LPUSH',queue,ARGV[1])",
+      " end",
+      "end",
+      "redis.call('ZREM',KEYS[1],ARGV[1])",
+      "return 1",
+    ].join("\n"), { keys: [leasesKey, leaseKey(id), doneKey(id), jobKey(id)], arguments: [id, String(Date.now())] });
   }
 }
 

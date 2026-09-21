@@ -13,7 +13,9 @@ async function main() {
   if (!/^agentgrid_rotation_smoke_\d+$/.test(database)) throw new Error("ROTATION_SMOKE_DATABASE_NAME_INVALID");
   await postgres(["createdb", "-U", "agentgrid", database]);
   process.env.PROTOCOL_MODE = "production";
-  process.env.DATABASE_URL = `postgresql://agentgrid:local-agentgrid-password@127.0.0.1:5432/${database}`;
+  const databaseUrl = new URL(process.env.ARTIFACT_KEY_ROTATION_SMOKE_DATABASE_URL ?? "postgresql://agentgrid:local-agentgrid-password@127.0.0.1:5432/agentgrid");
+  databaseUrl.pathname = `/${database}`;
+  process.env.DATABASE_URL = databaseUrl.toString();
   process.env.AUTH_SECRET = "rotation-smoke-session-secret-32-characters";
   const oldMasterKey = "44".repeat(32);
   const newMasterKey = "55".repeat(32);

@@ -14,6 +14,7 @@ import { formatUnits, toFunctionSelector } from "viem";
 const workspace = process.cwd();
 const baseDatabaseUrl = process.env.AGENT_DELIVERY_SMOKE_DATABASE_URL
   ?? "postgresql://agentgrid:local-agentgrid-password@127.0.0.1:5432/agentgrid";
+const s3Endpoint = process.env.AGENT_DELIVERY_SMOKE_S3_ENDPOINT ?? "http://127.0.0.1:9000";
 const redisUrl = process.env.AGENT_DELIVERY_SMOKE_REDIS_URL ?? "redis://127.0.0.1:6379/12";
 const apiKey = `amp_smoke_${randomBytes(24).toString("base64url")}`;
 const agentId = `delivery-smoke-${randomUUID()}`;
@@ -292,7 +293,7 @@ async function main() {
     SPEC_ASSISTANT_AI_BASE_URL: specAi.url,
     SPEC_ASSISTANT_AI_ALLOWED_ORIGINS: new URL(specAi.url).origin,
     SPEC_ASSISTANT_AI_MODELS: "requirements-smoke,critic-smoke",
-    S3_ENDPOINT: "http://127.0.0.1:9000",
+    S3_ENDPOINT: s3Endpoint,
     S3_REGION: "us-east-1",
     S3_BUCKET: "agentgrid-artifacts",
     S3_ACCESS_KEY_FILE: secretFiles.S3_ACCESS_KEY,
@@ -574,7 +575,7 @@ async function main() {
     if (queue) await queue.closeRedisForTests().catch(() => undefined);
     if (store) await store.closePostgresForTests().catch(() => undefined);
     if (redis.isOpen) { await redis.flushDb().catch(() => undefined); await redis.close().catch(() => undefined); }
-    const s3 = new S3Client({ endpoint: "http://127.0.0.1:9000", region: "us-east-1", forcePathStyle: true, credentials: { accessKeyId: s3AccessKey, secretAccessKey: s3SecretKey } });
+    const s3 = new S3Client({ endpoint: s3Endpoint, region: "us-east-1", forcePathStyle: true, credentials: { accessKeyId: s3AccessKey, secretAccessKey: s3SecretKey } });
     for (const key of createdObjectKeys.filter(Boolean)) await s3.send(new DeleteObjectCommand({ Bucket: "agentgrid-artifacts", Key: key })).catch(() => undefined);
     if (minioUserCreated) await minioAdmin('IFS= read -r root_access; IFS= read -r root_secret; IFS= read -r access; mc alias set agentgrid-smoke http://127.0.0.1:9000 "$root_access" "$root_secret" >/dev/null; mc admin user remove agentgrid-smoke "$access"; mc alias rm agentgrid-smoke >/dev/null', `${localMinioRootAccess}\n${localMinioRootSecret}\n${s3AccessKey}\n`).catch(() => undefined);
     await admin.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`).catch(() => undefined);

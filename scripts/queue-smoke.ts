@@ -35,11 +35,23 @@ async function main() {
   await redis.del(`agentgrid:lease:${crashJob.id}`);
   await redis.zAdd("agentgrid:leases", [{ score: Date.now() - 1, value: crashJob.id }]);
   await redis.close();
-  const recovered = await leaseAgentJob("agent-after-crash", "EXECUTOR", crashOwner);
+  const recoveries = await Promise.all(Array.from({ length: 16 }, (_, index) => leaseAgentJob(`agent-after-crash-${index}`, "EXECUTOR", crashOwner)));
+  if (recoveries.filter(Boolean).length !== 1) throw new Error("QUEUE_CONCURRENT_RECOVERY_DUPLICATED");
+  const recovered = recoveries.find(Boolean);
+  const recoveredOwner = `agent-after-crash-${recoveries.findIndex(Boolean)}`;
   if (recovered?.job.id !== crashJob.id) throw new Error("QUEUE_CRASH_JOB_NOT_RECOVERED");
-  await completeAgentJob(crashJob.id, "agent-after-crash", { recovered: true });
+  await completeAgentJob(crashJob.id, recoveredOwner, { recovered: true });
 
   console.log(JSON.stringify({ enqueued: true, idempotent: true, leased: true, heartbeat: true, heartbeatRecoveryIndexAtomic: true, wrongOwnerRejected, completed: true, crashedLeaseRecovered: true }));
+  // A completed maintenance transaction can be rolled back by a reorg.
+  // Concurrent schedulers must redrive exactly one job, then leave it alone.
+  const redriven = await Promise.all(Array.from({ length: 16 }, () => enqueueAgentJob(crashJob, true)));
+  if (redriven.filter(Boolean).length !== 1) throw new Error("QUEUE_CONCURRENT_REDRIVE_DUPLICATED");
+  const afterReorg = await leaseAgentJob("agent-after-reorg", "EXECUTOR", crashOwner);
+  if (afterReorg?.job.id !== crashJob.id) throw new Error("QUEUE_REORG_REDRIVE_FAILED");
+  if (await enqueueAgentJob(crashJob, true)) throw new Error("QUEUE_ACTIVE_JOB_REDRIVEN");
+  await completeAgentJob(crashJob.id, "agent-after-reorg", { recovered: true });
+  console.log(JSON.stringify({ concurrentRedriveIdempotent: true, activeLeasePreserved: true }));
   await closeRedisForTests();
 }
 

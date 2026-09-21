@@ -9,7 +9,7 @@
     },
     "stakeManager": {
       "name": "StakeCreditManager",
-      "normalizedRuntimeBytecodeHash": "0xb7bd632f0fd79edd3974d69d22b46b73c46193da2b81cbf25c91d2502f262be4",
+      "normalizedRuntimeBytecodeHash": "0xe5fbaa24465e6304604a596c39ba6dbfa217ba2465b0e420dac292df801f44da",
       "immutableReferences": [
         {
           "length": 32,
@@ -17,25 +17,25 @@
         },
         {
           "length": 32,
-          "start": 1935
+          "start": 2020
         },
         {
           "length": 32,
-          "start": 2670
+          "start": 2755
         },
         {
           "length": 32,
-          "start": 3096
+          "start": 3181
         },
         {
           "length": 32,
-          "start": 3817
+          "start": 4024
         }
       ]
     },
     "agentRegistry": {
       "name": "AgentRegistry",
-      "normalizedRuntimeBytecodeHash": "0x24704882d95cefcb489a9e45435bd734a094a82be9f5331f7cef444c2cf0b544",
+      "normalizedRuntimeBytecodeHash": "0x8eb2672368f9500e5de680ec3b0a59b6654eeee3e0b7efcd93024a0dcc3b0aa2",
       "immutableReferences": [
         {
           "length": 32,
@@ -51,71 +51,79 @@
         },
         {
           "length": 32,
-          "start": 2640
+          "start": 2830
         },
         {
           "length": 32,
-          "start": 2850
+          "start": 3040
         },
         {
           "length": 32,
-          "start": 3834
+          "start": 4024
         },
         {
           "length": 32,
-          "start": 4375
+          "start": 4565
         },
         {
           "length": 32,
-          "start": 4658
+          "start": 4848
         }
       ]
     },
     "rewardVault": {
       "name": "RewardVault",
-      "normalizedRuntimeBytecodeHash": "0x78320e33fc76202420cc69fcde80124a324fa92edae1893c6cfc92c704c714d4",
+      "normalizedRuntimeBytecodeHash": "0x7b9398b00f406d42437afa3bb60f01f863c822022e84e222f2eb78566d21d0fe",
       "immutableReferences": [
         {
           "length": 32,
-          "start": 343
+          "start": 365
         },
         {
           "length": 32,
-          "start": 4442
+          "start": 676
         },
         {
           "length": 32,
-          "start": 5756
+          "start": 3691
         },
         {
           "length": 32,
-          "start": 5808
+          "start": 5215
         },
         {
           "length": 32,
-          "start": 820
+          "start": 6653
         },
         {
           "length": 32,
-          "start": 4615
+          "start": 6705
         },
         {
           "length": 32,
-          "start": 5723
+          "start": 1075
         },
         {
           "length": 32,
-          "start": 890
+          "start": 5388
         },
         {
           "length": 32,
-          "start": 3107
+          "start": 6620
+        },
+        {
+          "length": 32,
+          "start": 1145
+        },
+        {
+          "length": 32,
+          "start": 3556
         }
       ]
     },
     "taskRegistry": {
       "name": "TaskRegistry",
-      "normalizedRuntimeBytecodeHash": "0xc04be442d2c1ab8e3d68d5b683e7e461e9d3d5f9ac120fe6f34e51069671b3d2",
+      "normalizedRuntimeBytecodeHash": "0x77bffc8edc8808c6ee0b8357c4859c0bed6e2b6018cfd6b03812cf570e546002",
       "immutableReferences": [
         {
           "length": 32,
@@ -123,71 +131,71 @@
         },
         {
           "length": 32,
-          "start": 6860
+          "start": 6740
         },
         {
           "length": 32,
-          "start": 7302
+          "start": 7142
         },
         {
           "length": 32,
-          "start": 9464
+          "start": 9346
         },
         {
           "length": 32,
-          "start": 14959
+          "start": 14085
         },
         {
           "length": 32,
-          "start": 15734
+          "start": 14890
         },
         {
           "length": 32,
-          "start": 16575
+          "start": 15731
         },
         {
           "length": 32,
-          "start": 17562
+          "start": 16782
         },
         {
           "length": 32,
-          "start": 21822
+          "start": 21869
         },
         {
           "length": 32,
-          "start": 22600
+          "start": 22575
         },
         {
           "length": 32,
-          "start": 6708
+          "start": 6935
         },
         {
           "length": 32,
-          "start": 10684
+          "start": 10586
         },
         {
           "length": 32,
-          "start": 16322
+          "start": 15478
         },
         {
           "length": 32,
-          "start": 18924
+          "start": 18144
         },
         {
           "length": 32,
-          "start": 19913
+          "start": 19102
         },
         {
           "length": 32,
-          "start": 20717
+          "start": 20764
         },
         {
           "length": 32,
-          "start": 21540
+          "start": 21587
         },
         {
           "length": 32,
-          "start": 23826
+          "start": 23801
         },
         {
           "length": 32,
@@ -199,39 +207,39 @@
         },
         {
           "length": 32,
-          "start": 7798
+          "start": 7660
         },
         {
           "length": 32,
-          "start": 11461
+          "start": 11392
         },
         {
           "length": 32,
-          "start": 11591
+          "start": 11522
         },
         {
           "length": 32,
-          "start": 13097
+          "start": 13118
         },
         {
           "length": 32,
-          "start": 17694
+          "start": 16914
         },
         {
           "length": 32,
-          "start": 19965
+          "start": 19154
         },
         {
           "length": 32,
-          "start": 20065
+          "start": 19254
         },
         {
           "length": 32,
-          "start": 20283
+          "start": 19472
         },
         {
           "length": 32,
-          "start": 22082
+          "start": 22129
         }
       ]
     },

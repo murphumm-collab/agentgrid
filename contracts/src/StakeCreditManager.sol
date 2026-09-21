@@ -105,7 +105,7 @@ contract StakeCreditManager is Ownable, ReentrancyGuard {
     function consumeCredit(uint256 positionId, uint256 taskId, address publisher) external onlyRegistry {
         Position storage position = positions[positionId];
         if (position.owner != publisher) revert Unauthorized();
-        if (position.activeTaskId != 0 || taskLockCount[positionId] != 0 || position.creditExpiry < block.timestamp) revert CreditUnavailable();
+        if (taskId == 0 || position.withdrawalRequestedAt != 0 || position.amount < MINIMUM_STAKE || position.activeTaskId != 0 || taskLockCount[positionId] != 0 || position.creditExpiry == 0 || position.creditExpiry < block.timestamp) revert CreditUnavailable();
         position.activeTaskId = taskId;
         position.creditExpiry = 0;
         emit CreditConsumed(positionId, taskId);
@@ -151,6 +151,8 @@ contract StakeCreditManager is Ownable, ReentrancyGuard {
             (position.activeTaskId != taskId && !taskLocks[positionId][taskId]) ||
             recipient == address(0) || amount == 0 || amount > position.amount
         ) revert InvalidAmount();
+        // A task cannot consume collateral reserved for other assignments.
+        if (taskLocks[positionId][taskId] && (amount > TASK_COLLATERAL || position.amount - amount < lockedTaskCollateral[positionId] - TASK_COLLATERAL)) revert InvalidAmount();
         position.amount -= amount;
         token.safeTransfer(recipient, amount);
         emit PositionSlashed(positionId, taskId, amount, recipient);
@@ -182,6 +184,7 @@ contract StakeCreditManager is Ownable, ReentrancyGuard {
     function executeWithdrawal(uint256 positionId) external onlyPositionOwner(positionId) nonReentrant {
         Position storage position = positions[positionId];
         if (
+            position.activeTaskId != 0 || taskLockCount[positionId] != 0 ||
             position.withdrawalRequestedAt == 0 ||
             block.timestamp < position.withdrawalRequestedAt + WITHDRAWAL_DELAY
         ) revert WithdrawalNotReady();

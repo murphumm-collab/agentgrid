@@ -1,8 +1,8 @@
 import { chmod, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
-import { readReleaseEvidenceFile } from "./production-release-service";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { productionReleaseReadinessReport, readReleaseEvidenceFile } from "./production-release-service";
 
 const directories: string[] = [];
 
@@ -35,4 +35,17 @@ describe("production release evidence file boundary", () => {
     await symlink(filename, link);
     await expect(readReleaseEvidenceFile(root, "link.json", 64)).rejects.toThrow();
   });
+});
+
+it("never allows external signoffs to erase this revision's protocol blockers", async () => {
+  vi.spyOn(await import("./pilot-qualification-service"), "pilotQualificationReport").mockResolvedValue({
+    launchEvidenceReady: true, blockers: [],
+  } as unknown as Awaited<ReturnType<typeof import("./pilot-qualification-service").pilotQualificationReport>>);
+  try {
+    const report = await productionReleaseReadinessReport();
+    expect(report.productionReleaseReady).toBe(false);
+    expect(report.blockers).toEqual(expect.arrayContaining([
+      "PROTOCOL_P0_SYBIL_POSITIVE_ROI", "PROTOCOL_P0_UNVERIFIED_ONCHAIN_PASS", "PROTOCOL_P0_BIASABLE_RANDOM_ASSIGNMENT",
+    ]));
+  } finally { vi.restoreAllMocks(); }
 });

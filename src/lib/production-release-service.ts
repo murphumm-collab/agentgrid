@@ -1,3 +1,4 @@
+import { protocolLaunchBlockers } from "./protocol-launch-gates";
 import { createHash } from "node:crypto";
 import { constants as fsConstants, promises as fs } from "node:fs";
 import path from "node:path";
@@ -70,7 +71,9 @@ async function verifyFiles(root: string, manifest: ProductionReleaseManifest) {
 
 export async function productionReleaseReadinessReport() {
   const pilot = await pilotQualificationReport();
-  const blockers = [...pilot.blockers];
+  // These are properties of this protocol revision, not operator attestations.
+  // Remove only with a reviewed protocol fix and adversarial regression evidence.
+  const blockers = [...protocolLaunchBlockers, ...pilot.blockers];
   if (!pilot.launchEvidenceReady) blockers.unshift("PILOT_QUALIFICATION_NOT_READY");
   const bundleFile = process.env.PRODUCTION_RELEASE_EVIDENCE_FILE ? path.resolve(process.env.PRODUCTION_RELEASE_EVIDENCE_FILE) : undefined;
   const evidenceRoot = process.env.PRODUCTION_RELEASE_EVIDENCE_ROOT ? path.resolve(process.env.PRODUCTION_RELEASE_EVIDENCE_ROOT) : undefined;

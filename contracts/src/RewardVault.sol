@@ -30,6 +30,8 @@ contract RewardVault is Ownable, ReentrancyGuard {
     address public immutable reserve;
     uint256 public immutable epochBudget;
     address public taskRegistry;
+    uint256 public reservedRewards;
+    uint256 public reservedEvaluationFees;
     mapping(uint256 => uint256) public epochSpent;
     mapping(bytes32 => uint256) public collaborationCount;
     mapping(uint256 => Grant) private grants;
@@ -47,6 +49,7 @@ contract RewardVault is Ownable, ReentrancyGuard {
     error CheckpointNotDue();
     error AlreadyClaimed();
     error RegistryAlreadySet();
+    error InsufficientFunding();
 
     event GrantCreated(uint256 indexed taskId, uint256 grossReward, uint256 multiplierBps, bytes32 issuanceProof);
     event FutureParticipantsUpdated(
@@ -84,6 +87,8 @@ contract RewardVault is Ownable, ReentrancyGuard {
     /// @notice Accounts for tokens already transferred by StakeCreditManager.
     function registerEvaluationFee(uint256 taskId, uint256 amount) external onlyRegistry {
         if (amount == 0 || evaluationFees[taskId] != 0 || evaluationFeeSettled[taskId]) revert EmptyReward();
+        if (token.balanceOf(address(this)) < reservedRewards + reservedEvaluationFees + amount) revert InsufficientFunding();
+        reservedEvaluationFees += amount;
         evaluationFees[taskId] = amount;
         emit EvaluationFeeRegistered(taskId, amount);
     }
@@ -94,6 +99,7 @@ contract RewardVault is Ownable, ReentrancyGuard {
         uint256 amount = evaluationFees[taskId];
         if (amount == 0 || evaluationFeeSettled[taskId]) revert AlreadyClaimed();
         evaluationFeeSettled[taskId] = true;
+        reservedEvaluationFees -= amount;
         uint256 paid;
         if (reporters.length != 0) {
             uint256 share = amount / reporters.length;
@@ -119,10 +125,12 @@ contract RewardVault is Ownable, ReentrancyGuard {
         uint256 publisherStake
     ) external onlyRegistry returns (uint256 grossReward) {
         if (grants[taskId].startedAt != 0) revert GrantExists();
-        if (executors.length == 0 || executors.length > 32) revert EmptyReward();
+        if (executors.length == 0 || executors.length > 32 || tester == address(0)) revert EmptyReward();
         if (executorWeightsBps.length != executors.length) revert InvalidExecutorWeights();
         uint256 totalWeightBps;
         for (uint256 i; i < executorWeightsBps.length; ++i) {
+            if (executors[i] == address(0) || executors[i] == tester) revert InvalidExecutorWeights();
+            for (uint256 j; j < i; ++j) if (executors[j] == executors[i]) revert InvalidExecutorWeights();
             totalWeightBps += executorWeightsBps[i];
         }
         if (totalWeightBps != BPS) revert InvalidExecutorWeights();
@@ -135,6 +143,8 @@ contract RewardVault is Ownable, ReentrancyGuard {
         grossReward = (baseReward * multiplierBps) / BPS;
         if (grossReward > available) grossReward = available;
         if (grossReward == 0) revert EmptyReward();
+        if (token.balanceOf(address(this)) < reservedRewards + reservedEvaluationFees + grossReward) revert InsufficientFunding();
+        reservedRewards += grossReward;
 
         Grant storage grant = grants[taskId];
         grant.executors = executors;
@@ -156,7 +166,8 @@ contract RewardVault is Ownable, ReentrancyGuard {
 
     function approveCheckpoint(uint256 taskId, uint8 checkpoint) external onlyRegistry {
         Grant storage grant = grants[taskId];
-        if (checkpoint == 0 || checkpoint > 3) revert InvalidCheckpoint();
+        if (grant.startedAt == 0 || checkpoint == 0 || checkpoint > 3) revert InvalidCheckpoint();
+        if (grant.approved[checkpoint] || (checkpoint > 1 && !grant.approved[checkpoint - 1])) revert InvalidCheckpoint();
         if (block.timestamp < dueAt(grant.startedAt, checkpoint)) revert CheckpointNotDue();
         grant.approved[checkpoint] = true;
         emit CheckpointApproved(taskId, checkpoint);
@@ -178,6 +189,8 @@ contract RewardVault is Ownable, ReentrancyGuard {
         uint256 totalWeightBps;
         for (uint256 i; i < executors.length; ++i) {
             if (executors[i] == address(0)) revert EmptyReward();
+            if (executors[i] == address(0) || executors[i] == tester) revert InvalidExecutorWeights();
+            for (uint256 j; j < i; ++j) if (executors[j] == executors[i]) revert InvalidExecutorWeights();
             totalWeightBps += executorWeightsBps[i];
         }
         if (totalWeightBps != BPS) revert InvalidExecutorWeights();
@@ -203,6 +216,7 @@ contract RewardVault is Ownable, ReentrancyGuard {
         if (grant.claimed[checkpoint]) revert AlreadyClaimed();
         grant.claimed[checkpoint] = true;
         uint256 amount = grant.amounts[checkpoint];
+        reservedRewards -= amount;
         uint256 executorPool = (amount * EXECUTOR_BPS) / BPS;
         uint256 testerAmount = (amount * TESTER_BPS) / BPS;
         uint256 executorsPaid;

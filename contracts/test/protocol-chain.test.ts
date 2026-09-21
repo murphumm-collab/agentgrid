@@ -1,5 +1,5 @@
 import ganache from "ganache";
-import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createPublicClient,
   createWalletClient,
@@ -49,11 +49,12 @@ describe("AgentGrid Solidity protocol", () => {
   beforeEach(async () => {
     provider = ganache.provider({
       logging: { quiet: true },
+      miner: { instamine: "eager" },
       chain: { chainId: localChain.id },
       wallet: { mnemonic, totalAccounts: 10, defaultBalance: 1_000 },
     });
     const transport = custom(provider as never);
-    publicClient = createPublicClient({ chain: localChain, transport });
+    publicClient = createPublicClient({ chain: localChain, transport, pollingInterval: 10 });
     owner = createWalletClient({ account: mnemonicToAccount(mnemonic, { addressIndex: 0 }), chain: localChain, transport });
     publisher = createWalletClient({ account: mnemonicToAccount(mnemonic, { addressIndex: 1 }), chain: localChain, transport });
     executor = createWalletClient({ account: mnemonicToAccount(mnemonic, { addressIndex: 2 }), chain: localChain, transport });
@@ -80,10 +81,12 @@ describe("AgentGrid Solidity protocol", () => {
     await write(owner, token, "TestToken", "mintRewardReserve", [rewardVault, parseEther("100000")]);
   });
 
+  afterEach(async () => { await provider?.disconnect(); });
+
   async function deploy(wallet: Wallet, name: string, args: readonly unknown[]): Promise<Address> {
     const artifact = artifacts[name];
-    const hash = await wallet.deployContract({ abi: artifact.abi as Abi, bytecode: artifact.bytecode, args } as never);
-    const receipt = await publicClient.waitForTransactionReceipt({ hash });
+    const hash = await wallet.deployContract({ abi: artifact.abi as Abi, bytecode: artifact.bytecode, args, gas: 15_000_000n } as never);
+    const receipt = await publicClient.getTransactionReceipt({ hash });
     if (!receipt.contractAddress) throw new Error(`Missing deployment address for ${name}`);
     return receipt.contractAddress;
   }
@@ -94,15 +97,18 @@ describe("AgentGrid Solidity protocol", () => {
       abi: artifacts[name].abi as Abi,
       functionName,
       args,
+      gas: 15_000_000n,
     } as never);
-    return publicClient.waitForTransactionReceipt({ hash });
+    const receipt = await publicClient.getTransactionReceipt({ hash });
+    if (receipt.status !== "success") throw new Error("LOCAL_TRANSACTION_REVERTED");
+    return receipt;
   }
 
   async function read(address: Address, name: string, functionName: string, args: readonly unknown[] = []) {
     return publicClient.readContract({ address, abi: artifacts[name].abi as Abi, functionName, args } as never);
   }
 
-  async function createAcceptedTask() {
+  async function createAcceptedTask(stopAt?: "testing" | "review") {
     const evaluators = await registerEvaluationAgents();
     await write(publisher, addresses.token, "TestToken", "faucet");
     await write(publisher, addresses.token, "TestToken", "approve", [addresses.stakeManager, parseEther("1000")]);
@@ -124,12 +130,14 @@ describe("AgentGrid Solidity protocol", () => {
       keccak256(stringToHex("artifact-cid")),
     ]);
     await assignTester(1n);
+    if (stopAt === "testing") return;
     await write(tester, addresses.taskRegistry, "TaskRegistry", "submitTest", [
       1n,
       true,
       keccak256(stringToHex("coverage-report-cid")),
       [10_000],
     ]);
+    if (stopAt === "review") return;
     await write(publisher, addresses.taskRegistry, "TaskRegistry", "review", [1n, true, `0x${"0".repeat(64)}`]);
   }
 
@@ -449,6 +457,13 @@ describe("AgentGrid Solidity protocol", () => {
     const submitted = (await read(addresses.taskRegistry, "TaskRegistry", "tasks", [1n])) as readonly unknown[];
     expect(submitted[19]).toBe(4);
     await assignTester(1n);
+    const beforeTimeout = await provider.request({ method: "evm_snapshot", params: [] });
+    const deadline = await read(addresses.taskRegistry, "TaskRegistry", "testerDeadline", [1n]) as bigint;
+    await advanceTo(deadline);
+    await expect(write(tester, addresses.taskRegistry, "TaskRegistry", "submitCompetitionTest", [
+      1n, true, competitor.account!.address, candidateB, keccak256(stringToHex("late-competition-pass")), [3000, 7000],
+    ])).rejects.toThrow();
+    await provider.request({ method: "evm_revert", params: [beforeTimeout] });
     await expect(write(tester, addresses.taskRegistry, "TaskRegistry", "submitCompetitionTest", [
       1n, true, executor.account!.address, candidateB, keccak256(stringToHex("invalid-selection")), [7_000, 3_000],
     ])).rejects.toThrow();
@@ -657,4 +672,129 @@ describe("AgentGrid Solidity protocol", () => {
     }
     expect(totals).toEqual(["200", "140", "80", "40", "20"].map((value) => parseEther(value)));
   });
+  async function advanceTo(timestamp: bigint) {
+    await provider.request({ method: "evm_setTime", params: [Number(timestamp) * 1000] });
+    await provider.request({ method: "evm_mine", params: [] });
+  }
+
+  it("rejects a tester report at the deadline even before replacement executes", async () => {
+    await createAcceptedTask("testing");
+    const deadline = await read(addresses.taskRegistry, "TaskRegistry", "testerDeadline", [1n]) as bigint;
+    await advanceTo(deadline);
+    await expect(write(tester, addresses.taskRegistry, "TaskRegistry", "submitTest", [1n, true, keccak256(stringToHex("late-pass")), [10000]])).rejects.toThrow();
+  });
+
+  it("rejects a publisher rejection at the deadline and permits timeout acceptance", async () => {
+    await createAcceptedTask("review");
+    const deadline = await read(addresses.taskRegistry, "TaskRegistry", "userReviewDeadline", [1n]) as bigint;
+    await advanceTo(deadline);
+    await expect(write(publisher, addresses.taskRegistry, "TaskRegistry", "review", [1n, false, keccak256(stringToHex("late-reject"))])).rejects.toThrow();
+    await write(owner, addresses.taskRegistry, "TaskRegistry", "finalizeSilentPublisherReview", [1n]);
+  });
+
+  it("makes publisher-win arbitration terminal, preventing reward issuance after slot release", async () => {
+    await createAcceptedTask("review");
+    const proof = keccak256(stringToHex("dispute-proof"));
+    await write(publisher, addresses.taskRegistry, "TaskRegistry", "review", [1n, false, proof]);
+    await write(executor, addresses.taskRegistry, "TaskRegistry", "respondToRejection", [1n, proof]);
+    await write(owner, addresses.taskRegistry, "TaskRegistry", "resolveRejection", [1n, false, proof]);
+    await write(publisher, addresses.stakeManager, "StakeCreditManager", "requestWithdrawal", [4n]);
+    await provider.request({ method: "evm_increaseTime", params: [7 * 86400] });
+    await provider.request({ method: "evm_mine", params: [] });
+    await write(publisher, addresses.stakeManager, "StakeCreditManager", "executeWithdrawal", [4n]);
+    await expect(write(owner, addresses.taskRegistry, "TaskRegistry", "resolveRejection", [1n, true, proof])).rejects.toThrow();
+    expect((await read(addresses.rewardVault, "RewardVault", "getGrant", [1n]) as { total: bigint }).total).toBe(0n);
+  });
+
+  it("rejects a first contribution at the six-hour eviction boundary", async () => {
+    const { evaluators } = await createEvaluatingTask();
+    await approveEvaluation(1n, evaluators);
+    await registerAgent(executor, 5n);
+    await write(executor, addresses.taskRegistry, "TaskRegistry", "claimTask", [1n]);
+    const claimedAt = await read(addresses.taskRegistry, "TaskRegistry", "executorClaimedAt", [1n, executor.account!.address]) as bigint;
+    await advanceTo(claimedAt + 6n * 3600n);
+    await expect(write(executor, addresses.taskRegistry, "TaskRegistry", "submitContribution", [1n, keccak256(stringToHex("late"))])).rejects.toThrow();
+    await write(owner, addresses.taskRegistry, "TaskRegistry", "evictInactiveExecutor", [1n, executor.account!.address]);
+  });
+
+  it("reserves outstanding grants across epochs and never spends evaluator escrow", async () => {
+    const vault = await deploy(owner, "RewardVault", [addresses.token, reserveAccount.address, parseEther("100000"), owner.account!.address]);
+    await write(owner, vault, "RewardVault", "setTaskRegistry", [owner.account!.address]);
+    await write(owner, addresses.token, "TestToken", "mintRewardReserve", [vault, parseEther("203")]);
+    await write(owner, vault, "RewardVault", "registerEvaluationFee", [77n, parseEther("3")]);
+    const args = [[executor.account!.address], [10000], tester.account!.address, keccak256(stringToHex("key")), parseEther("1000"), parseEther("1000")];
+    await write(owner, vault, "RewardVault", "createGrant", [1n, ...args]);
+    await provider.request({ method: "evm_increaseTime", params: [31 * 86400] });
+    await provider.request({ method: "evm_mine", params: [] });
+    await expect(write(owner, vault, "RewardVault", "createGrant", [2n, ...args])).rejects.toThrow();
+    await write(owner, vault, "RewardVault", "settleEvaluationFee", [77n, [publisher.account!.address]]);
+    await write(owner, vault, "RewardVault", "claim", [1n, 0]);
+    expect(await read(addresses.token, "TestToken", "balanceOf", [vault])).toBe(parseEther("120"));
+  });
+
+  it("documents the unresolved positive ROI of a coalition passing arbitrary hashes", async () => {
+    await createAcceptedTask();
+    const grant = await read(addresses.rewardVault, "RewardVault", "getGrant", [1n]) as { startedAt: bigint; total: bigint };
+    await write(owner, addresses.rewardVault, "RewardVault", "claim", [1n, 0]);
+    for (const [checkpoint, days] of [[1, 7], [2, 30], [3, 90]]) {
+      await advanceTo(grant.startedAt + BigInt(days * 86400));
+      await write(tester, addresses.taskRegistry, "TaskRegistry", "validateMaintenance", [1n, checkpoint, true, keccak256(stringToHex(`unverified-${checkpoint}`))]);
+      await write(owner, addresses.rewardVault, "RewardVault", "claim", [1n, checkpoint]);
+      await expect(write(tester, addresses.taskRegistry, "TaskRegistry", "validateMaintenance", [1n, checkpoint, true, keccak256(stringToHex("duplicate"))])).rejects.toThrow();
+      await expect(write(owner, addresses.rewardVault, "RewardVault", "claim", [1n, checkpoint])).rejects.toThrow();
+    }
+    const publisherCost = parseEther("1000") - (await read(addresses.stakeManager, "StakeCreditManager", "stakeOf", [4n]) as bigint);
+    const evaluatorRebate = parseEther("3");
+    const coalitionPayout = grant.total * 8000n / 10000n;
+    expect(coalitionPayout + evaluatorRebate - publisherCost).toBe(parseEther("140"));
+    // This is a vulnerability reproduction, NOT a security acceptance test.
+    // productionReleaseReadinessReport must remain blocked for this revision.
+  });
+
+  it("caps competing epoch grants and reserves only actual allocated rewards", async () => {
+    const vault = await deploy(owner, "RewardVault", [addresses.token, reserveAccount.address, parseEther("250"), owner.account!.address]);
+    await write(owner, vault, "RewardVault", "setTaskRegistry", [owner.account!.address]);
+    await write(owner, addresses.token, "TestToken", "mintRewardReserve", [vault, parseEther("1000")]);
+    for (const [recipients, weights] of [
+      [[executor.account!.address, executor.account!.address], [5000, 5000]],
+      [[tester.account!.address], [10000]],
+      [[`0x${"0".repeat(40)}`], [10000]],
+    ]) {
+      await expect(write(owner, vault, "RewardVault", "createGrant", [99n, recipients, weights, tester.account!.address, keccak256(stringToHex("invalid")), parseEther("1000"), parseEther("1000")])).rejects.toThrow();
+    }
+    for (const taskId of [1n, 2n]) {
+      await write(owner, vault, "RewardVault", "createGrant", [taskId, [executor.account!.address], [10000], tester.account!.address, keccak256(stringToHex(String(taskId))), parseEther("1000"), parseEther("1000")]);
+    }
+    expect((await read(vault, "RewardVault", "getGrant", [2n]) as { total: bigint }).total).toBe(parseEther("50"));
+    expect(await read(vault, "RewardVault", "reservedRewards")).toBe(parseEther("250"));
+    await expect(write(owner, vault, "RewardVault", "createGrant", [3n, [executor.account!.address], [10000], tester.account!.address, keccak256(stringToHex("3")), parseEther("1000"), parseEther("1000")])).rejects.toThrow();
+    await expect(write(owner, vault, "RewardVault", "approveCheckpoint", [999n, 1])).rejects.toThrow();
+  });
+
+  it("rejects expired or withdrawal-pending credits and protects collateral for other tasks", async () => {
+    const stake = await deploy(owner, "StakeCreditManager", [addresses.token, owner.account!.address]);
+    await write(owner, stake, "StakeCreditManager", "setTaskRegistry", [owner.account!.address]);
+    await write(owner, stake, "StakeCreditManager", "setAgentRegistry", [owner.account!.address]);
+    await write(publisher, addresses.token, "TestToken", "faucet");
+    await write(publisher, addresses.token, "TestToken", "approve", [stake, parseEther("1000")]);
+    await write(publisher, stake, "StakeCreditManager", "createPosition", [parseEther("1000")]);
+    await write(publisher, stake, "StakeCreditManager", "issueCredit", [1n]);
+    const position = await read(stake, "StakeCreditManager", "positions", [1n]) as readonly unknown[];
+    await advanceTo(position[3] as bigint + 1n);
+    await expect(write(owner, stake, "StakeCreditManager", "consumeCredit", [1n, 1n, publisher.account!.address])).rejects.toThrow();
+    await write(publisher, stake, "StakeCreditManager", "requestWithdrawal", [1n]);
+    await expect(write(owner, stake, "StakeCreditManager", "consumeCredit", [1n, 1n, publisher.account!.address])).rejects.toThrow();
+    await expect(write(owner, stake, "StakeCreditManager", "lockPositionForTask", [1n, 1n, publisher.account!.address])).rejects.toThrow();
+    await write(executor, addresses.token, "TestToken", "faucet");
+    await write(executor, addresses.token, "TestToken", "approve", [stake, parseEther("1000")]);
+    await write(executor, stake, "StakeCreditManager", "createPosition", [parseEther("1000")]);
+    for (let i = 1n; i <= 10n; i++) await write(owner, stake, "StakeCreditManager", "lockPositionForTask", [2n, i, executor.account!.address]);
+    await expect(write(owner, stake, "StakeCreditManager", "lockPositionForTask", [2n, 11n, executor.account!.address])).rejects.toThrow();
+    await expect(write(owner, stake, "StakeCreditManager", "slashPosition", [2n, 1n, parseEther("101"), reserveAccount.address])).rejects.toThrow();
+    await write(owner, stake, "StakeCreditManager", "slashPosition", [2n, 1n, parseEther("100"), reserveAccount.address]);
+    await write(owner, stake, "StakeCreditManager", "unlockPositionForTask", [2n, 1n, executor.account!.address]);
+    expect(await read(stake, "StakeCreditManager", "availableTaskCollateral", [2n])).toBe(0n);
+    expect(await read(stake, "StakeCreditManager", "lockedTaskCollateral", [2n])).toBe(parseEther("900"));
+  });
+
 });
